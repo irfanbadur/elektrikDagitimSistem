@@ -1,0 +1,93 @@
+export const PROJE_DURUMLARI = {
+  teslim_alindi: { label: 'Teslim Alındı', renk: 'gray', emoji: '⚪' },
+  tasarimda: { label: 'Tasarımda', renk: 'purple', emoji: '🟣' },
+  onay_bekliyor: { label: 'Onay Bekliyor', renk: 'orange', emoji: '🟠' },
+  malzeme_bekliyor: { label: 'Malzeme Bekliyor', renk: 'yellow', emoji: '🟡' },
+  programda: { label: 'Programda', renk: 'blue', emoji: '🔵' },
+  sahada: { label: 'Sahada', renk: 'green', emoji: '🟢' },
+  montaj_tamam: { label: 'Montaj Tamam', renk: 'emerald', emoji: '✅' },
+  tamamlandi: { label: 'Tamamlandı', renk: 'emerald', emoji: '✅' },
+  askida: { label: 'Askıda', renk: 'red', emoji: '🔴' },
+}
+
+export const PROJE_DURUM_RENKLERI = {
+  teslim_alindi: 'bg-gray-100 text-gray-700',
+  tasarimda: 'bg-purple-100 text-purple-700',
+  onay_bekliyor: 'bg-orange-100 text-orange-700',
+  malzeme_bekliyor: 'bg-yellow-100 text-yellow-700',
+  programda: 'bg-blue-100 text-blue-700',
+  sahada: 'bg-green-100 text-green-700',
+  montaj_tamam: 'bg-emerald-100 text-emerald-700',
+  tamamlandi: 'bg-emerald-200 text-emerald-800',
+  askida: 'bg-red-100 text-red-700',
+}
+
+export const ONCELIK_RENKLERI = {
+  acil: 'bg-red-100 text-red-700',
+  yuksek: 'bg-orange-100 text-orange-700',
+  normal: 'bg-blue-100 text-blue-700',
+  dusuk: 'bg-gray-100 text-gray-600',
+}
+
+export const ONCELIK_LABELS = {
+  acil: 'Acil',
+  yuksek: 'Yüksek',
+  normal: 'Normal',
+  dusuk: 'Düşük',
+}
+
+export const EKIP_DURUM_RENKLERI = {
+  aktif: 'bg-green-100 text-green-700',
+  izinli: 'bg-yellow-100 text-yellow-700',
+  pasif: 'bg-gray-100 text-gray-600',
+}
+
+export const GOREV_TIPLERI = {
+  ekip_basi: 'Ekip Başı',
+  usta: 'Usta',
+  teknisyen: 'Teknisyen',
+  cirak: 'Çırak',
+  sofor: 'Şoför',
+}
+
+export const TALEP_TIPLERI = {
+  malzeme: 'Malzeme Talebi',
+  enerji_kesintisi: 'Enerji Kesintisi',
+  arac: 'Araç/Nakliye',
+  teknik_destek: 'Teknik Destek',
+  is_guvenligi: 'İş Güvenliği',
+  diger: 'Diğer',
+}
+
+export const TALEP_DURUMLARI = {
+  beklemede: { label: 'Beklemede', renk: 'bg-yellow-100 text-yellow-700' },
+  isleniyor: { label: 'İşleniyor', renk: 'bg-blue-100 text-blue-700' },
+  onaylandi: { label: 'Onaylandı', renk: 'bg-green-100 text-green-700' },
+  reddedildi: { label: 'Reddedildi', renk: 'bg-red-100 text-red-700' },
+  tamamlandi: { label: 'Tamamlandı', renk: 'bg-emerald-100 text-emerald-700' },
+}
+
+export const MALZEME_KATEGORILERI = {
+  kablo: 'Kablo',
+  direk: 'Direk',
+  trafo: 'Trafo',
+  klemens: 'Klemens',
+  pano: 'Pano',
+  diger: 'Diğer',
+}
+
+export const IS_KATEGORILERI = {
+  kablo_cekimi: 'Kablo Çekimi',
+  direk_dikimi: 'Direk Dikimi',
+  trafo_montaj: 'Trafo Montajı',
+  pano_montaj: 'Pano Montajı',
+  test: 'Test',
+  diger: 'Diğer',
+}
+
+export const HAVA_DURUMLARI = {
+  acik: 'Açık',
+  yagmurlu: 'Yağmurlu',
+  karli: 'Karlı',
+  ruzgarli: 'Rüzgarlı',
+}
