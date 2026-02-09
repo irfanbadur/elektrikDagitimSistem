@@ -5,3 +5,10 @@ data/
 .env
 .DS_Store
 Thumbs.db
+.claude/
+server/media/photos/
+server/media/thumbnails/
+server/media/analysis/
+server/media/documents/
+server/catalog/reference-images/
+nul

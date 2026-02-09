@@ -23,6 +23,17 @@ app.use('/api/talepler', require('./routes/talepler'));
 app.use('/api/gorevler', require('./routes/gorevler'));
 app.use('/api/raporlar', require('./routes/raporlar'));
 
+// Saha harita routes
+app.use('/api/saha', require('./routes/saha'));
+
+// Telegram integration routes
+app.use('/api/medya', require('./routes/medya'));
+app.use('/api/veri-paketleri', require('./routes/veriPaketleri'));
+app.use('/api/telegram', require('./routes/telegram'));
+app.use('/api/katalog', require('./routes/katalog'));
+app.use('/api/analiz', require('./routes/analiz'));
+app.use('/api/ai', require('./routes/ai'));
+
 // Error handler
 const { errorHandler } = require('./middleware/errorHandler');
 app.use(errorHandler);
@@ -35,6 +46,11 @@ app.get('*', (req, res) => {
 
 // Initialize DB and start server
 initDatabase();
+
+// Start Telegram bot
+const { startBot } = require('./telegram/bot');
+startBot();
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`ElektraTrack sunucu çalışıyor: http://0.0.0.0:${PORT}`);
 });

@@ -20,10 +20,29 @@ function getDb() {
   return db;
 }
 
+function addColumnIfNotExists(database, table, column, type) {
+  const columns = database.pragma(`table_info(${table})`);
+  const exists = columns.some(c => c.name === column);
+  if (!exists) {
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    console.log(`✅ ${table}.${column} sütunu eklendi`);
+  }
+}
+
+function runMigrations(database) {
+  // Ekipler tablosuna konum alanları
+  addColumnIfNotExists(database, 'ekipler', 'son_latitude', 'REAL');
+  addColumnIfNotExists(database, 'ekipler', 'son_longitude', 'REAL');
+  addColumnIfNotExists(database, 'ekipler', 'son_konum_zamani', 'DATETIME');
+  addColumnIfNotExists(database, 'ekipler', 'son_konum_kaynagi', 'TEXT');
+}
+
 function initDatabase() {
   const database = getDb();
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   database.exec(schema);
+
+  runMigrations(database);
 
   const count = database.prepare('SELECT COUNT(*) as c FROM personel').get();
   if (count.c === 0) {

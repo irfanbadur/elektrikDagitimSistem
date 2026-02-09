@@ -68,3 +68,33 @@ body {
   background-color: var(--color-muted);
   border-radius: var(--radius-md);
 }
+
+/* Leaflet Popup ve Marker düzeltmeleri */
+.ekip-marker,
+.paket-marker {
+  background: none !important;
+  border: none !important;
+  overflow: visible !important;
+  width: auto !important;
+  height: auto !important;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 12px !important;
+  padding: 4px !important;
+}
+
+.leaflet-popup-content {
+  margin: 14px 20px !important;
+  line-height: 1.5 !important;
+}
+
+.leaflet-popup-tip {
+  background: white !important;
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  z-index: 1;
+}

@@ -8,6 +8,10 @@ import PersonelPage from '@/pages/PersonelPage'
 import PuantajPage from '@/pages/PuantajPage'
 import TaleplerPage from '@/pages/TaleplerPage'
 import RaporlarPage from '@/pages/RaporlarPage'
+import VeriPaketleriPage from '@/pages/VeriPaketleriPage'
+import KatalogPage from '@/pages/KatalogPage'
+import TelegramPage from '@/pages/TelegramPage'
+import SahaPage from '@/pages/SahaPage'
 import AyarlarPage from '@/pages/AyarlarPage'
 
 const queryClient = new QueryClient({
@@ -33,6 +37,10 @@ export default function App() {
           <Route path="/puantaj/*" element={<PuantajPage />} />
           <Route path="/talepler/*" element={<TaleplerPage />} />
           <Route path="/raporlar" element={<RaporlarPage />} />
+          <Route path="/veri-paketleri/*" element={<VeriPaketleriPage />} />
+          <Route path="/katalog" element={<KatalogPage />} />
+          <Route path="/saha" element={<SahaPage />} />
+          <Route path="/telegram" element={<TelegramPage />} />
           <Route path="/ayarlar" element={<AyarlarPage />} />
         </Routes>
       </BrowserRouter>

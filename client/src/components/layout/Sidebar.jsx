@@ -10,6 +10,10 @@ import {
   MessageSquare,
   CheckSquare,
   BarChart3,
+  Camera,
+  Wrench,
+  MapPin,
+  Bot,
   Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -24,9 +28,13 @@ const navItems = [
   { label: 'Talepler', icon: MessageSquare, path: '/talepler' },
   { label: 'Görevler', icon: CheckSquare, path: '/gorevler', placeholder: true },
   { label: 'Raporlar', icon: BarChart3, path: '/raporlar' },
+  { label: 'Veri Paketleri', icon: Camera, path: '/veri-paketleri' },
+  { label: 'Saha', icon: MapPin, path: '/saha' },
+  { label: 'Ekipman Katalog', icon: Wrench, path: '/katalog' },
 ]
 
 const bottomItems = [
+  { label: 'AI & Telegram', icon: Bot, path: '/telegram' },
   { label: 'Ayarlar', icon: Settings, path: '/ayarlar' },
 ]
 
