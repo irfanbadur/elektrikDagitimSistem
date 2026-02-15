@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -23,6 +24,18 @@ app.use('/api/talepler', require('./routes/talepler'));
 app.use('/api/gorevler', require('./routes/gorevler'));
 app.use('/api/raporlar', require('./routes/raporlar'));
 
+// Proje detay tab routes (dokumanlar, proje-dosyalari, notlar, fotograflar, kesifler)
+app.use('/api/projeler', require('./routes/projeDetay'));
+
+// Evrensel dosya sistemi routes
+app.use('/api/dosya', require('./routes/dosya'));
+app.use('/api/veri-paketi', require('./routes/veriPaketi'));
+
+// Uploads static serving (eski yapı: data/uploads)
+app.use('/uploads', express.static(path.join(__dirname, '../data/uploads')));
+// Uploads static serving (yeni yapı: uploads/)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Saha harita routes
 app.use('/api/saha', require('./routes/saha'));
 
@@ -33,6 +46,22 @@ app.use('/api/telegram', require('./routes/telegram'));
 app.use('/api/katalog', require('./routes/katalog'));
 app.use('/api/analiz', require('./routes/analiz'));
 app.use('/api/ai', require('./routes/ai'));
+
+// AI Operasyon routes (provider-agnostic AI aksiyonlar)
+app.use('/api/ai-op', require('./routes/aiOperasyon'));
+
+// Mesaj parse routes
+app.use('/api/mesaj', require('./routes/mesaj'));
+
+// Döngü (proje yaşam döngüsü) routes
+app.use('/api/dongu', require('./routes/dongu'));
+
+// Auth ve RBAC routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/yonetim', require('./routes/rolYonetimi'));
+
+// AI Sohbet routes
+app.use('/api/ai-sohbet', require('./routes/aiSohbet'));
 
 // Error handler
 const { errorHandler } = require('./middleware/errorHandler');

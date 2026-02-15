@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { useProje, useProjeOlustur, useProjeGuncelle } from '@/hooks/useProjeler'
 import { useBolgeler } from '@/hooks/useBolgeler'
 import { useEkipler } from '@/hooks/useEkipler'
+import { useDonguSablonlari } from '@/hooks/useDongu'
 import { PROJE_DURUMLARI, ONCELIK_LABELS } from '@/utils/constants'
 import { CardSkeleton } from '@/components/shared/LoadingSkeleton'
 import { cn } from '@/lib/utils'
@@ -34,12 +35,29 @@ export default function ProjeForm() {
   const { data: proje, isLoading: projeYukleniyor } = useProje(id)
   const { data: bolgeler } = useBolgeler()
   const { data: ekipler } = useEkipler()
+  const { data: sablonlar } = useDonguSablonlari()
   const projeOlustur = useProjeOlustur()
   const projeGuncelle = useProjeGuncelle()
 
   const [form, setForm] = useState(BOS_FORM)
   const [hatalar, setHatalar] = useState({})
   const [gonderiliyor, setGonderiliyor] = useState(false)
+
+  // Proje tipine göre eşleşen döngü şablonu aşamaları
+  const eslesmisAsamalar = useMemo(() => {
+    if (!sablonlar || !form.proje_tipi) return null
+    const sablon = sablonlar.find(
+      (s) => s.sablon_kodu.toUpperCase() === form.proje_tipi.toUpperCase()
+    )
+    return sablon?.asamalar || null
+  }, [sablonlar, form.proje_tipi])
+
+  // Proje tipi değiştiğinde durum'u ilk aşama kodu yap (sadece yeni proje modunda)
+  useEffect(() => {
+    if (!duzenleModu && eslesmisAsamalar && eslesmisAsamalar.length > 0) {
+      setForm((prev) => ({ ...prev, durum: eslesmisAsamalar[0].asama_kodu }))
+    }
+  }, [eslesmisAsamalar, duzenleModu])
 
   // Load existing project data for edit mode
   useEffect(() => {
@@ -230,11 +248,17 @@ export default function ProjeForm() {
                 onChange={(e) => handleChange('durum', e.target.value)}
                 className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
-                {Object.entries(PROJE_DURUMLARI).map(([key, val]) => (
-                  <option key={key} value={key}>
-                    {val.label}
-                  </option>
-                ))}
+                {eslesmisAsamalar
+                  ? eslesmisAsamalar.map((a) => (
+                      <option key={a.asama_kodu} value={a.asama_kodu}>
+                        {a.ikon} {a.asama_adi}
+                      </option>
+                    ))
+                  : Object.entries(PROJE_DURUMLARI).map(([key, val]) => (
+                      <option key={key} value={key}>
+                        {val.label}
+                      </option>
+                    ))}
               </select>
             </div>
 

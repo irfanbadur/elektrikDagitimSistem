@@ -472,6 +472,45 @@ BEGIN
     WHERE id = NEW.veri_paketi_id;
 END;
 
+-- ============================================
+-- SAHA MESAJLARI
+-- Doğal dil ile gönderilen saha mesajları ve AI parse sonuçları
+-- ============================================
+CREATE TABLE IF NOT EXISTS saha_mesajlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gonderen_id INTEGER,
+    gonderen_tipi TEXT DEFAULT 'personel',
+    kaynak TEXT DEFAULT 'mobil',
+
+    ham_mesaj TEXT NOT NULL,
+    islem_tipi TEXT,
+    islem_detay TEXT,
+    konum TEXT,
+    proje_no TEXT,
+
+    guven_skoru REAL,
+    ai_model TEXT,
+    ai_sure_ms INTEGER,
+    ai_token_input INTEGER,
+    ai_token_output INTEGER,
+
+    durum TEXT DEFAULT 'beklemede',
+
+    onaylayan_id INTEGER,
+    onay_tarihi DATETIME,
+    duzeltme_notu TEXT,
+
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (gonderen_id) REFERENCES personel(id),
+    FOREIGN KEY (onaylayan_id) REFERENCES personel(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_saha_mesaj_tip ON saha_mesajlari(islem_tipi);
+CREATE INDEX IF NOT EXISTS idx_saha_mesaj_durum ON saha_mesajlari(durum);
+CREATE INDEX IF NOT EXISTS idx_saha_mesaj_tarih ON saha_mesajlari(olusturma_tarihi);
+CREATE INDEX IF NOT EXISTS idx_saha_mesaj_gonderen ON saha_mesajlari(gonderen_id);
+
 -- Firma ayarları telegram eklentileri
 INSERT OR IGNORE INTO firma_ayarlari (anahtar, deger, aciklama) VALUES
 ('telegram_bot_token', '', 'BotFather''dan alınan Telegram Bot Token'),
@@ -484,6 +523,62 @@ INSERT OR IGNORE INTO firma_ayarlari (anahtar, deger, aciklama) VALUES
 ('openai_api_key', '', 'OpenAI API anahtarı'),
 ('koordinator_telegram_id', '', 'Koordinatörün Telegram ID''si (bildirimler için)'),
 ('foto_oto_analiz_seviyesi', '2', 'Fotoğraf yüklendiğinde otomatik analiz: 0/1/2/3');
+
+-- ============================================
+-- PROJE DOKÜMANLARI (Dokümanlar + Proje Dosyaları CAD)
+-- ============================================
+CREATE TABLE IF NOT EXISTS proje_dokumanlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    kategori TEXT NOT NULL DEFAULT 'dokuman', -- 'dokuman' veya 'cad'
+    dosya_adi TEXT NOT NULL,
+    orijinal_adi TEXT,
+    dosya_yolu TEXT NOT NULL,
+    dosya_tipi TEXT, -- pdf, dwg, dxf, xlsx vb.
+    mime_tipi TEXT,
+    dosya_boyutu INTEGER,
+    aciklama TEXT,
+    yukleyen TEXT DEFAULT 'koordinator',
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_proje_dokumanlari_proje ON proje_dokumanlari(proje_id);
+CREATE INDEX IF NOT EXISTS idx_proje_dokumanlari_kategori ON proje_dokumanlari(kategori);
+
+-- ============================================
+-- PROJE NOTLARI
+-- ============================================
+CREATE TABLE IF NOT EXISTS proje_notlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    baslik TEXT,
+    icerik TEXT NOT NULL,
+    yazar TEXT DEFAULT 'koordinator',
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_proje_notlari_proje ON proje_notlari(proje_id);
+
+-- ============================================
+-- PROJE KEŞİFLERİ
+-- ============================================
+CREATE TABLE IF NOT EXISTS proje_kesifler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    kesif_tarihi DATE DEFAULT (date('now')),
+    kesif_yapan TEXT,
+    bulgular TEXT,
+    notlar TEXT,
+    konum_bilgisi TEXT,
+    durum TEXT DEFAULT 'taslak', -- taslak, tamamlandi
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_proje_kesifler_proje ON proje_kesifler(proje_id);
 
 -- Ekipman kataloğu seed data
 INSERT OR IGNORE INTO ekipman_katalogu (kategori, ekipman_kodu, ekipman_adi, alt_kategori, teknik_ozellikler, gorsel_ozellikler, gerilim_sinifi) VALUES
@@ -512,3 +607,345 @@ INSERT OR IGNORE INTO ekipman_katalogu (kategori, ekipman_kodu, ekipman_adi, alt
 ('izolator', 'IZL-AG-GRD', 'AG Geçit İzolatörü', 'AG', '{"tip":"porselen","gerilim":"1kV"}', '{"sekil":"küçük silindir","renk":"beyaz/krem porselen"}', 'AG'),
 ('iletken', 'ILT-ABC-4x16', 'ABC Kablo 4x16mm²', 'ABC', '{"tip":"ABC","kesit_mm2":16,"kor_sayisi":4}', '{"gorunus":"siyah yalıtımlı bükülmüş demetli kablo","renk":"siyah"}', 'AG'),
 ('iletken', 'ILT-ABC-4x50', 'ABC Kablo 4x50mm²', 'ABC', '{"tip":"ABC","kesit_mm2":50,"kor_sayisi":4}', '{"gorunus":"kalın siyah yalıtımlı demetli","renk":"siyah"}', 'AG');
+
+-- ============================================
+-- DOSYALAR — Evrensel Dosya Tablosu
+-- Tüm dosya tipleri (fotoğraf, çizim, belge, tablo, harita)
+-- tek tablodan yönetilir
+-- ============================================
+CREATE TABLE IF NOT EXISTS dosyalar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- DOSYA BİLGİLERİ
+    dosya_adi TEXT NOT NULL,
+    orijinal_adi TEXT,
+    dosya_yolu TEXT NOT NULL,
+    thumbnail_yolu TEXT,
+    dosya_boyutu INTEGER,
+    mime_tipi TEXT,
+
+    -- KATEGORİ
+    kategori TEXT NOT NULL,
+    -- 'fotograf', 'cizim', 'belge', 'tablo', 'harita', 'arsiv', 'diger'
+
+    -- COĞRAFİ BİLGİ
+    latitude REAL,
+    longitude REAL,
+    konum_adi TEXT,
+    konum_kaynagi TEXT,
+    altitude REAL,
+
+    -- İLİŞKİLER
+    proje_id INTEGER,
+    ekip_id INTEGER,
+    yukleyen_id INTEGER,
+    veri_paketi_id INTEGER,
+
+    -- AÇIKLAMA ve ETİKETLER
+    baslik TEXT,
+    notlar TEXT,
+    etiketler TEXT,
+
+    -- DOSYA TİPİNE ÖZEL VERİLER (JSON)
+    ozel_alanlar TEXT,
+
+    -- AI ANALİZ
+    ai_analiz TEXT,
+    ai_analiz_katmani INTEGER,
+
+    -- KAYNAK
+    kaynak TEXT DEFAULT 'web',
+
+    -- DURUM
+    durum TEXT DEFAULT 'aktif',
+
+    -- VERSİYON
+    versiyon INTEGER DEFAULT 1,
+    onceki_versiyon_id INTEGER,
+
+    -- ZAMAN
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (proje_id) REFERENCES projeler(id),
+    FOREIGN KEY (ekip_id) REFERENCES ekipler(id),
+    FOREIGN KEY (yukleyen_id) REFERENCES personel(id),
+    FOREIGN KEY (veri_paketi_id) REFERENCES veri_paketleri(id),
+    FOREIGN KEY (onceki_versiyon_id) REFERENCES dosyalar(id)
+);
+
+-- DOSYALAR İNDEKSLERİ
+CREATE INDEX IF NOT EXISTS idx_dosya_proje ON dosyalar(proje_id);
+CREATE INDEX IF NOT EXISTS idx_dosya_ekip ON dosyalar(ekip_id);
+CREATE INDEX IF NOT EXISTS idx_dosya_paket ON dosyalar(veri_paketi_id);
+CREATE INDEX IF NOT EXISTS idx_dosya_kategori ON dosyalar(kategori);
+CREATE INDEX IF NOT EXISTS idx_dosya_durum ON dosyalar(durum);
+CREATE INDEX IF NOT EXISTS idx_dosya_tarih ON dosyalar(olusturma_tarihi);
+CREATE INDEX IF NOT EXISTS idx_dosya_konum ON dosyalar(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_dosya_kaynak ON dosyalar(kaynak);
+
+-- VERİ PAKETLERİ ek indeksler
+CREATE INDEX IF NOT EXISTS idx_paket_durum ON veri_paketleri(durum);
+CREATE INDEX IF NOT EXISTS idx_paket_tip ON veri_paketleri(paket_tipi);
+CREATE INDEX IF NOT EXISTS idx_paket_konum ON veri_paketleri(latitude, longitude);
+
+-- Dosya sayaçlarını otomatik güncelle
+CREATE TRIGGER IF NOT EXISTS trg_dosya_sayac_ekle
+AFTER INSERT ON dosyalar
+WHEN NEW.veri_paketi_id IS NOT NULL
+BEGIN
+  UPDATE veri_paketleri SET
+    dosya_sayisi = (SELECT COUNT(*) FROM dosyalar WHERE veri_paketi_id = NEW.veri_paketi_id AND durum = 'aktif'),
+    fotograf_sayisi = (SELECT COUNT(*) FROM dosyalar WHERE veri_paketi_id = NEW.veri_paketi_id AND kategori = 'fotograf' AND durum = 'aktif'),
+    belge_sayisi = (SELECT COUNT(*) FROM dosyalar WHERE veri_paketi_id = NEW.veri_paketi_id AND kategori != 'fotograf' AND durum = 'aktif')
+  WHERE id = NEW.veri_paketi_id;
+END;
+
+-- ============================================
+-- DÖNGÜ ŞABLONLARI
+-- ============================================
+CREATE TABLE IF NOT EXISTS dongu_sablonlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sablon_adi TEXT NOT NULL,
+    sablon_kodu TEXT UNIQUE NOT NULL,
+    aciklama TEXT,
+    varsayilan INTEGER DEFAULT 0,
+    durum TEXT DEFAULT 'aktif',
+    olusturan_id INTEGER,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (olusturan_id) REFERENCES personel(id)
+);
+
+-- ============================================
+-- DÖNGÜ ŞABLON AŞAMALARI
+-- ============================================
+CREATE TABLE IF NOT EXISTS dongu_sablon_asamalari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sablon_id INTEGER NOT NULL,
+    sira INTEGER NOT NULL,
+    asama_adi TEXT NOT NULL,
+    asama_kodu TEXT NOT NULL,
+    renk TEXT DEFAULT '#6b7280',
+    ikon TEXT DEFAULT '📋',
+    aciklama TEXT,
+    tahmini_gun INTEGER,
+    FOREIGN KEY (sablon_id) REFERENCES dongu_sablonlari(id) ON DELETE CASCADE,
+    UNIQUE(sablon_id, sira),
+    UNIQUE(sablon_id, asama_kodu)
+);
+
+-- ============================================
+-- PROJE AŞAMALARI
+-- ============================================
+CREATE TABLE IF NOT EXISTS proje_asamalari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    sablon_asama_id INTEGER,
+    sira INTEGER NOT NULL,
+    asama_adi TEXT NOT NULL,
+    asama_kodu TEXT NOT NULL,
+    renk TEXT DEFAULT '#6b7280',
+    ikon TEXT DEFAULT '📋',
+    durum TEXT DEFAULT 'bekliyor',
+    baslangic_tarihi DATE,
+    bitis_tarihi DATE,
+    planlanan_baslangic DATE,
+    planlanan_bitis DATE,
+    tahmini_gun INTEGER,
+    notlar TEXT,
+    tamamlanma_notu TEXT,
+    baslatan_id INTEGER,
+    tamamlayan_id INTEGER,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE,
+    FOREIGN KEY (sablon_asama_id) REFERENCES dongu_sablon_asamalari(id),
+    FOREIGN KEY (baslatan_id) REFERENCES personel(id),
+    FOREIGN KEY (tamamlayan_id) REFERENCES personel(id),
+    UNIQUE(proje_id, sira)
+);
+
+CREATE INDEX IF NOT EXISTS idx_proje_asama_proje ON proje_asamalari(proje_id);
+CREATE INDEX IF NOT EXISTS idx_proje_asama_durum ON proje_asamalari(durum);
+CREATE INDEX IF NOT EXISTS idx_sablon_asama_sablon ON dongu_sablon_asamalari(sablon_id);
+-- idx_paket_asama ve idx_dosya_asama migration sonrasi database.js'de olusturulur
+
+-- ============================================
+-- ROLLER — Özelleştirilebilir rol tanımları
+-- ============================================
+CREATE TABLE IF NOT EXISTS roller (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rol_adi TEXT NOT NULL,
+    rol_kodu TEXT UNIQUE NOT NULL,
+    aciklama TEXT,
+    renk TEXT DEFAULT '#6b7280',
+    ikon TEXT DEFAULT '👤',
+    seviye INTEGER DEFAULT 50,
+    sistem_rolu INTEGER DEFAULT 0,
+    durum TEXT DEFAULT 'aktif',
+    olusturan_id INTEGER,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (olusturan_id) REFERENCES kullanicilar(id)
+);
+
+-- ============================================
+-- İZİNLER — Sistemdeki tüm izin tanımları
+-- ============================================
+CREATE TABLE IF NOT EXISTS izinler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    modul TEXT NOT NULL,
+    aksiyon TEXT NOT NULL,
+    aciklama TEXT,
+    modul_etiketi TEXT,
+    aksiyon_etiketi TEXT,
+    UNIQUE(modul, aksiyon)
+);
+
+-- ============================================
+-- ROL İZİNLERİ — Rol-İzin eşleşmesi
+-- ============================================
+CREATE TABLE IF NOT EXISTS rol_izinleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rol_id INTEGER NOT NULL,
+    izin_id INTEGER NOT NULL,
+    veri_kapsami TEXT DEFAULT 'tum',
+    FOREIGN KEY (rol_id) REFERENCES roller(id) ON DELETE CASCADE,
+    FOREIGN KEY (izin_id) REFERENCES izinler(id) ON DELETE CASCADE,
+    UNIQUE(rol_id, izin_id)
+);
+
+-- ============================================
+-- KULLANICILAR — Sisteme giriş yapan kullanıcılar
+-- ============================================
+CREATE TABLE IF NOT EXISTS kullanicilar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kullanici_adi TEXT UNIQUE NOT NULL,
+    sifre_hash TEXT NOT NULL,
+    ad_soyad TEXT NOT NULL,
+    email TEXT,
+    telefon TEXT,
+    avatar_yolu TEXT,
+    personel_id INTEGER,
+    ekip_id INTEGER,
+    durum TEXT DEFAULT 'aktif',
+    son_giris DATETIME,
+    basarisiz_giris_sayisi INTEGER DEFAULT 0,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (personel_id) REFERENCES personel(id),
+    FOREIGN KEY (ekip_id) REFERENCES ekipler(id)
+);
+
+-- ============================================
+-- KULLANICI ROLLERİ — Kullanıcıya atanan roller
+-- ============================================
+CREATE TABLE IF NOT EXISTS kullanici_rolleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kullanici_id INTEGER NOT NULL,
+    rol_id INTEGER NOT NULL,
+    atayan_id INTEGER,
+    atanma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (kullanici_id) REFERENCES kullanicilar(id) ON DELETE CASCADE,
+    FOREIGN KEY (rol_id) REFERENCES roller(id) ON DELETE CASCADE,
+    FOREIGN KEY (atayan_id) REFERENCES kullanicilar(id),
+    UNIQUE(kullanici_id, rol_id)
+);
+
+-- ============================================
+-- AI ISLEMLER — AI operasyon kayitlari
+-- ============================================
+CREATE TABLE IF NOT EXISTS ai_islemler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- GIRDI
+    girdi_tipi TEXT NOT NULL,                 -- 'metin', 'gorsel', 'belge', 'karma'
+    girdi_metin TEXT,
+    girdi_dosya_id INTEGER,
+    veri_paketi_id INTEGER,
+
+    -- PARSE SONUCU
+    parse_sonuc TEXT,                         -- JSON
+    parse_guven REAL,                         -- 0.0 - 1.0
+
+    -- AKSIYON PLANI
+    aksiyon_plani TEXT,                       -- JSON dizisi
+    aksiyon_sayisi INTEGER DEFAULT 0,
+
+    -- DURUM
+    durum TEXT DEFAULT 'onay_bekliyor',
+    -- 'onay_bekliyor','onaylandi','uygulandi','kismi_uygulama',
+    -- 'reddedildi','duzeltildi','hata','geri_alindi'
+
+    -- UYGULAMA
+    uygulama_sonuc TEXT,                     -- JSON
+    hata_mesaji TEXT,
+
+    -- ILISKILER
+    kullanici_id INTEGER NOT NULL,
+    proje_id INTEGER,
+    ekip_id INTEGER,
+
+    -- ZAMAN
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    onay_tarihi DATETIME,
+    uygulama_tarihi DATETIME,
+
+    -- PROVIDER BILGISI
+    provider_adi TEXT,                        -- 'ollama', 'gemini', 'groq'
+    fallback_kullanildi INTEGER DEFAULT 0,    -- 0 veya 1
+
+    FOREIGN KEY (kullanici_id) REFERENCES kullanicilar(id),
+    FOREIGN KEY (girdi_dosya_id) REFERENCES dosyalar(id),
+    FOREIGN KEY (veri_paketi_id) REFERENCES veri_paketleri(id),
+    FOREIGN KEY (proje_id) REFERENCES projeler(id),
+    FOREIGN KEY (ekip_id) REFERENCES ekipler(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_islem_durum ON ai_islemler(durum);
+CREATE INDEX IF NOT EXISTS idx_ai_islem_kullanici ON ai_islemler(kullanici_id);
+CREATE INDEX IF NOT EXISTS idx_ai_islem_tarih ON ai_islemler(olusturma_tarihi);
+
+-- RBAC İNDEKSLERİ
+CREATE INDEX IF NOT EXISTS idx_rol_izin_rol ON rol_izinleri(rol_id);
+CREATE INDEX IF NOT EXISTS idx_rol_izin_izin ON rol_izinleri(izin_id);
+CREATE INDEX IF NOT EXISTS idx_kullanici_rol_kullanici ON kullanici_rolleri(kullanici_id);
+CREATE INDEX IF NOT EXISTS idx_kullanici_rol_rol ON kullanici_rolleri(rol_id);
+CREATE INDEX IF NOT EXISTS idx_kullanici_durum ON kullanicilar(durum);
+
+-- ============================================
+-- AI SOHBET OTURUMLARI
+-- ============================================
+CREATE TABLE IF NOT EXISTS ai_sohbetler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kullanici_id INTEGER NOT NULL,
+    baslik TEXT,
+    baglam_tipi TEXT DEFAULT 'genel',
+    baglam_id INTEGER,
+    baglam_meta TEXT,
+    mesaj_sayisi INTEGER DEFAULT 0,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    son_mesaj_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    durum TEXT DEFAULT 'aktif',
+    FOREIGN KEY (kullanici_id) REFERENCES kullanicilar(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sohbet_kullanici ON ai_sohbetler(kullanici_id);
+CREATE INDEX IF NOT EXISTS idx_sohbet_tarih ON ai_sohbetler(son_mesaj_tarihi);
+
+-- ============================================
+-- AI SOHBET MESAJLARI
+-- ============================================
+CREATE TABLE IF NOT EXISTS ai_mesajlar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sohbet_id INTEGER NOT NULL,
+    rol TEXT NOT NULL,
+    icerik TEXT NOT NULL,
+    mesaj_tipi TEXT DEFAULT 'metin',
+    meta TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sohbet_id) REFERENCES ai_sohbetler(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_mesaj_sohbet ON ai_mesajlar(sohbet_id);

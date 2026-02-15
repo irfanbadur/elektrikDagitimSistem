@@ -1,9 +1,10 @@
 import { Menu, Bell } from 'lucide-react'
 import { bugununGosterimTarihi } from '@/utils/formatters'
+import HeaderKullaniciMenu from './HeaderKullaniciMenu'
 
 export default function Header({ title = 'Dashboard', onMenuToggle }) {
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-white px-6 shadow-sm">
+    <header className="flex h-16 items-center justify-between border-b border-border bg-white px-5 sm:px-8 lg:px-12 shadow-sm">
       {/* Left side */}
       <div className="flex items-center gap-4">
         <button
@@ -27,6 +28,7 @@ export default function Header({ title = 'Dashboard', onMenuToggle }) {
         >
           <Bell className="h-5 w-5" />
         </button>
+        <HeaderKullaniciMenu />
       </div>
     </header>
   )

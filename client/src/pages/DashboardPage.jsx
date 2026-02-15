@@ -19,7 +19,7 @@ export default function DashboardPage() {
 
   return (
     <MainLayout title="Dashboard">
-      <div className="space-y-6">
+      <div className="space-y-8">
         {ozetLoading ? (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {Array.from({length: 5}).map((_, i) => <div key={i} className="skeleton h-24 rounded-lg" />)}

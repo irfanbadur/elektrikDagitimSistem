@@ -13,21 +13,29 @@ import {
   BarChart3,
   Clock,
   ChevronDown,
+  StickyNote,
+  GitBranch,
 } from 'lucide-react'
 import { useProje, useProjeSil, useProjeDurumDegistir, useProjeDurumGecmisi } from '@/hooks/useProjeler'
+import { useProjeAsamalari } from '@/hooks/useDongu'
 import { ProjeDurumBadge, OncelikBadge } from '@/components/shared/StatusBadge'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { CardSkeleton, TableSkeleton } from '@/components/shared/LoadingSkeleton'
 import ProjeDurumTimeline from './ProjeDurumTimeline'
+import ProjeDetayBirlesikDokumanlar from './ProjeDetayBirlesikDokumanlar'
+import ProjeDetayNotlar from './ProjeDetayNotlar'
+import ProjeDongu from './ProjeDongu'
 import { PROJE_DURUMLARI } from '@/utils/constants'
 import { formatTarih, formatYuzde } from '@/utils/formatters'
 import { cn } from '@/lib/utils'
 
 const TABS = [
   { key: 'detay', label: 'Detay', icon: FileText },
-  { key: 'malzeme', label: 'Malzeme', icon: Package },
+  { key: 'dongu', label: 'Dongu', icon: GitBranch },
+  { key: 'dokumanlar', label: 'Dokumanlar', icon: Package },
   { key: 'raporlar', label: 'Raporlar', icon: BarChart3 },
   { key: 'gecmis', label: 'Gecmis', icon: Clock },
+  { key: 'notlar', label: 'Notlar', icon: StickyNote },
 ]
 
 export default function ProjeDetay() {
@@ -35,10 +43,11 @@ export default function ProjeDetay() {
   const navigate = useNavigate()
   const { data: proje, isLoading } = useProje(id)
   const { data: durumGecmisi } = useProjeDurumGecmisi(id)
+  const { data: projeAsamalari } = useProjeAsamalari(id)
   const projeSil = useProjeSil()
   const durumDegistir = useProjeDurumDegistir()
 
-  const [aktifTab, setAktifTab] = useState('detay')
+  const [aktifTab, setAktifTab] = useState('dokumanlar')
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [durumMenuAcik, setDurumMenuAcik] = useState(false)
 
@@ -112,7 +121,12 @@ export default function ProjeDetay() {
               <span className="rounded bg-gray-100 px-2.5 py-0.5 text-xs font-medium">
                 {proje.proje_tipi}
               </span>
-              <ProjeDurumBadge durum={proje.durum} />
+              <ProjeDurumBadge
+                durum={proje.durum}
+                asamaAdi={proje.aktif_asama_adi}
+                asamaRenk={proje.aktif_asama_renk}
+                asamaIkon={proje.aktif_asama_ikon}
+              />
               <OncelikBadge oncelik={proje.oncelik} />
             </div>
             {proje.musteri_adi && (
@@ -165,20 +179,35 @@ export default function ProjeDetay() {
                     onClick={() => setDurumMenuAcik(false)}
                   />
                   <div className="absolute right-0 z-20 mt-1 w-48 rounded-md border border-border bg-white py-1 shadow-lg">
-                    {Object.entries(PROJE_DURUMLARI).map(([key, val]) => (
-                      <button
-                        key={key}
-                        onClick={() => handleDurumDegistir(key)}
-                        disabled={key === proje.durum}
-                        className={cn(
-                          'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted',
-                          key === proje.durum && 'bg-muted/50 text-muted-foreground opacity-50'
-                        )}
-                      >
-                        <span>{val.emoji}</span>
-                        <span>{val.label}</span>
-                      </button>
-                    ))}
+                    {projeAsamalari && projeAsamalari.length > 0
+                      ? projeAsamalari.map((a) => (
+                          <button
+                            key={a.asama_kodu}
+                            onClick={() => handleDurumDegistir(a.asama_kodu)}
+                            disabled={a.asama_kodu === proje.durum}
+                            className={cn(
+                              'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted',
+                              a.asama_kodu === proje.durum && 'bg-muted/50 text-muted-foreground opacity-50'
+                            )}
+                          >
+                            <span>{a.ikon}</span>
+                            <span>{a.asama_adi}</span>
+                          </button>
+                        ))
+                      : Object.entries(PROJE_DURUMLARI).map(([key, val]) => (
+                          <button
+                            key={key}
+                            onClick={() => handleDurumDegistir(key)}
+                            disabled={key === proje.durum}
+                            className={cn(
+                              'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted',
+                              key === proje.durum && 'bg-muted/50 text-muted-foreground opacity-50'
+                            )}
+                          >
+                            <span>{val.emoji}</span>
+                            <span>{val.label}</span>
+                          </button>
+                        ))}
                   </div>
                 </>
               )}
@@ -246,8 +275,8 @@ export default function ProjeDetay() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-border">
-        <div className="flex gap-0">
+      <div className="border-b border-border overflow-x-auto">
+        <div className="flex gap-0 min-w-max">
           {TABS.map((tab) => {
             const Icon = tab.icon
             return (
@@ -304,38 +333,8 @@ export default function ProjeDetay() {
           </div>
         )}
 
-        {aktifTab === 'malzeme' && (
-          <div className="rounded-lg border border-border bg-card p-6">
-            <h3 className="mb-4 font-semibold">Malzeme Listesi</h3>
-            {proje.malzemeler && proje.malzemeler.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left">
-                      <th className="pb-2 pr-4 font-medium text-muted-foreground">Malzeme</th>
-                      <th className="pb-2 pr-4 font-medium text-muted-foreground">Miktar</th>
-                      <th className="pb-2 pr-4 font-medium text-muted-foreground">Birim</th>
-                      <th className="pb-2 font-medium text-muted-foreground">Durum</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {proje.malzemeler.map((m, i) => (
-                      <tr key={m.id || i} className="border-b border-border last:border-0">
-                        <td className="py-2 pr-4">{m.malzeme_adi}</td>
-                        <td className="py-2 pr-4">{m.miktar}</td>
-                        <td className="py-2 pr-4">{m.birim}</td>
-                        <td className="py-2">{m.durum || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Bu projeye ait malzeme kaydi bulunamadi.
-              </p>
-            )}
-          </div>
+        {aktifTab === 'dongu' && (
+          <ProjeDongu projeId={id} />
         )}
 
         {aktifTab === 'raporlar' && (
@@ -377,6 +376,14 @@ export default function ProjeDetay() {
 
         {aktifTab === 'gecmis' && (
           <ProjeDurumTimeline gecmis={durumGecmisi} />
+        )}
+
+        {aktifTab === 'dokumanlar' && (
+          <ProjeDetayBirlesikDokumanlar projeId={id} />
+        )}
+
+        {aktifTab === 'notlar' && (
+          <ProjeDetayNotlar projeId={id} />
         )}
       </div>
 

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, createContext, useContext } from 'react'
+import { createPortal } from 'react-dom'
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import MainLayout from '@/components/layout/MainLayout'
@@ -309,8 +310,154 @@ function EkipKarti({ ekip, detay, yukleniyor, renk }) {
   )
 }
 
+// ─── LIGHTBOX CONTEXT ────────────────────────────────────
+const LightboxContext = createContext(null)
+
+// ─── LIGHTBOX BİLEŞENİ ──────────────────────────────────
+function Lightbox({ medyalar, aktifIndex, onKapat, onDegistir }) {
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === 'Escape') onKapat()
+      if (e.key === 'ArrowLeft') onDegistir(Math.max(0, aktifIndex - 1))
+      if (e.key === 'ArrowRight') onDegistir(Math.min(medyalar.length - 1, aktifIndex + 1))
+    }
+    window.addEventListener('keydown', handleKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', handleKey)
+      document.body.style.overflow = ''
+    }
+  }, [aktifIndex, medyalar.length, onKapat, onDegistir])
+
+  const aktif = medyalar[aktifIndex]
+  if (!aktif) return null
+
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(0,0,0,0.92)',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+      }}
+      onClick={onKapat}
+    >
+      {/* Ust bar */}
+      <div
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '16px 24px', color: 'white', zIndex: 2,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span style={{ fontSize: '14px', opacity: 0.8 }}>
+          {aktifIndex + 1} / {medyalar.length}
+          {aktif.aciklama && <span style={{ marginLeft: '12px' }}>{aktif.aciklama}</span>}
+        </span>
+        <button
+          onClick={onKapat}
+          style={{
+            background: 'rgba(255,255,255,0.15)', border: 'none',
+            color: 'white', fontSize: '24px', cursor: 'pointer',
+            width: '40px', height: '40px', borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          &times;
+        </button>
+      </div>
+
+      {/* Sol ok */}
+      {aktifIndex > 0 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDegistir(aktifIndex - 1) }}
+          style={{
+            position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)',
+            background: 'rgba(255,255,255,0.15)', border: 'none',
+            color: 'white', fontSize: '28px', cursor: 'pointer',
+            width: '48px', height: '48px', borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 2,
+          }}
+        >
+          &#8249;
+        </button>
+      )}
+
+      {/* Fotograf */}
+      <img
+        src={`/api/medya/${aktif.id}/dosya`}
+        alt={aktif.aciklama || ''}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '90vw', maxHeight: '80vh',
+          objectFit: 'contain', borderRadius: '4px',
+          boxShadow: '0 4px 30px rgba(0,0,0,0.5)',
+        }}
+      />
+
+      {/* Sag ok */}
+      {aktifIndex < medyalar.length - 1 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDegistir(aktifIndex + 1) }}
+          style={{
+            position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)',
+            background: 'rgba(255,255,255,0.15)', border: 'none',
+            color: 'white', fontSize: '28px', cursor: 'pointer',
+            width: '48px', height: '48px', borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 2,
+          }}
+        >
+          &#8250;
+        </button>
+      )}
+
+      {/* Alt thumbnail strip */}
+      {medyalar.length > 1 && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute', bottom: '16px',
+            display: 'flex', gap: '6px',
+            padding: '8px 12px',
+            background: 'rgba(0,0,0,0.5)',
+            borderRadius: '8px',
+            overflowX: 'auto',
+            maxWidth: '90vw',
+          }}
+        >
+          {medyalar.map((m, i) => (
+            <div
+              key={m.id}
+              onClick={() => onDegistir(i)}
+              style={{
+                width: '48px', height: '48px', flexShrink: 0,
+                borderRadius: '4px', overflow: 'hidden',
+                cursor: 'pointer',
+                border: i === aktifIndex ? '2px solid white' : '2px solid transparent',
+                opacity: i === aktifIndex ? 1 : 0.6,
+                transition: 'opacity 0.2s, border-color 0.2s',
+              }}
+            >
+              <img
+                src={`/api/medya/${m.id}/thumbnail`}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>,
+    document.body
+  )
+}
+
 // ─── VERİ PAKETİ KARTI (Popup İçeriği) ──────────────────
 function PaketKarti({ paket, detay, yukleniyor }) {
+  const lightboxAc = useContext(LightboxContext)
   const tipAyar = getPaketTipAyar(paket.paket_tipi)
 
   if (yukleniyor) {
@@ -379,14 +526,27 @@ function PaketKarti({ paket, detay, yukleniyor }) {
             display: 'flex', gap: '4px', marginTop: '4px',
             overflowX: 'auto',
           }}>
-            {detay.medyalar.slice(0, 4).map(m => (
-              <div key={m.id} style={{
-                width: '56px', height: '56px',
-                background: '#e5e7eb',
-                borderRadius: '6px',
-                overflow: 'hidden',
-                flexShrink: 0,
-              }}>
+            {detay.medyalar.slice(0, 4).map((m, i) => (
+              <div
+                key={m.id}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (m.dosya_tipi === 'photo' && lightboxAc) {
+                    lightboxAc(detay.medyalar.filter(x => x.dosya_tipi === 'photo'), i)
+                  }
+                }}
+                style={{
+                  width: '56px', height: '56px',
+                  background: '#e5e7eb',
+                  borderRadius: '6px',
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                  cursor: m.dosya_tipi === 'photo' ? 'pointer' : 'default',
+                  transition: 'transform 0.15s',
+                }}
+                onMouseEnter={(e) => { if (m.dosya_tipi === 'photo') e.currentTarget.style.transform = 'scale(1.1)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)' }}
+              >
                 {m.dosya_tipi === 'photo' ? (
                   <img
                     src={`/api/medya/${m.id}/thumbnail`}
@@ -405,12 +565,21 @@ function PaketKarti({ paket, detay, yukleniyor }) {
               </div>
             ))}
             {detay.medyalar.length > 4 && (
-              <div style={{
-                width: '56px', height: '56px',
-                background: '#e5e7eb', borderRadius: '6px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '11px', color: '#6b7280', flexShrink: 0,
-              }}>
+              <div
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (lightboxAc) {
+                    lightboxAc(detay.medyalar.filter(x => x.dosya_tipi === 'photo'), 4)
+                  }
+                }}
+                style={{
+                  width: '56px', height: '56px',
+                  background: '#e5e7eb', borderRadius: '6px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '11px', color: '#6b7280', flexShrink: 0,
+                  cursor: 'pointer',
+                }}
+              >
                 +{detay.medyalar.length - 4}
               </div>
             )}
@@ -577,6 +746,16 @@ export default function SahaPage() {
   const [hata, setHata] = useState(null)
   const [seciliEkipId, setSeciliEkipId] = useState(null)
 
+  // Lightbox state
+  const [lightboxData, setLightboxData] = useState(null)
+  const lightboxAc = useCallback((medyalar, index) => {
+    setLightboxData({ medyalar, index })
+  }, [])
+  const lightboxKapat = useCallback(() => setLightboxData(null), [])
+  const lightboxDegistir = useCallback((index) => {
+    setLightboxData(prev => prev ? { ...prev, index } : null)
+  }, [])
+
   const [katmanlar, setKatmanlar] = useState({
     ekipler: true,
     veriPaketleri: true,
@@ -643,6 +822,7 @@ export default function SahaPage() {
   }
 
   return (
+    <LightboxContext.Provider value={lightboxAc}>
     <MainLayout title="Saha Gorunumu">
       <div className="-m-6 flex flex-col" style={{ height: 'calc(100vh - 4rem)' }}>
         {/* Ust bar */}
@@ -826,6 +1006,15 @@ export default function SahaPage() {
           )}
         </div>
       </div>
+      {lightboxData && (
+        <Lightbox
+          medyalar={lightboxData.medyalar}
+          aktifIndex={lightboxData.index}
+          onKapat={lightboxKapat}
+          onDegistir={lightboxDegistir}
+        />
+      )}
     </MainLayout>
+    </LightboxContext.Provider>
   )
 }

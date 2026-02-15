@@ -1,13 +1,14 @@
 const router = require('express').Router();
 const { getDb } = require('../db/database');
 const { aktiviteLogla, basarili, hata } = require('../utils/helpers');
+const donguService = require('../services/donguService');
 
 // GET /api/projeler
 router.get('/', (req, res) => {
   try {
     const db = getDb();
     const { durum, bolge_id, tip, ekip_id } = req.query;
-    let sql = `SELECT p.*, b.bolge_adi, e.ekip_adi FROM projeler p LEFT JOIN bolgeler b ON p.bolge_id = b.id LEFT JOIN ekipler e ON p.ekip_id = e.id WHERE 1=1`;
+    let sql = `SELECT p.*, b.bolge_adi, e.ekip_adi, pa.asama_adi AS aktif_asama_adi, pa.renk AS aktif_asama_renk, pa.ikon AS aktif_asama_ikon FROM projeler p LEFT JOIN bolgeler b ON p.bolge_id = b.id LEFT JOIN ekipler e ON p.ekip_id = e.id LEFT JOIN proje_asamalari pa ON p.aktif_asama_id = pa.id WHERE 1=1`;
     const params = [];
     if (durum) { sql += ' AND p.durum = ?'; params.push(durum); }
     if (bolge_id) { sql += ' AND p.bolge_id = ?'; params.push(bolge_id); }
@@ -38,7 +39,7 @@ router.get('/istatistikler', (req, res) => {
 router.get('/:id', (req, res) => {
   try {
     const db = getDb();
-    const proje = db.prepare(`SELECT p.*, b.bolge_adi, e.ekip_adi FROM projeler p LEFT JOIN bolgeler b ON p.bolge_id = b.id LEFT JOIN ekipler e ON p.ekip_id = e.id WHERE p.id = ?`).get(req.params.id);
+    const proje = db.prepare(`SELECT p.*, b.bolge_adi, e.ekip_adi, pa.asama_adi AS aktif_asama_adi, pa.renk AS aktif_asama_renk, pa.ikon AS aktif_asama_ikon FROM projeler p LEFT JOIN bolgeler b ON p.bolge_id = b.id LEFT JOIN ekipler e ON p.ekip_id = e.id LEFT JOIN proje_asamalari pa ON p.aktif_asama_id = pa.id WHERE p.id = ?`).get(req.params.id);
     if (!proje) return hata(res, 'Proje bulunamadı', 404);
     basarili(res, proje);
   } catch (err) {
@@ -53,7 +54,26 @@ router.post('/', (req, res) => {
     const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar } = req.body;
     if (!proje_no || !proje_tipi) return hata(res, 'Proje no ve tipi zorunludur');
     const result = db.prepare('INSERT INTO projeler (proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum||'teslim_alindi', oncelik||'normal', ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi||0, notlar);
-    const yeni = db.prepare('SELECT * FROM projeler WHERE id = ?').get(result.lastInsertRowid);
+    const projeId = result.lastInsertRowid;
+
+    // Proje tipine uygun döngü şablonu bul ve ata
+    try {
+      const sablon = db.prepare(`SELECT id FROM dongu_sablonlari WHERE UPPER(sablon_kodu) = UPPER(?) AND durum = 'aktif' AND varsayilan = 1 LIMIT 1`).get(proje_tipi);
+      if (sablon) {
+        const asamalar = donguService.projeDonguAta(projeId, sablon.id);
+        if (asamalar && asamalar.length > 0) {
+          // İlk aşamayı başlat
+          donguService.asamaBaslat(asamalar[0].id);
+          // Projenin durumunu ilk aşamanın kodu yap
+          db.prepare('UPDATE projeler SET durum = ? WHERE id = ?').run(asamalar[0].asama_kodu, projeId);
+        }
+      }
+    } catch (donguHata) {
+      // Döngü ataması başarısız olsa da proje oluşturulmuş olsun
+      console.error('Döngü otomatik ataması başarısız:', donguHata.message);
+    }
+
+    const yeni = db.prepare(`SELECT p.*, b.bolge_adi, e.ekip_adi, pa.asama_adi AS aktif_asama_adi, pa.renk AS aktif_asama_renk, pa.ikon AS aktif_asama_ikon FROM projeler p LEFT JOIN bolgeler b ON p.bolge_id = b.id LEFT JOIN ekipler e ON p.ekip_id = e.id LEFT JOIN proje_asamalari pa ON p.aktif_asama_id = pa.id WHERE p.id = ?`).get(projeId);
     aktiviteLogla('proje', 'olusturma', yeni.id, `Yeni proje: ${proje_no} (${proje_tipi})`);
     basarili(res, yeni, 201);
   } catch (err) {
@@ -84,6 +104,22 @@ router.patch('/:id/durum', (req, res) => {
     if (!durum) return hata(res, 'Durum zorunludur');
     const proje = db.prepare('SELECT * FROM projeler WHERE id = ?').get(req.params.id);
     if (!proje) return hata(res, 'Proje bulunamadı', 404);
+
+    // Döngü aşaması entegrasyonu
+    if (proje.aktif_asama_id) {
+      // Projenin döngüsü var — aşama bazlı durum değişikliği
+      const hedefAsama = db.prepare(`SELECT * FROM proje_asamalari WHERE proje_id = ? AND asama_kodu = ?`).get(req.params.id, durum);
+      if (hedefAsama) {
+        // Hedef aşamaya kadar olanları tamamla
+        const oncekiAsamalar = db.prepare(`SELECT id FROM proje_asamalari WHERE proje_id = ? AND sira < ? AND durum != 'tamamlandi' AND durum != 'atlandi'`).all(req.params.id, hedefAsama.sira);
+        for (const oa of oncekiAsamalar) {
+          donguService.asamaTamamla(oa.id);
+        }
+        // Hedef aşamayı başlat
+        donguService.asamaBaslat(hedefAsama.id);
+      }
+    }
+
     // Update durum - trigger will auto-log to proje_durum_gecmisi
     db.prepare('UPDATE projeler SET durum = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?').run(durum, req.params.id);
     // If notlar provided, update the auto-created gecmis entry
@@ -93,7 +129,7 @@ router.patch('/:id/durum', (req, res) => {
     if (durum === 'tamamlandi') {
       db.prepare("UPDATE projeler SET tamamlanma_yuzdesi = 100, gerceklesen_bitis = date('now') WHERE id = ?").run(req.params.id);
     }
-    const guncellenen = db.prepare('SELECT * FROM projeler WHERE id = ?').get(req.params.id);
+    const guncellenen = db.prepare(`SELECT p.*, b.bolge_adi, e.ekip_adi, pa.asama_adi AS aktif_asama_adi, pa.renk AS aktif_asama_renk, pa.ikon AS aktif_asama_ikon FROM projeler p LEFT JOIN bolgeler b ON p.bolge_id = b.id LEFT JOIN ekipler e ON p.ekip_id = e.id LEFT JOIN proje_asamalari pa ON p.aktif_asama_id = pa.id WHERE p.id = ?`).get(req.params.id);
     aktiviteLogla('proje', 'durum_degisikligi', guncellenen.id, `${proje.proje_no}: ${proje.durum} → ${durum}`);
     basarili(res, guncellenen);
   } catch (err) {

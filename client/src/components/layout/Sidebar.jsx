@@ -13,37 +13,50 @@ import {
   Camera,
   Wrench,
   MapPin,
+  FolderOpen,
   Bot,
+  MessageCircle,
   Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/context/AuthContext'
 
 const navItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
-  { label: 'Ekipler', icon: Users, path: '/ekipler' },
-  { label: 'Projeler', icon: FolderKanban, path: '/projeler' },
-  { label: 'Malzeme', icon: Package, path: '/malzeme' },
-  { label: 'Personel', icon: UserCircle, path: '/personel' },
-  { label: 'Puantaj', icon: ClipboardList, path: '/puantaj' },
-  { label: 'Talepler', icon: MessageSquare, path: '/talepler' },
-  { label: 'Görevler', icon: CheckSquare, path: '/gorevler', placeholder: true },
-  { label: 'Raporlar', icon: BarChart3, path: '/raporlar' },
-  { label: 'Veri Paketleri', icon: Camera, path: '/veri-paketleri' },
-  { label: 'Saha', icon: MapPin, path: '/saha' },
-  { label: 'Ekipman Katalog', icon: Wrench, path: '/katalog' },
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/', herZaman: true },
+  { label: 'Ekipler', icon: Users, path: '/ekipler', modul: 'ekipler', aksiyon: 'okuma' },
+  { label: 'Projeler', icon: FolderKanban, path: '/projeler', modul: 'projeler', aksiyon: 'okuma' },
+  { label: 'Malzeme', icon: Package, path: '/malzeme', modul: 'malzeme', aksiyon: 'okuma' },
+  { label: 'Personel', icon: UserCircle, path: '/personel', modul: 'personel', aksiyon: 'okuma' },
+  { label: 'Puantaj', icon: ClipboardList, path: '/puantaj', herZaman: true },
+  { label: 'Talepler', icon: MessageSquare, path: '/talepler', herZaman: true },
+  { label: 'Görevler', icon: CheckSquare, path: '/gorevler', placeholder: true, herZaman: true },
+  { label: 'Raporlar', icon: BarChart3, path: '/raporlar', modul: 'raporlar', aksiyon: 'genel' },
+  { label: 'Veri Paketleri', icon: Camera, path: '/veri-paketleri', modul: 'veri_paketi', aksiyon: 'okuma' },
+  { label: 'Saha', icon: MapPin, path: '/saha', modul: 'saha_harita', aksiyon: 'okuma' },
+  { label: 'Ekipman Katalog', icon: Wrench, path: '/katalog', herZaman: true },
+  { label: 'Saha Mesaj', icon: MessageSquare, path: '/saha-mesaj', modul: 'saha_mesaj', aksiyon: 'okuma' },
+  { label: 'Dosya Yonetimi', icon: FolderOpen, path: '/dosya-yonetimi', modul: 'dosyalar', aksiyon: 'okuma' },
 ]
 
 const bottomItems = [
-  { label: 'AI & Telegram', icon: Bot, path: '/telegram' },
-  { label: 'Ayarlar', icon: Settings, path: '/ayarlar' },
+  { label: 'AI Sohbet', icon: MessageCircle, path: '/ai-sohbet', herZaman: true },
+  { label: 'AI & Telegram', icon: Bot, path: '/telegram', modul: 'ayarlar', aksiyon: 'genel' },
+  { label: 'Ayarlar', icon: Settings, path: '/ayarlar', modul: 'ayarlar', aksiyon: 'genel' },
 ]
 
 export default function Sidebar({ firmaAdi = 'Firma Adı' }) {
   const location = useLocation()
+  const { izinVar } = useAuth()
 
   const isActive = (path) => {
     if (path === '/') return location.pathname === '/'
     return location.pathname.startsWith(path)
+  }
+
+  const gorunurMu = (item) => {
+    if (item.herZaman) return true
+    if (item.modul && item.aksiyon) return izinVar(item.modul, item.aksiyon)
+    return true
   }
 
   const renderNavItem = (item) => {
@@ -72,6 +85,9 @@ export default function Sidebar({ firmaAdi = 'Firma Adı' }) {
     )
   }
 
+  const filteredNavItems = navItems.filter(gorunurMu)
+  const filteredBottomItems = bottomItems.filter(gorunurMu)
+
   return (
     <aside className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground">
       {/* Brand */}
@@ -87,12 +103,14 @@ export default function Sidebar({ firmaAdi = 'Firma Adı' }) {
 
       {/* Main navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        {navItems.map(renderNavItem)}
+        {filteredNavItems.map(renderNavItem)}
 
-        {/* Separator */}
-        <div className="my-3 border-t border-sidebar-accent/40" />
-
-        {bottomItems.map(renderNavItem)}
+        {filteredBottomItems.length > 0 && (
+          <>
+            <div className="my-3 border-t border-sidebar-accent/40" />
+            {filteredBottomItems.map(renderNavItem)}
+          </>
+        )}
       </nav>
     </aside>
   )

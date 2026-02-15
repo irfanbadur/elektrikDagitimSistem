@@ -1,9 +1,24 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
+import AiSohbetPanel from '../ai/AiSohbetPanel'
 
-export default function MainLayout({ children, title = 'Dashboard' }) {
+export default function MainLayout({ children, title = 'Dashboard', noPadding = false }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const location = useLocation()
+
+  // Sayfa bağlamını URL'den otomatik çıkar
+  const baglam = useMemo(() => {
+    const parts = location.pathname.split('/')
+    if (parts[1] === 'projeler' && parts[2]) {
+      return { tip: 'proje', projeId: parseInt(parts[2]), sayfaYolu: location.pathname }
+    }
+    if (parts[1] === 'malzeme') {
+      return { tip: 'malzeme', sayfaYolu: location.pathname }
+    }
+    return { tip: 'genel', sayfaYolu: location.pathname }
+  }, [location])
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -27,10 +42,15 @@ export default function MainLayout({ children, title = 'Dashboard' }) {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header title={title} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
-        <main className="flex-1 overflow-y-auto p-6">
-          {children}
+        <main className={`flex-1 min-h-0 ${noPadding ? 'flex flex-col' : 'overflow-y-auto px-5 py-8 sm:px-8 lg:px-12'}`}>
+          <div className={noPadding ? 'flex flex-1 flex-col' : 'mx-auto w-full max-w-7xl'}>
+            {children}
+          </div>
         </main>
       </div>
+
+      {/* Floating AI Sohbet Paneli */}
+      <AiSohbetPanel baglam={baglam} />
     </div>
   )
 }

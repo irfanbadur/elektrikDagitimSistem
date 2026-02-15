@@ -35,6 +35,45 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'ekipler', 'son_longitude', 'REAL');
   addColumnIfNotExists(database, 'ekipler', 'son_konum_zamani', 'DATETIME');
   addColumnIfNotExists(database, 'ekipler', 'son_konum_kaynagi', 'TEXT');
+
+  // Medya tablosuna keşif bağlantısı
+  addColumnIfNotExists(database, 'medya', 'kesif_id', 'INTEGER');
+
+  // Veri paketleri tablosuna yeni alanlar (evrensel dosya sistemi)
+  addColumnIfNotExists(database, 'veri_paketleri', 'konum_adi', 'TEXT');
+  addColumnIfNotExists(database, 'veri_paketleri', 'dosya_sayisi', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists(database, 'veri_paketleri', 'fotograf_sayisi', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists(database, 'veri_paketleri', 'belge_sayisi', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists(database, 'veri_paketleri', 'baslik', 'TEXT');
+  addColumnIfNotExists(database, 'veri_paketleri', 'etiketler', 'TEXT');
+  addColumnIfNotExists(database, 'veri_paketleri', 'ai_islemler', 'TEXT');
+  addColumnIfNotExists(database, 'veri_paketleri', 'kaynak', "TEXT DEFAULT 'web'");
+  addColumnIfNotExists(database, 'veri_paketleri', 'onaylayan_id', 'INTEGER');
+  addColumnIfNotExists(database, 'veri_paketleri', 'onay_tarihi', 'DATETIME');
+  addColumnIfNotExists(database, 'veri_paketleri', 'onay_notu', 'TEXT');
+  addColumnIfNotExists(database, 'veri_paketleri', 'guncelleme_tarihi', 'DATETIME');
+
+  // Projeler tablosuna döngü alanları
+  addColumnIfNotExists(database, 'projeler', 'dongu_sablon_id', 'INTEGER');
+  addColumnIfNotExists(database, 'projeler', 'aktif_asama_id', 'INTEGER');
+
+  // Veri paketleri ve dosyalar tablosuna aşama bağlantısı
+  addColumnIfNotExists(database, 'veri_paketleri', 'proje_asama_id', 'INTEGER');
+  addColumnIfNotExists(database, 'dosyalar', 'proje_asama_id', 'INTEGER');
+
+  // Migration sonrası indexler
+  database.exec('CREATE INDEX IF NOT EXISTS idx_paket_asama ON veri_paketleri(proje_asama_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_dosya_asama ON dosyalar(proje_asama_id)');
+
+  // Dosyalar v2: alan bazlı evrensel dosya sistemi
+  addColumnIfNotExists(database, 'dosyalar', 'alan', "TEXT DEFAULT 'proje'");
+  addColumnIfNotExists(database, 'dosyalar', 'alt_alan', 'TEXT');
+  addColumnIfNotExists(database, 'dosyalar', 'iliskili_kaynak_tipi', 'TEXT');
+  addColumnIfNotExists(database, 'dosyalar', 'iliskili_kaynak_id', 'INTEGER');
+
+  database.exec('CREATE INDEX IF NOT EXISTS idx_dosya_alan ON dosyalar(alan)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_dosya_alt_alan ON dosyalar(alan, alt_alan)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_dosya_iliskili ON dosyalar(iliskili_kaynak_tipi, iliskili_kaynak_id)');
 }
 
 function initDatabase() {
@@ -49,6 +88,15 @@ function initDatabase() {
     const seed = fs.readFileSync(SEED_PATH, 'utf8');
     database.exec(seed);
     console.log('Örnek veri yüklendi.');
+  }
+
+  // RBAC seed: rol izinleri ve ilk kullanıcı
+  try {
+    const { seedRolIzinleri, seedIlkKullanici } = require('./seedRolIzinleri');
+    seedRolIzinleri();
+    seedIlkKullanici();
+  } catch (err) {
+    console.error('RBAC seed hatası:', err.message);
   }
 }
 

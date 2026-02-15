@@ -91,3 +91,38 @@ export const HAVA_DURUMLARI = {
   karli: 'Karlı',
   ruzgarli: 'Rüzgarlı',
 }
+
+export const PAKET_TIP_LABELS = {
+  direk_tespit: 'Direk Tespit',
+  montaj_oncesi: 'Montaj Öncesi',
+  montaj_sonrasi: 'Montaj Sonrası',
+  ariza_tespit: 'Arıza Tespit',
+  kesif: 'Keşif',
+  denetim: 'Denetim',
+  malzeme: 'Malzeme',
+  genel: 'Genel',
+}
+
+export const PAKET_DURUM_LABELS = {
+  devam_ediyor: { label: 'Devam Ediyor', renk: 'bg-blue-100 text-blue-700' },
+  tamamlandi: { label: 'Tamamlandı', renk: 'bg-green-100 text-green-700' },
+  iptal: { label: 'İptal', renk: 'bg-red-100 text-red-700' },
+}
+
+export const DOSYA_KATEGORI_LABELS = {
+  tumu: 'Tümü',
+  fotograf: 'Fotoğraf',
+  belge: 'Belge',
+  cizim: 'Çizim',
+  tablo: 'Tablo',
+  harita: 'Harita',
+  arsiv: 'Arşiv',
+  diger: 'Diğer',
+}
+
+export const SIRALAMA_SECENEKLERI = {
+  tarih_yeni: 'Tarihe Göre (Yeni)',
+  tarih_eski: 'Tarihe Göre (Eski)',
+  alfabe_az: 'Alfabetik (A-Z)',
+  alfabe_za: 'Alfabetik (Z-A)',
+}

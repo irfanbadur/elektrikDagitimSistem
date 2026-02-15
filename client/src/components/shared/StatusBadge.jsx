@@ -1,7 +1,19 @@
 import { cn } from '@/lib/utils'
 import { PROJE_DURUM_RENKLERI, PROJE_DURUMLARI, ONCELIK_RENKLERI, ONCELIK_LABELS, TALEP_DURUMLARI, EKIP_DURUM_RENKLERI } from '@/utils/constants'
 
-export function ProjeDurumBadge({ durum }) {
+export function ProjeDurumBadge({ durum, asamaAdi, asamaRenk, asamaIkon }) {
+  // Döngü aşaması bilgisi varsa dinamik badge göster
+  if (asamaAdi) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium"
+        style={{ backgroundColor: `${asamaRenk}20`, color: asamaRenk }}
+      >
+        {asamaIkon} {asamaAdi}
+      </span>
+    )
+  }
+  // Eski sabit değerler fallback
   const config = PROJE_DURUMLARI[durum]
   const renk = PROJE_DURUM_RENKLERI[durum]
   if (!config) return <span>{durum}</span>

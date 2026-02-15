@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Eye, Pencil, Trash2 } from 'lucide-react'
 import { useProjeler, useProjeSil } from '@/hooks/useProjeler'
 import { useBolgeler } from '@/hooks/useBolgeler'
+import { useDonguSablonlari } from '@/hooks/useDongu'
 import DataTable from '@/components/shared/DataTable'
 import { ProjeDurumBadge, OncelikBadge } from '@/components/shared/StatusBadge'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
@@ -15,10 +16,25 @@ export default function ProjeListesi() {
   const [filtreler, setFiltreler] = useState({ durum: '', bolge_id: '', tip: '' })
   const { data: projeler, isLoading } = useProjeler(filtreler)
   const { data: bolgeler } = useBolgeler()
+  const { data: sablonlar } = useDonguSablonlari()
   const projeSil = useProjeSil()
 
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [silinecekProje, setSilinecekProje] = useState(null)
+
+  // Tüm şablonlardaki tekrarsız aşamalar (filtre için)
+  const tumAsamalar = useMemo(() => {
+    if (!sablonlar) return null
+    const map = new Map()
+    for (const s of sablonlar) {
+      for (const a of s.asamalar || []) {
+        if (!map.has(a.asama_kodu)) {
+          map.set(a.asama_kodu, { kod: a.asama_kodu, adi: a.asama_adi, ikon: a.ikon })
+        }
+      }
+    }
+    return map.size > 0 ? Array.from(map.values()) : null
+  }, [sablonlar])
 
   const handleSil = () => {
     if (!silinecekProje) return
@@ -70,7 +86,14 @@ export default function ProjeListesi() {
       {
         accessorKey: 'durum',
         header: 'Durum',
-        cell: ({ getValue }) => <ProjeDurumBadge durum={getValue()} />,
+        cell: ({ row }) => (
+          <ProjeDurumBadge
+            durum={row.original.durum}
+            asamaAdi={row.original.aktif_asama_adi}
+            asamaRenk={row.original.aktif_asama_renk}
+            asamaIkon={row.original.aktif_asama_ikon}
+          />
+        ),
       },
       {
         accessorKey: 'tamamlanma_yuzdesi',
@@ -192,11 +215,17 @@ export default function ProjeListesi() {
           className="rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         >
           <option value="">Tum Durumlar</option>
-          {Object.entries(PROJE_DURUMLARI).map(([key, val]) => (
-            <option key={key} value={key}>
-              {val.label}
-            </option>
-          ))}
+          {tumAsamalar
+            ? tumAsamalar.map((a) => (
+                <option key={a.kod} value={a.kod}>
+                  {a.ikon} {a.adi}
+                </option>
+              ))
+            : Object.entries(PROJE_DURUMLARI).map(([key, val]) => (
+                <option key={key} value={key}>
+                  {val.label}
+                </option>
+              ))}
         </select>
         <select
           value={filtreler.bolge_id}
