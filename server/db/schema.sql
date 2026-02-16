@@ -949,3 +949,110 @@ CREATE TABLE IF NOT EXISTS ai_mesajlar (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mesaj_sohbet ON ai_mesajlar(sohbet_id);
+
+-- ============================================
+-- DİREK KAYITLARI — Direk Bazlı Saha Kayıtları
+-- ============================================
+CREATE TABLE IF NOT EXISTS direk_kayitlar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    direk_no TEXT NOT NULL,
+    direk_tipi TEXT,
+    konum_lat REAL,
+    konum_lon REAL,
+    malzeme_durum TEXT,
+    topraklama_yapildi INTEGER DEFAULT 0,
+    topraklama_direnc REAL,
+    topraklama_tarihi DATETIME,
+    topraklama_foto_id INTEGER,
+    durum TEXT DEFAULT 'bekliyor',
+    tamamlanma_yuzdesi REAL DEFAULT 0,
+    son_islem_yapan_id INTEGER,
+    notlar TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id),
+    FOREIGN KEY (topraklama_foto_id) REFERENCES dosyalar(id),
+    FOREIGN KEY (son_islem_yapan_id) REFERENCES kullanicilar(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_direk_proje ON direk_kayitlar(proje_id);
+CREATE INDEX IF NOT EXISTS idx_direk_konum ON direk_kayitlar(konum_lat, konum_lon);
+
+-- ============================================
+-- DİREK FOTOĞRAFLARI — Direk Fotoğraf Geçmişi
+-- ============================================
+CREATE TABLE IF NOT EXISTS direk_fotograflar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    direk_kayit_id INTEGER NOT NULL,
+    dosya_id INTEGER NOT NULL,
+    foto_tipi TEXT DEFAULT 'genel',
+    ai_analiz TEXT,
+    notlar TEXT,
+    ekleyen_id INTEGER,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (direk_kayit_id) REFERENCES direk_kayitlar(id),
+    FOREIGN KEY (dosya_id) REFERENCES dosyalar(id),
+    FOREIGN KEY (ekleyen_id) REFERENCES kullanicilar(id)
+);
+
+-- ============================================
+-- DİREK İŞLEM GEÇMİŞİ — Değişiklik Logu
+-- ============================================
+CREATE TABLE IF NOT EXISTS direk_islem_gecmisi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    direk_kayit_id INTEGER NOT NULL,
+    islem_tipi TEXT NOT NULL,
+    eski_deger TEXT,
+    yeni_deger TEXT,
+    islem_yapan_id INTEGER,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (direk_kayit_id) REFERENCES direk_kayitlar(id),
+    FOREIGN KEY (islem_yapan_id) REFERENCES kullanicilar(id)
+);
+
+-- ============================================
+-- SAHA TESPİTLERİ — Saha Tespit Kayıtları
+-- ============================================
+CREATE TABLE IF NOT EXISTS saha_tespitler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER,
+    direk_kayit_id INTEGER,
+    tespit_tipi TEXT NOT NULL,
+    aciklama TEXT NOT NULL,
+    konum_lat REAL,
+    konum_lon REAL,
+    oncelik TEXT DEFAULT 'normal',
+    durum TEXT DEFAULT 'acik',
+    raporlayan_id INTEGER NOT NULL,
+    atanan_ekip_id INTEGER,
+    cozum_tarihi DATETIME,
+    cozum_notu TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id),
+    FOREIGN KEY (direk_kayit_id) REFERENCES direk_kayitlar(id),
+    FOREIGN KEY (raporlayan_id) REFERENCES kullanicilar(id),
+    FOREIGN KEY (atanan_ekip_id) REFERENCES ekipler(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tespit_proje ON saha_tespitler(proje_id);
+CREATE INDEX IF NOT EXISTS idx_tespit_durum ON saha_tespitler(durum);
+
+-- ============================================
+-- GÜNLÜK İLERLEME — Günlük İlerleme Kayıtları
+-- ============================================
+CREATE TABLE IF NOT EXISTS gunluk_ilerleme (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    tarih DATE NOT NULL,
+    ekip_id INTEGER,
+    tamamlanan_direk_sayisi INTEGER DEFAULT 0,
+    calisan_direk_ids TEXT,
+    toplam_ilerleme_yuzde REAL,
+    ai_rapor TEXT,
+    ai_rapor_tarihi DATETIME,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id),
+    FOREIGN KEY (ekip_id) REFERENCES ekipler(id),
+    UNIQUE(proje_id, tarih, ekip_id)
+);

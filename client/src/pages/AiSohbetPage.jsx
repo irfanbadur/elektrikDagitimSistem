@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import MainLayout from '@/components/layout/MainLayout'
 import AiOnayPaneli from '@/components/ai/AiOnayPaneli'
+import AiSohbetGirdi from '@/components/ai/AiSohbetGirdi'
 import api from '@/api/client'
 
 export default function AiSohbetPage() {
   const [sohbetler, setSohbetler] = useState([])
   const [seciliSohbetId, setSeciliSohbetId] = useState(null)
   const [mesajlar, setMesajlar] = useState([])
-  const [girdi, setGirdi] = useState('')
   const [yukleniyor, setYukleniyor] = useState(false)
   const [aksiyonPlan, setAksiyonPlan] = useState(null)
   const scrollRef = useRef(null)
@@ -47,25 +47,43 @@ export default function AiSohbetPage() {
     } catch { /* ignore */ }
   }
 
-  const mesajGonder = async () => {
-    if (!girdi.trim() || yukleniyor) return
-    const metin = girdi.trim()
-    setGirdi('')
-    setMesajlar(prev => [...prev, { rol: 'kullanici', icerik: metin }])
+  const mesajGonder = async ({ metin, dosyalar = [], konum }) => {
+    if ((!metin && dosyalar.length === 0) || yukleniyor) return
     setYukleniyor(true)
 
+    // Kullanıcı mesajını hemen göster
+    setMesajlar(prev => [...prev, {
+      rol: 'kullanici', icerik: metin || '(medya gönderildi)',
+      dosyalar: dosyalar.map(f => ({
+        onizleme: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
+        adi: f.name,
+      })),
+      konum,
+    }])
+
     try {
-      const res = await api.post('/ai-sohbet/mesaj', {
-        sohbet_id: seciliSohbetId, mesaj: metin, baglam: { tip: 'genel' },
+      const formData = new FormData()
+      if (seciliSohbetId) formData.append('sohbet_id', seciliSohbetId)
+      formData.append('mesaj', metin || '')
+      formData.append('baglam', JSON.stringify({ tip: 'genel' }))
+      if (konum) formData.append('konum', JSON.stringify(konum))
+      for (const dosya of dosyalar) {
+        formData.append('dosyalar', dosya)
+      }
+
+      const res = await api.post('/ai-sohbet/mesaj', formData, {
+        headers: { 'Content-Type': undefined },
       })
-      const d = res.data
+      const d = res.data || res
       setSeciliSohbetId(d.sohbetId)
-      setMesajlar(prev => [...prev, { rol: 'asistan', icerik: d.yanit, tip: d.tip, meta: d.meta }])
+      setMesajlar(prev => [...prev, {
+        rol: 'asistan', icerik: d.yanit, tip: d.tip, meta: d.meta,
+      }])
       if (d.aksiyonPlan) setAksiyonPlan(d.aksiyonPlan)
       yukleSohbetler()
     } catch (err) {
       setMesajlar(prev => [...prev, {
-        rol: 'asistan', icerik: `Hata: ${err.message}`, tip: 'hata',
+        rol: 'asistan', icerik: `Hata: ${err.response?.data?.error || err.message}`, tip: 'hata',
       }])
     } finally { setYukleniyor(false) }
   }
@@ -74,21 +92,21 @@ export default function AiSohbetPage() {
     <MainLayout title="AI Sohbet" noPadding>
       <div className="flex flex-1 min-h-0">
         {/* Sol — Sohbet listesi */}
-        <div className="w-72 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50">
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3.5">
+        <div className="w-72 shrink-0 overflow-y-auto border-r-2 border-gray-300 bg-gray-50">
+          <div className="flex items-center justify-between border-b-2 border-gray-300 px-4 py-3.5">
             <h3 className="text-base font-semibold">🤖 Sohbetler</h3>
             <button
               onClick={yeniSohbet}
               className="rounded-md bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 cursor-pointer"
             >
-              ➕ Yeni
+              + Yeni
             </button>
           </div>
           {sohbetler.map(s => (
             <div
               key={s.id}
               onClick={() => sohbetSec(s.id)}
-              className={`flex cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 hover:bg-gray-100 ${
+              className={`flex cursor-pointer items-center justify-between border-b border-gray-200 px-4 py-3 hover:bg-gray-100 ${
                 seciliSohbetId === s.id ? 'bg-blue-50' : ''
               }`}
             >
@@ -112,12 +130,13 @@ export default function AiSohbetPage() {
         </div>
 
         {/* Sağ — Aktif sohbet */}
-        <div className="flex flex-1 flex-col min-w-0">
-          <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto p-5">
+        <div className="flex flex-1 flex-col min-w-0 min-h-0">
+          {/* Mesajlar — scroll alanı */}
+          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 pt-5 pb-2 flex flex-col gap-3">
             {mesajlar.length === 0 && (
               <div className="mt-20 text-center text-sm text-gray-400">
                 <div className="mb-3 text-5xl">🤖</div>
-                Soru sor, komut ver veya bilgi iste.
+                Soru sor, fotoğraf gönder, konum paylaş veya komut ver.
               </div>
             )}
             {mesajlar.map((m, i) => (
@@ -131,7 +150,29 @@ export default function AiSohbetPage() {
                         : 'rounded-bl-sm bg-gray-100 text-gray-800'
                   }`}
                 >
+                  {/* Fotoğraf önizlemeleri */}
+                  {m.dosyalar?.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1">
+                      {m.dosyalar.map((d, j) => d.onizleme ? (
+                        <img key={j} src={d.onizleme} alt="" className="h-[80px] w-[100px] rounded-md object-cover" />
+                      ) : (
+                        <span key={j} className="rounded bg-white/20 px-2 py-1 text-[11px]">{d.adi}</span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Konum */}
+                  {m.konum && (
+                    <div className="mb-1 text-[11px] opacity-70">
+                      📍 {m.konum.lat.toFixed(5)}, {m.konum.lon.toFixed(5)}
+                    </div>
+                  )}
                   {m.icerik}
+                  {/* Direk tahmin bilgisi */}
+                  {m.meta?.direkTahmin && (
+                    <div className="mt-1.5 rounded bg-blue-50 px-2 py-1 text-[11px] text-blue-700">
+                      📍 En yakın direk: {m.meta.direkTahmin.direk.direk_no} ({m.meta.direkTahmin.mesafe}m, güven: %{Math.round(m.meta.direkTahmin.tahminGuven * 100)})
+                    </div>
+                  )}
                   {m.tip === 'sorgu' && m.meta?.sql && (
                     <details className="mt-2 text-xs opacity-70">
                       <summary className="cursor-pointer">SQL göster</summary>
@@ -144,8 +185,11 @@ export default function AiSohbetPage() {
             {yukleniyor && (
               <div className="text-sm text-gray-400">⏳ Düşünüyor...</div>
             )}
+          </div>
 
-            {aksiyonPlan && (
+          {/* Aksiyon onay paneli — scroll dışında, sabit */}
+          {aksiyonPlan && (
+            <div className="shrink-0 max-h-[40%] overflow-y-auto border-t-2 border-gray-300">
               <AiOnayPaneli
                 islemId={aksiyonPlan.islemId}
                 anlama={aksiyonPlan.anlama}
@@ -156,29 +200,12 @@ export default function AiSohbetPage() {
                 onReddet={() => { setAksiyonPlan(null); setMesajlar(prev => [...prev, { rol: 'asistan', icerik: 'İptal edildi.' }]) }}
                 onKapat={() => setAksiyonPlan(null)}
               />
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Girdi */}
-          <div className="flex gap-2.5 border-t border-gray-200 px-5 py-4">
-            <textarea
-              value={girdi}
-              onChange={(e) => setGirdi(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); mesajGonder() } }}
-              placeholder="Soru sor veya komut ver..."
-              rows={1}
-              className="flex-1 resize-none rounded-lg border border-gray-200 px-3.5 py-3 text-sm outline-none focus:border-blue-400"
-              style={{ fontFamily: 'inherit' }}
-            />
-            <button
-              onClick={mesajGonder}
-              disabled={!girdi.trim() || yukleniyor}
-              className={`rounded-lg px-5 py-3 text-[15px] text-white ${
-                girdi.trim() ? 'bg-blue-600 hover:bg-blue-700 cursor-pointer' : 'bg-gray-200 cursor-default'
-              }`}
-            >
-              ➤
-            </button>
+          {/* Girdi — medya destekli */}
+          <div className="shrink-0">
+            <AiSohbetGirdi onGonder={mesajGonder} yukleniyor={yukleniyor} />
           </div>
         </div>
       </div>

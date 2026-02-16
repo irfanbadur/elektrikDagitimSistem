@@ -22,6 +22,20 @@ class GeminiProvider extends AiProvider {
     }
   }
 
+  _checkError(res, json) {
+    if (!res.ok) {
+      const errMsg = json.error?.message || `HTTP ${res.status}`;
+      throw new Error(`Gemini API hata (${res.status}): ${errMsg}`);
+    }
+    if (!json.candidates?.length) {
+      const blockReason = json.promptFeedback?.blockReason;
+      if (blockReason) {
+        throw new Error(`Gemini içerik engellendi: ${blockReason}`);
+      }
+      throw new Error('Gemini boş yanıt döndürdü');
+    }
+  }
+
   async metinGonder(sistemPromptu, kullaniciMesaji, ayarlar = {}) {
     const url = `${this.baseUrl}/${this.modelText}:generateContent?key=${this.apiKey}`;
 
@@ -40,7 +54,9 @@ class GeminiProvider extends AiProvider {
     });
 
     const json = await res.json();
-    const metin = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    this._checkError(res, json);
+
+    const metin = json.candidates[0].content?.parts?.[0]?.text || '';
     const usage = json.usageMetadata || {};
 
     return {
@@ -74,8 +90,10 @@ class GeminiProvider extends AiProvider {
     });
 
     const json = await res.json();
+    this._checkError(res, json);
+
     return {
-      metin: json.candidates?.[0]?.content?.parts?.[0]?.text || '',
+      metin: json.candidates[0].content?.parts?.[0]?.text || '',
       tokenKullanim: {
         girdi: json.usageMetadata?.promptTokenCount || 0,
         cikti: json.usageMetadata?.candidatesTokenCount || 0,

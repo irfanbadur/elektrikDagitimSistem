@@ -74,6 +74,12 @@ function runMigrations(database) {
   database.exec('CREATE INDEX IF NOT EXISTS idx_dosya_alan ON dosyalar(alan)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_dosya_alt_alan ON dosyalar(alan, alt_alan)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_dosya_iliskili ON dosyalar(iliskili_kaynak_tipi, iliskili_kaynak_id)');
+
+  // AI Sohbet medya desteği — ai_mesajlar tablosuna konum/dosya sütunları
+  addColumnIfNotExists(database, 'ai_mesajlar', 'dosya_ids', 'TEXT');
+  addColumnIfNotExists(database, 'ai_mesajlar', 'konum_lat', 'REAL');
+  addColumnIfNotExists(database, 'ai_mesajlar', 'konum_lon', 'REAL');
+  addColumnIfNotExists(database, 'ai_mesajlar', 'konum_dogruluk', 'REAL');
 }
 
 function initDatabase() {

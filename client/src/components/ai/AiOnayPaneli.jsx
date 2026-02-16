@@ -58,7 +58,7 @@ export default function AiOnayPaneli({ islemId, anlama, aksiyonlar, uyarilar = [
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-lg">
+    <div className="bg-white overflow-hidden">
       {/* Baslik */}
       <div className="p-3.5 px-4 bg-sky-50 border-b border-sky-200 flex items-center gap-2.5">
         <span className="text-xl">🤖</span>

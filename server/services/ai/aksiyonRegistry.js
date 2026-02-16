@@ -46,3 +46,8 @@ require('./aksiyonlar/asamaIlerlet');
 require('./aksiyonlar/belgeParse');
 require('./aksiyonlar/tutanakOlustur');
 require('./aksiyonlar/paketSiniflandir');
+require('./aksiyonlar/direkKayit');
+require('./aksiyonlar/tespitOlustur');
+require('./aksiyonlar/topraklamaKaydet');
+require('./aksiyonlar/dosyaKaydet');
+require('./aksiyonlar/ilerlemGuncelle');

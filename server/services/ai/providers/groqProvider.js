@@ -4,8 +4,8 @@ class GroqProvider extends AiProvider {
   constructor() {
     super('groq');
     this.apiKey = process.env.GROQ_API_KEY;
-    this.modelText = process.env.GROQ_MODEL_TEXT || 'llama-3.1-70b-versatile';
-    this.modelVision = process.env.GROQ_MODEL_VISION || 'llama-3.2-90b-vision-preview';
+    this.modelText = process.env.GROQ_MODEL_TEXT || 'llama-3.3-70b-versatile';
+    this.modelVision = process.env.GROQ_MODEL_VISION || 'llama-3.3-70b-versatile';
     this.baseUrl = 'https://api.groq.com/openai/v1';
   }
 
@@ -42,6 +42,7 @@ class GroqProvider extends AiProvider {
     });
 
     const json = await res.json();
+    this._checkError(res, json);
     return {
       metin: json.choices?.[0]?.message?.content || '',
       tokenKullanim: { girdi: json.usage?.prompt_tokens || 0, cikti: json.usage?.completion_tokens || 0 },
@@ -76,10 +77,21 @@ class GroqProvider extends AiProvider {
     });
 
     const json = await res.json();
+    this._checkError(res, json);
     return {
       metin: json.choices?.[0]?.message?.content || '',
       tokenKullanim: { girdi: json.usage?.prompt_tokens || 0, cikti: json.usage?.completion_tokens || 0 },
     };
+  }
+
+  _checkError(res, json) {
+    if (!res.ok) {
+      const errMsg = json.error?.message || `HTTP ${res.status}`;
+      throw new Error(`Groq API hata (${res.status}): ${errMsg}`);
+    }
+    if (!json.choices?.length) {
+      throw new Error('Groq boş yanıt döndürdü');
+    }
   }
 }
 

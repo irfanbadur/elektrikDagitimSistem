@@ -73,6 +73,27 @@ proje_kesifler (id, proje_id, kesif_tarihi, kesif_yapan, bulgular, notlar, durum
 -- AI İşlemleri
 ai_islemler (id, girdi_tipi, girdi_metin, parse_sonuc, aksiyon_plani, durum, kullanici_id, proje_id, olusturma_tarihi, provider_adi)
 
+-- Direk Kayıtları (Saha)
+direk_kayitlar (id, proje_id, direk_no, direk_tipi, konum_lat, konum_lon, malzeme_durum, topraklama_yapildi, topraklama_direnc, topraklama_tarihi, durum, tamamlanma_yuzdesi, son_islem_yapan_id, notlar)
+-- malzeme_durum JSON: { "konsol": { "mevcut": 7, "proje": 9 }, "izolator_n95": { "mevcut": 4, "proje": 4 } }
+-- durum: 'bekliyor', 'devam', 'tamamlandi', 'sorunlu'
+
+-- Direk Fotoğrafları
+direk_fotograflar (id, direk_kayit_id, dosya_id, foto_tipi, ai_analiz, notlar, ekleyen_id)
+-- foto_tipi: 'genel', 'topraklama', 'izolator', 'konsol', 'ariza', 'oncesi', 'sonrasi'
+
+-- Direk İşlem Geçmişi
+direk_islem_gecmisi (id, direk_kayit_id, islem_tipi, eski_deger, yeni_deger, islem_yapan_id)
+
+-- Saha Tespitleri
+saha_tespitler (id, proje_id, direk_kayit_id, tespit_tipi, aciklama, konum_lat, konum_lon, oncelik, durum, raporlayan_id, atanan_ekip_id, cozum_tarihi, cozum_notu)
+-- tespit_tipi: 'eksiklik', 'ariza', 'tehlike', 'genel', 'kesif'
+-- oncelik: 'dusuk', 'normal', 'yuksek', 'acil'
+-- durum: 'acik', 'devam', 'cozuldu', 'iptal'
+
+-- Günlük İlerleme
+gunluk_ilerleme (id, proje_id, tarih, ekip_id, tamamlanan_direk_sayisi, calisan_direk_ids, toplam_ilerleme_yuzde, ai_rapor)
+
 ÖNEMLİ İLİŞKİLER:
 - malzeme_hareketleri.malzeme_id → malzemeler.id
 - malzeme_hareketleri.proje_id → projeler.id
@@ -84,6 +105,12 @@ ai_islemler (id, girdi_tipi, girdi_metin, parse_sonuc, aksiyon_plani, durum, kul
 - personel.ekip_id → ekipler.id
 - projeler.ekip_id → ekipler.id
 - projeler.bolge_id → bolgeler.id
+- direk_kayitlar.proje_id → projeler.id
+- direk_fotograflar.direk_kayit_id → direk_kayitlar.id
+- direk_fotograflar.dosya_id → dosyalar.id
+- saha_tespitler.proje_id → projeler.id
+- saha_tespitler.direk_kayit_id → direk_kayitlar.id
+- gunluk_ilerleme.proje_id → projeler.id
 `;
 
 module.exports = DB_SEMA;
