@@ -50,7 +50,7 @@ export default function ProjeTipleri() {
     <div className="max-w-md">
       <div className="mb-6 flex items-center gap-3">
         <Tag className="h-6 w-6 text-muted-foreground" />
-        <h2 className="text-xl font-semibold">Proje Tipleri</h2>
+        <h2 className="text-xl font-semibold">İş Tipleri</h2>
       </div>
       <div className="rounded-lg border border-border bg-card p-6">
         <div className="mb-4 flex flex-wrap gap-2">

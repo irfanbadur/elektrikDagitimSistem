@@ -12,7 +12,7 @@ import { useAuth } from '@/context/AuthContext'
 const sekmeler = [
   { id: 'firma', label: 'Firma Bilgileri' },
   { id: 'bolgeler', label: 'Bolge Yonetimi' },
-  { id: 'tipler', label: 'Proje Tipleri' },
+  { id: 'tipler', label: 'İş Tipleri' },
   { id: 'dongu', label: 'Dongu Sablonlari' },
   { id: 'roller', label: 'Rol Yönetimi', modul: 'ayarlar', aksiyon: 'roller' },
   { id: 'kullanicilar', label: 'Kullanıcılar', modul: 'ayarlar', aksiyon: 'kullanicilar' },

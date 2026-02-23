@@ -63,6 +63,9 @@ app.use('/api/yonetim', require('./routes/rolYonetimi'));
 // AI Sohbet routes
 app.use('/api/ai-sohbet', require('./routes/aiSohbet'));
 
+// Organizasyon (pozisyon, görev, belge, yetkinlik) routes
+app.use('/api/organizasyon', require('./routes/organizasyon'));
+
 // Error handler
 const { errorHandler } = require('./middleware/errorHandler');
 app.use(errorHandler);

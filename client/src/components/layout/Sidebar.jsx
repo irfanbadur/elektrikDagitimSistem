@@ -17,6 +17,7 @@ import {
   Bot,
   MessageCircle,
   Settings,
+  Network,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -27,9 +28,10 @@ const navItems = [
   { label: 'Projeler', icon: FolderKanban, path: '/projeler', modul: 'projeler', aksiyon: 'okuma' },
   { label: 'Malzeme', icon: Package, path: '/malzeme', modul: 'malzeme', aksiyon: 'okuma' },
   { label: 'Personel', icon: UserCircle, path: '/personel', modul: 'personel', aksiyon: 'okuma' },
+  { label: 'Organizasyon', icon: Network, path: '/organizasyon', herZaman: true },
   { label: 'Puantaj', icon: ClipboardList, path: '/puantaj', herZaman: true },
   { label: 'Talepler', icon: MessageSquare, path: '/talepler', herZaman: true },
-  { label: 'Görevler', icon: CheckSquare, path: '/gorevler', placeholder: true, herZaman: true },
+  { label: 'Görevler', icon: CheckSquare, path: '/gorevler', herZaman: true },
   { label: 'Raporlar', icon: BarChart3, path: '/raporlar', modul: 'raporlar', aksiyon: 'genel' },
   { label: 'Veri Paketleri', icon: Camera, path: '/veri-paketleri', modul: 'veri_paketi', aksiyon: 'okuma' },
   { label: 'Saha', icon: MapPin, path: '/saha', modul: 'saha_harita', aksiyon: 'okuma' },

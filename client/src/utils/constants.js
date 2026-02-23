@@ -126,3 +126,44 @@ export const SIRALAMA_SECENEKLERI = {
   alfabe_az: 'Alfabetik (A-Z)',
   alfabe_za: 'Alfabetik (Z-A)',
 }
+
+// ═══════════════════════════════════════════
+// ORGANİZASYON — Pozisyon, Görev, Belge, Yetkinlik
+// ═══════════════════════════════════════════
+
+export const POZISYON_KATEGORILERI = {
+  yonetim: 'Yönetim',
+  koordinasyon: 'Koordinasyon',
+  teknik: 'Teknik',
+  saha: 'Saha',
+  destek: 'Destek',
+}
+
+export const GOREV_KATEGORILERI = {
+  proje_bazli: 'Proje Bazlı',
+  firma_geneli: 'Firma Geneli',
+  gecici: 'Geçici / Dönemsel',
+}
+
+export const BELGE_KATEGORILERI = {
+  mesleki: 'Mesleki',
+  isg: 'İSG',
+  ehliyet: 'Ehliyet / Operatör',
+  diger: 'Diğer',
+}
+
+export const BELGE_DURUM_RENKLERI = {
+  gecerli: 'bg-green-100 text-green-700',
+  suresiz: 'bg-blue-100 text-blue-700',
+  yakinda_dolacak: 'bg-yellow-100 text-yellow-700',
+  suresi_dolmus: 'bg-red-100 text-red-700',
+}
+
+export const YETKINLIK_SEVIYELERI = {
+  baslangic: { label: 'Başlangıç', puan: 1 },
+  orta: { label: 'Orta', puan: 2 },
+  ileri: { label: 'İleri', puan: 3 },
+  uzman: { label: 'Uzman', puan: 4 },
+}
+
+export const KAN_GRUPLARI = ['A Rh+', 'A Rh-', 'B Rh+', 'B Rh-', 'AB Rh+', 'AB Rh-', '0 Rh+', '0 Rh-']

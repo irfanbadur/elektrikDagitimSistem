@@ -38,7 +38,7 @@ export default function FirmaBilgileri() {
     { key: 'firma_adres', label: 'Adres', type: 'textarea' },
     { key: 'dagitim_sirketi', label: 'Dağıtım Şirketi', type: 'text' },
     { key: 'para_birimi', label: 'Para Birimi', type: 'text' },
-    { key: 'calisan_proje_tipleri', label: 'Proje Tipleri (virgülle ayırın)', type: 'text' },
+    { key: 'calisan_proje_tipleri', label: 'İş Tipleri (virgülle ayırın)', type: 'text' },
   ]
 
   if (isLoading) return <div className="space-y-4">{Array.from({length:5}).map((_,i) => <div key={i} className="skeleton h-12 w-full" />)}</div>

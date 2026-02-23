@@ -4,16 +4,14 @@ import api from '@/api/client'
 export function usePersonelListesi() {
   return useQuery({
     queryKey: ['personel'],
-    queryFn: () => api.get('/personel'),
-    select: (res) => res.data,
+    queryFn: () => api.get('/organizasyon/personel'),
   })
 }
 
 export function usePersonelDetay(id) {
   return useQuery({
     queryKey: ['personel', id],
-    queryFn: () => api.get(`/personel/${id}`),
-    select: (res) => res.data,
+    queryFn: () => api.get(`/organizasyon/personel/${id}`),
     enabled: !!id,
   })
 }
@@ -21,31 +19,40 @@ export function usePersonelDetay(id) {
 export function usePersonelOlustur() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data) => api.post('/personel', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['personel'] }),
+    mutationFn: (data) => api.post('/organizasyon/personel', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['personel'] })
+      qc.invalidateQueries({ queryKey: ['organizasyon'] })
+    },
   })
 }
 
 export function usePersonelGuncelle() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }) => api.put(`/personel/${id}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['personel'] }),
+    mutationFn: ({ id, ...data }) => api.put(`/organizasyon/personel/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['personel'] })
+      qc.invalidateQueries({ queryKey: ['organizasyon'] })
+    },
   })
 }
 
 export function usePersonelSil() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id) => api.delete(`/personel/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['personel'] }),
+    mutationFn: (id) => api.delete(`/organizasyon/personel/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['personel'] })
+      qc.invalidateQueries({ queryKey: ['organizasyon'] })
+    },
   })
 }
 
 export function usePersonelEkipAta() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }) => api.patch(`/personel/${id}/ekip`, data),
+    mutationFn: ({ id, ...data }) => api.put(`/organizasyon/personel/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['personel'] })
       qc.invalidateQueries({ queryKey: ['ekipler'] })

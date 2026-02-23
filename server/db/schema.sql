@@ -13,7 +13,8 @@ INSERT OR IGNORE INTO firma_ayarlari (anahtar, deger, aciklama) VALUES
 ('firma_logo_url', '', 'Firma logo dosya yolu'),
 ('dagitim_sirketi', 'EDAŞ', 'Çalışılan elektrik dağıtım şirketi adı'),
 ('para_birimi', 'TRY', 'Para birimi'),
-('calisan_proje_tipleri', 'YB,KET,Tesis', 'Virgülle ayrılmış proje tipleri');
+('calisan_proje_tipleri', 'YB,KET,Tesis', 'Virgülle ayrılmış iş tipleri'),
+('gorev_tipleri', 'Montaj,Kontrol,Bakım,Denetim,Keşif,Proje Sorumlusu', 'Virgülle ayrılmış görev tipleri');
 
 -- BÖLGELER
 CREATE TABLE IF NOT EXISTS bolgeler (
@@ -1056,3 +1057,155 @@ CREATE TABLE IF NOT EXISTS gunluk_ilerleme (
     FOREIGN KEY (ekip_id) REFERENCES ekipler(id),
     UNIQUE(proje_id, tarih, ekip_id)
 );
+
+-- ============================================
+-- POZİSYONLAR — Firma pozisyon tanımları (Katman 2)
+-- ============================================
+CREATE TABLE IF NOT EXISTS pozisyonlar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kod TEXT UNIQUE NOT NULL,
+    ad TEXT NOT NULL,
+    seviye INTEGER NOT NULL,
+    kategori TEXT NOT NULL,
+    aciklama TEXT,
+    varsayilan_sistem_rolu TEXT,
+    aktif INTEGER DEFAULT 1,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================
+-- GÖREV TANIMLARI — Atanabilir görev rolleri (Katman 3)
+-- ============================================
+CREATE TABLE IF NOT EXISTS gorev_tanimlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kod TEXT UNIQUE NOT NULL,
+    ad TEXT NOT NULL,
+    kategori TEXT NOT NULL,
+    aciklama TEXT,
+    sorumluluklar TEXT,
+    gerekli_belgeler TEXT,
+    gerekli_pozisyonlar TEXT,
+    min_seviye INTEGER,
+    max_ayni_anda INTEGER DEFAULT 0,
+    zorunlu_proje INTEGER DEFAULT 0,
+    aktif INTEGER DEFAULT 1,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================
+-- KULLANICI GÖREVLERİ — Çoklu görev ataması
+-- ============================================
+CREATE TABLE IF NOT EXISTS kullanici_gorevler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kullanici_id INTEGER NOT NULL,
+    gorev_tanim_id INTEGER NOT NULL,
+    proje_id INTEGER,
+    ozel_aciklama TEXT,
+    baslangic_tarihi DATE NOT NULL,
+    bitis_tarihi DATE,
+    aktif INTEGER DEFAULT 1,
+    atayan_id INTEGER,
+    atama_notu TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (kullanici_id) REFERENCES kullanicilar(id),
+    FOREIGN KEY (gorev_tanim_id) REFERENCES gorev_tanimlari(id),
+    FOREIGN KEY (proje_id) REFERENCES projeler(id),
+    FOREIGN KEY (atayan_id) REFERENCES kullanicilar(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_kg_kullanici ON kullanici_gorevler(kullanici_id);
+CREATE INDEX IF NOT EXISTS idx_kg_proje ON kullanici_gorevler(proje_id);
+CREATE INDEX IF NOT EXISTS idx_kg_aktif ON kullanici_gorevler(aktif);
+CREATE INDEX IF NOT EXISTS idx_kg_gorev ON kullanici_gorevler(gorev_tanim_id);
+
+-- ============================================
+-- BELGE TÜRLERİ — Sertifika/belge tanımları
+-- ============================================
+CREATE TABLE IF NOT EXISTS belge_turleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kod TEXT UNIQUE NOT NULL,
+    ad TEXT NOT NULL,
+    kategori TEXT NOT NULL,
+    yenileme_suresi_ay INTEGER,
+    zorunlu INTEGER DEFAULT 0,
+    aciklama TEXT,
+    aktif INTEGER DEFAULT 1
+);
+
+-- ============================================
+-- KULLANICI BELGELERİ — Personel sertifika/belge kayıtları
+-- ============================================
+CREATE TABLE IF NOT EXISTS kullanici_belgeler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kullanici_id INTEGER NOT NULL,
+    belge_turu_id INTEGER NOT NULL,
+    belge_tipi TEXT NOT NULL,
+    belge_no TEXT,
+    veren_kurum TEXT,
+    baslangic_tarihi DATE,
+    bitis_tarihi DATE,
+    dosya_id INTEGER,
+    durum TEXT DEFAULT 'gecerli',
+    aktif INTEGER DEFAULT 1,
+    notlar TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (kullanici_id) REFERENCES kullanicilar(id),
+    FOREIGN KEY (belge_turu_id) REFERENCES belge_turleri(id),
+    FOREIGN KEY (dosya_id) REFERENCES dosyalar(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_kb_kullanici ON kullanici_belgeler(kullanici_id);
+CREATE INDEX IF NOT EXISTS idx_kb_bitis ON kullanici_belgeler(bitis_tarihi);
+CREATE INDEX IF NOT EXISTS idx_kb_tipi ON kullanici_belgeler(belge_tipi);
+
+-- ============================================
+-- YETKİNLİK TANIMLARI — Pratik beceri/uzmanlık
+-- ============================================
+CREATE TABLE IF NOT EXISTS yetkinlik_tanimlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kod TEXT UNIQUE NOT NULL,
+    ad TEXT NOT NULL,
+    kategori TEXT NOT NULL,
+    aciklama TEXT,
+    aktif INTEGER DEFAULT 1
+);
+
+-- ============================================
+-- KULLANICI YETKİNLİKLERİ — Personel beceri seviyeleri
+-- ============================================
+CREATE TABLE IF NOT EXISTS kullanici_yetkinlikler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kullanici_id INTEGER NOT NULL,
+    yetkinlik_id INTEGER NOT NULL,
+    seviye TEXT NOT NULL DEFAULT 'orta',
+    notlar TEXT,
+    degerlendiren_id INTEGER,
+    degerlendirme_tarihi DATE,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (kullanici_id) REFERENCES kullanicilar(id),
+    FOREIGN KEY (yetkinlik_id) REFERENCES yetkinlik_tanimlari(id),
+    FOREIGN KEY (degerlendiren_id) REFERENCES kullanicilar(id),
+    UNIQUE(kullanici_id, yetkinlik_id)
+);
+
+-- ============================================
+-- KULLANICI İŞ GÖREVLERİ — İş tipi bazlı görev atama matrisi
+-- ============================================
+CREATE TABLE IF NOT EXISTS kullanici_is_gorevleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kullanici_id INTEGER NOT NULL,
+    is_tipi TEXT NOT NULL,
+    gorev_tipi TEXT NOT NULL,
+    gecici INTEGER DEFAULT 0,
+    notlar TEXT,
+    atayan_id INTEGER,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (kullanici_id) REFERENCES kullanicilar(id),
+    FOREIGN KEY (atayan_id) REFERENCES kullanicilar(id),
+    UNIQUE(kullanici_id, is_tipi)
+);
+
+CREATE INDEX IF NOT EXISTS idx_kig_kullanici ON kullanici_is_gorevleri(kullanici_id);
+CREATE INDEX IF NOT EXISTS idx_kig_is_tipi ON kullanici_is_gorevleri(is_tipi);

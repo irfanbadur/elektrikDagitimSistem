@@ -4,7 +4,6 @@ import { Plus, Eye, Pencil, Trash2 } from 'lucide-react'
 import { usePersonelListesi, usePersonelSil } from '@/hooks/usePersonel'
 import DataTable from '@/components/shared/DataTable'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
-import { GOREV_TIPLERI } from '@/utils/constants'
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton'
 
 export default function PersonelListesi() {
@@ -17,7 +16,7 @@ export default function PersonelListesi() {
 
   const handleSil = () => {
     if (!silinecekPersonel) return
-    personelSil.mutate(silinecekPersonel.personel_id, {
+    personelSil.mutate(silinecekPersonel.id, {
       onSettled: () => {
         setSilinecekPersonel(null)
         setSilmeDialogAcik(false)
@@ -40,31 +39,31 @@ export default function PersonelListesi() {
         cell: ({ row }) => row.original.telefon || '-',
       },
       {
-        accessorKey: 'gorev',
-        header: 'Gorev',
+        accessorKey: 'pozisyon_adi',
+        header: 'Pozisyon',
         cell: ({ row }) => (
           <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
-            {GOREV_TIPLERI[row.original.gorev] || row.original.gorev || '-'}
+            {row.original.pozisyon_adi || '-'}
           </span>
         ),
       },
       {
-        accessorKey: 'ekip_adi',
-        header: 'Ekip',
-        cell: ({ row }) => row.original.ekip_adi || '-',
+        accessorKey: 'email',
+        header: 'E-posta',
+        cell: ({ row }) => row.original.email || '-',
       },
       {
-        accessorKey: 'aktif',
+        accessorKey: 'durum',
         header: 'Durum',
         cell: ({ row }) => (
           <span
             className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-              row.original.aktif !== false
+              row.original.durum === 'aktif'
                 ? 'bg-green-100 text-green-700'
                 : 'bg-gray-100 text-gray-600'
             }`}
           >
-            {row.original.aktif !== false ? 'Aktif' : 'Pasif'}
+            {row.original.durum === 'aktif' ? 'Aktif' : 'Pasif'}
           </span>
         ),
       },
@@ -77,20 +76,20 @@ export default function PersonelListesi() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                navigate(`/personel/${row.original.personel_id}`)
+                navigate(`/personel/${row.original.id}`)
               }}
               className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-              title="Goruntule"
+              title="Görüntüle"
             >
               <Eye className="h-4 w-4" />
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                navigate(`/personel/${row.original.personel_id}/duzenle`)
+                navigate(`/personel/${row.original.id}/duzenle`)
               }}
               className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-              title="Duzenle"
+              title="Düzenle"
             >
               <Pencil className="h-4 w-4" />
             </button>
@@ -155,9 +154,9 @@ export default function PersonelListesi() {
         }}
         onConfirm={handleSil}
         title="Personeli Sil"
-        message={`"${silinecekPersonel?.ad_soyad}" personelini silmek istediginize emin misiniz? Bu islem geri alinamaz.`}
+        message={`"${silinecekPersonel?.ad_soyad}" personelini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
         confirmText="Sil"
-        cancelText="Iptal"
+        cancelText="İptal"
         variant="destructive"
       />
     </div>

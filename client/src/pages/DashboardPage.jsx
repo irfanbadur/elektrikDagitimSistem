@@ -4,6 +4,7 @@ import EkipDurumlari from '@/components/dashboard/EkipDurumlari'
 import SonAktiviteler from '@/components/dashboard/SonAktiviteler'
 import BolgeDagilimi from '@/components/dashboard/BolgeDagilimi'
 import AcikTalepler from '@/components/dashboard/AcikTalepler'
+import BelgeUyariKarti from '@/components/dashboard/BelgeUyariKarti'
 import { useDashboardOzet, useDashboardAktiviteler, useEkipDurumlari } from '@/hooks/useDashboard'
 import { useBekleyenTalepler } from '@/hooks/useTalepler'
 import { useKritikMalzemeler } from '@/hooks/useMalzeme'
@@ -35,6 +36,7 @@ export default function DashboardPage() {
           <BolgeDagilimi projeler={projeler} />
           <AcikTalepler talepler={bekleyenTalepler} kritikStoklar={kritikStoklar} />
         </div>
+        <BelgeUyariKarti />
       </div>
     </MainLayout>
   )

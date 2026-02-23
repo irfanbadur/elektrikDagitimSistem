@@ -19,6 +19,8 @@ import SahaMesajPage from '@/pages/SahaMesajPage'
 import AyarlarPage from '@/pages/AyarlarPage'
 import DosyaYonetimiPage from '@/pages/DosyaYonetimiPage'
 import AiSohbetPage from '@/pages/AiSohbetPage'
+import OrganizasyonPage from '@/pages/OrganizasyonPage'
+import GorevlerPage from '@/pages/GorevlerPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +62,7 @@ function AppRoutes() {
         <Route path="/personel/*" element={<PersonelPage />} />
         <Route path="/puantaj/*" element={<PuantajPage />} />
         <Route path="/talepler/*" element={<TaleplerPage />} />
+        <Route path="/gorevler" element={<GorevlerPage />} />
         <Route path="/raporlar" element={<RaporlarPage />} />
         <Route path="/veri-paketleri/*" element={<VeriPaketleriPage />} />
         <Route path="/katalog" element={<KatalogPage />} />
@@ -69,6 +72,7 @@ function AppRoutes() {
         <Route path="/ayarlar" element={<AyarlarPage />} />
         <Route path="/dosya-yonetimi" element={<DosyaYonetimiPage />} />
         <Route path="/ai-sohbet" element={<AiSohbetPage />} />
+        <Route path="/organizasyon/*" element={<OrganizasyonPage />} />
       </Route>
 
       {/* 404 */}

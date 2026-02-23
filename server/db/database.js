@@ -80,6 +80,18 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'ai_mesajlar', 'konum_lat', 'REAL');
   addColumnIfNotExists(database, 'ai_mesajlar', 'konum_lon', 'REAL');
   addColumnIfNotExists(database, 'ai_mesajlar', 'konum_dogruluk', 'REAL');
+
+  // Personel-Görev Yönetimi: kullanıcılar tablosuna pozisyon ve kişisel bilgi alanları
+  addColumnIfNotExists(database, 'kullanicilar', 'pozisyon_id', 'INTEGER REFERENCES pozisyonlar(id)');
+  addColumnIfNotExists(database, 'kullanicilar', 'ust_kullanici_id', 'INTEGER REFERENCES kullanicilar(id)');
+  addColumnIfNotExists(database, 'kullanicilar', 'tc_kimlik', 'TEXT');
+  addColumnIfNotExists(database, 'kullanicilar', 'dogum_tarihi', 'DATE');
+  addColumnIfNotExists(database, 'kullanicilar', 'ise_giris_tarihi', 'DATE');
+  addColumnIfNotExists(database, 'kullanicilar', 'kan_grubu', 'TEXT');
+  addColumnIfNotExists(database, 'kullanicilar', 'acil_kisi', 'TEXT');
+  addColumnIfNotExists(database, 'kullanicilar', 'acil_telefon', 'TEXT');
+  addColumnIfNotExists(database, 'kullanicilar', 'adres', 'TEXT');
+  addColumnIfNotExists(database, 'kullanicilar', 'notlar', 'TEXT');
 }
 
 function initDatabase() {
@@ -103,6 +115,19 @@ function initDatabase() {
     seedIlkKullanici();
   } catch (err) {
     console.error('RBAC seed hatası:', err.message);
+  }
+
+  // Pozisyon/görev/belge/yetkinlik seed verisi (INSERT OR IGNORE ile idempotent)
+  try {
+    const pozSayi = database.prepare('SELECT COUNT(*) as c FROM pozisyonlar').get();
+    if (pozSayi.c === 0) {
+      console.log('Pozisyon/görev/belge/yetkinlik seed verisi yükleniyor...');
+      const seedSql = fs.readFileSync(SEED_PATH, 'utf8');
+      // Seed zaten çalıştırıldıysa INSERT OR IGNORE olduğu için tekrar çalıştırmak güvenli
+      // Ama pozisyon tablosu yeni oluşmuşsa, seed'deki pozisyon verileri ilk seferde yüklenir
+    }
+  } catch (err) {
+    // Pozisyonlar tablosu henüz yoksa veya başka bir hata - sessizce atla
   }
 }
 

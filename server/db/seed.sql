@@ -191,3 +191,200 @@ INSERT INTO dongu_sablon_asamalari (sablon_id, sira, asama_adi, asama_kodu, renk
   ((SELECT id FROM dongu_sablonlari WHERE sablon_kodu='YB'), 4, 'Yapım',                'yapim',           '#f59e0b', '🔧', 15),
   ((SELECT id FROM dongu_sablonlari WHERE sablon_kodu='YB'), 5, 'CBS Kayıt',            'cbs',             '#10b981', '🗺️', 3),
   ((SELECT id FROM dongu_sablonlari WHERE sablon_kodu='YB'), 6, 'Geçici Kabul',         'gecici_kabul',    '#14b8a6', '✅', 10);
+
+-- ═══════════════════════════════════════════════════
+-- POZİSYON TANIMLARI
+-- ═══════════════════════════════════════════════════
+INSERT OR IGNORE INTO pozisyonlar (kod, ad, seviye, kategori, aciklama, varsayilan_sistem_rolu) VALUES
+('firma_sahibi',    'Firma Sahibi / Genel Müdür',  1, 'yonetim',      'Firma sahibi veya genel müdür. Tüm yetkilere sahip.', 'koordinator'),
+('teknik_mudur',    'Teknik Müdür',                 1, 'yonetim',      'Tüm teknik operasyonların sorumlusu.', 'koordinator'),
+('idari_mudur',     'İdari / Mali Müdür',           1, 'yonetim',      'Muhasebe, finans, insan kaynakları ve idari işler.', 'koordinator'),
+('koordinator',     'Bölge Koordinatörü',           2, 'koordinasyon', 'Birden fazla ilçe/bölgedeki projeleri koordine eder.', 'koordinator'),
+('isg_uzmani',      'İSG Uzmanı',                   2, 'koordinasyon', 'Tüm sahalarda iş sağlığı ve güvenliği denetimi.', 'muhendis'),
+('satin_alma',      'Satınalma Sorumlusu',           2, 'koordinasyon', 'Malzeme tedariki, fiyat araştırması, sipariş yönetimi.', 'depocu'),
+('saha_muhendisi',  'Saha Mühendisi',               3, 'teknik',       'Projelerin sahada teknik takibi. Ekip yönetimi.', 'muhendis'),
+('proje_muhendisi', 'Proje Mühendisi',              3, 'teknik',       'Proje tasarımı, DXF çizim, metraj hesabı.', 'muhendis'),
+('buro_muhendisi',  'Büro Mühendisi',               3, 'teknik',       'Hakediş hazırlama, evrak takibi, arşiv yönetimi.', 'muhendis'),
+('tekniker',        'Tekniker',                      3, 'teknik',       'Teknik destek, ölçüm, denetim yardımı.', 'tekniker'),
+('ekip_basi',       'Ekip Başı',                     4, 'saha',         'Bir saha ekibinin şefi. Günlük iş dağılımı.', 'ekip'),
+('usta',            'Usta',                          4, 'saha',         'Uzman işçi — kablo çekme, direk dikme, trafo montajı.', 'ekip'),
+('operator',        'Şoför / Araç Operatörü',        4, 'saha',         'Araç kullanma, sepetli/vinç operasyonu.', 'ekip'),
+('isci',            'İşçi',                          4, 'saha',         'Genel saha işçisi.', 'ekip'),
+('depocu',          'Depocu',                        5, 'destek',       'Malzeme deposu yönetimi. Giriş/çıkış/stok takibi.', 'depocu'),
+('buro_personeli',  'Büro Personeli',                5, 'destek',       'Genel büro işleri, telefon, arşiv.', 'izleyici'),
+('guvenlik',        'Güvenlik',                      5, 'destek',       'Depo/şantiye güvenliği.', 'izleyici');
+
+-- ═══════════════════════════════════════════════════
+-- GÖREV TANIMLARI — Proje Bazlı
+-- ═══════════════════════════════════════════════════
+INSERT OR IGNORE INTO gorev_tanimlari (kod, ad, kategori, aciklama, sorumluluklar, gerekli_belgeler, gerekli_pozisyonlar, min_seviye, max_ayni_anda, zorunlu_proje) VALUES
+('santiye_sefi', 'Şantiye Şefi', 'proje_bazli',
+ 'Sahada günlük yönetimden sorumlu kişi.',
+ '["Günlük iş dağılımı","İSG tedbirlerinin uygulanması","Ekip performans takibi","Günlük ilerleme raporu","Malzeme ihtiyaç bildirimi"]',
+ '["ETIP"]', '["saha_muhendisi","tekniker","ekip_basi"]', 3, 1, 1),
+
+('proje_sorumlusu', 'Proje Sorumlusu', 'proje_bazli',
+ 'Projenin başından sonuna kadar tüm sürecin sahibi.',
+ '["Proje planlaması","Kaynak planlaması","İlerleme takibi","Sorun çözümü","Kurum koordinasyonu"]',
+ '["ETIP"]', '["koordinator","saha_muhendisi"]', 2, 1, 1),
+
+('proje_tasarimci', 'Proje Tasarımcısı', 'proje_bazli',
+ 'Projenin teknik çizimlerini hazırlar.',
+ '["DXF proje çizimi","Metraj hesabı","Malzeme listesi çıkarma","Teknik şartname kontrolü"]',
+ '["ETIP"]', '["proje_muhendisi","saha_muhendisi"]', 3, 0, 1),
+
+('kesif_sorumlusu', 'Keşif Sorumlusu', 'proje_bazli',
+ 'Yer teslimi ve keşif aşamasında sahayı inceler.',
+ '["Saha incelemesi","Yer teslim tutanağı hazırlama","Mevcut hat durumu tespiti","Keşif raporu"]',
+ NULL, '["koordinator","saha_muhendisi","tekniker"]', 2, 0, 1),
+
+('kabul_sorumlusu', 'Kabul Sorumlusu', 'proje_bazli',
+ 'Geçici ve kesin kabul süreçlerini yönetir.',
+ '["Kabul dosyası hazırlama","Test ve ölçümler","Eksiklik listesi takibi","YEDAŞ koordinasyonu"]',
+ '["ETIP"]', '["saha_muhendisi","buro_muhendisi"]', 3, 1, 1),
+
+('hakedis_hazirlayici', 'Hakediş Hazırlayıcısı', 'proje_bazli',
+ 'Proje hakediş dosyasını hazırlar.',
+ '["Metraj hesabı","Hakediş dosyası düzenleme","Birim fiyat kontrolü","İmalat kaydı"]',
+ NULL, '["buro_muhendisi","proje_muhendisi","saha_muhendisi"]', 3, 0, 1),
+
+('topraklama_sorumlu', 'Topraklama Sorumlusu', 'proje_bazli',
+ 'Direk ve tesis topraklama ölçümlerini yapar.',
+ '["Topraklama direnci ölçümü","Ölçüm kayıtları","Standart dışı değerlerin raporlanması"]',
+ NULL, '["saha_muhendisi","tekniker","ekip_basi"]', 3, 0, 1),
+
+('kalite_kontrol', 'Kalite Kontrol', 'proje_bazli',
+ 'İşçilik ve malzeme kalitesini denetler.',
+ '["İşçilik kalite denetimi","Malzeme uygunluk kontrolü","Uygunsuzluk raporu"]',
+ NULL, '["saha_muhendisi","tekniker"]', 3, 0, 1),
+
+('malzeme_takip', 'Malzeme Takip', 'proje_bazli',
+ 'Projeye özel malzeme ihtiyacı ve sarf takibi.',
+ '["Malzeme ihtiyaç listesi","Sevkiyat koordinasyonu","Sarf takibi","Fazla/eksik raporu"]',
+ NULL, '["saha_muhendisi","tekniker","ekip_basi","depocu"]', 3, 0, 1),
+
+('taseron_koordinator', 'Taşeron Koordinatör', 'proje_bazli',
+ 'Alt yüklenici/taşeron ekiplerin projede koordinasyonu.',
+ '["Taşeron iş dağılımı","İş teslim kontrolü","İSG uyumluluk takibi"]',
+ NULL, '["koordinator","saha_muhendisi"]', 2, 0, 1);
+
+-- ═══════════════════════════════════════════════════
+-- GÖREV TANIMLARI — Firma Geneli
+-- ═══════════════════════════════════════════════════
+INSERT OR IGNORE INTO gorev_tanimlari (kod, ad, kategori, aciklama, sorumluluklar, gerekli_belgeler, gerekli_pozisyonlar, min_seviye, max_ayni_anda, zorunlu_proje) VALUES
+('isg_sorumlusu', 'İSG Sorumlusu', 'firma_geneli',
+ 'Tüm sahalarda iş sağlığı ve güvenliği denetimi.',
+ '["Risk değerlendirmesi","İSG eğitim planlaması","Kaza raporları","KKD takibi"]',
+ '["ISG_B","ISG_C"]', '["isg_uzmani","koordinator","saha_muhendisi"]', 2, 0, 0),
+
+('periyodik_kontrol', 'Periyodik Kontrol Uzmanı', 'firma_geneli',
+ 'Elektrik tesislerinin periyodik kontrollerini yapar.',
+ '["Topraklama kontrolü","Trafo kontrolü","Kontrol raporu düzenleme"]',
+ '["ETIP","PERIYODIK_KONTROL"]', '["saha_muhendisi","tekniker"]', 3, 0, 0),
+
+('depo_yoneticisi', 'Depo Yöneticisi', 'firma_geneli',
+ 'Tüm malzeme depolarının yönetimi.',
+ '["Stok sayımı","Giriş/çıkış kayıtları","Minimum stok uyarıları","Yıllık envanter"]',
+ NULL, '["depocu","satin_alma"]', 4, 0, 0),
+
+('arac_sorumlusu', 'Araç Sorumlusu', 'firma_geneli',
+ 'Firma araçlarının bakım, muayene ve kullanım takibi.',
+ '["Araç bakım takvimi","Muayene hatırlatmaları","Yakıt takibi","Sigorta takibi"]',
+ NULL, '["operator","buro_personeli"]', 4, 0, 0),
+
+('egitim_sorumlusu', 'Eğitim Sorumlusu', 'firma_geneli',
+ 'Personel eğitim ihtiyaçlarının belirlenmesi ve takibi.',
+ '["Eğitim ihtiyaç analizi","Eğitim takvimi","Sertifika yenileme uyarıları"]',
+ NULL, '["koordinator","isg_uzmani"]', 2, 0, 0),
+
+('arsiv_sorumlusu', 'Arşiv Sorumlusu', 'firma_geneli',
+ 'Fiziksel ve dijital arşiv yönetimi.',
+ '["Dosya sınıflandırma","Dijital arşiv bakımı","Saklama süresi takibi"]',
+ NULL, '["buro_muhendisi","buro_personeli"]', 3, 0, 0),
+
+('kurum_irtibat', 'Kurum İrtibat', 'firma_geneli',
+ 'YEDAŞ/TEDAŞ ve diğer kurumlarla resmi iletişim.',
+ '["Proje onay başvuruları","Kabul randevu takibi","Resmi yazışmalar"]',
+ NULL, '["koordinator","buro_muhendisi"]', 2, 0, 0),
+
+('bilgi_islem', 'Bilgi İşlem Sorumlusu', 'firma_geneli',
+ 'ElektraTrack ve diğer yazılım/donanım sistemlerinin bakımı.',
+ '["Sistem yedekleme","Kullanıcı hesap yönetimi","Donanım bakımı"]',
+ NULL, '["koordinator","tekniker"]', 2, 0, 0);
+
+-- ═══════════════════════════════════════════════════
+-- GÖREV TANIMLARI — Geçici / Dönemsel
+-- ═══════════════════════════════════════════════════
+INSERT OR IGNORE INTO gorev_tanimlari (kod, ad, kategori, aciklama, sorumluluklar, gerekli_belgeler, gerekli_pozisyonlar, min_seviye, max_ayni_anda, zorunlu_proje) VALUES
+('nobetci', 'Nöbetçi', 'gecici',
+ 'Hafta sonu / gece arıza müdahale nöbeti.',
+ '["Arıza çağrılarına cevap","Acil müdahale koordinasyonu","Nöbet raporu"]',
+ NULL, '["saha_muhendisi","tekniker","ekip_basi"]', 3, 0, 0),
+
+('ihale_hazirlama', 'İhale Dosya Hazırlama', 'gecici',
+ 'Belirli bir ihale için teklif dosyası hazırlama.',
+ '["İhale şartnamesi inceleme","Maliyet hesabı","Teklif dosyası düzenleme"]',
+ NULL, '["koordinator","buro_muhendisi","proje_muhendisi"]', 2, 0, 0),
+
+('denetim_eslik', 'Denetim Eşlikçi', 'gecici',
+ 'YEDAŞ veya resmi kurum denetiminde firmayı temsil eder.',
+ '["Denetçilere eşlik","İstenen belgelerin sunumu","Saha gösterimi"]',
+ '["ETIP"]', '["koordinator","saha_muhendisi"]', 2, 0, 0),
+
+('envanter_sayim', 'Envanter Sayım Sorumlusu', 'gecici',
+ 'Dönemsel envanter sayımı.',
+ '["Fiziksel sayım","Sistem ile karşılaştırma","Fark raporu"]',
+ NULL, '["depocu","buro_personeli","tekniker"]', 4, 0, 0),
+
+('ozel_gorev', 'Özel Görev', 'gecici',
+ 'Önceden tanımlanmamış, açıklama ile belirtilen görev.',
+ NULL, NULL, NULL, 5, 0, 0);
+
+-- ═══════════════════════════════════════════════════
+-- BELGE TÜRLERİ
+-- ═══════════════════════════════════════════════════
+INSERT OR IGNORE INTO belge_turleri (kod, ad, kategori, yenileme_suresi_ay, zorunlu, aciklama) VALUES
+('ETIP',               'ETİP Belgesi',                    'mesleki',  36,   0, 'Elektrik Tesislerinde İşletme ve Proje belgesi'),
+('EKAT',               'EKAT Belgesi',                    'mesleki',  60,   0, 'Elektrikle ilgili fen adamları çalışma belgesi'),
+('ISG_A',              'İSG-A Sertifikası',               'isg',      NULL, 0, 'A sınıfı iş güvenliği uzmanlığı'),
+('ISG_B',              'İSG-B Sertifikası',               'isg',      NULL, 0, 'B sınıfı iş güvenliği uzmanlığı'),
+('ISG_C',              'İSG-C Sertifikası',               'isg',      NULL, 0, 'C sınıfı iş güvenliği uzmanlığı'),
+('PERIYODIK_KONTROL',  'Periyodik Kontrol Belgesi',       'mesleki',  NULL, 0, 'Periyodik kontrol uzmanı yetki belgesi'),
+('MESLEKI_YETERLILIK', 'MYK Belgesi',                     'mesleki',  60,   0, 'Mesleki Yeterlilik Kurumu belgesi'),
+('ILKYARDIM',          'İlk Yardım Sertifikası',          'isg',      36,   0, 'Temel ilk yardım eğitimi sertifikası'),
+('EHLIYET_B',          'B Sınıfı Ehliyet',                'ehliyet',  120,  0, 'Binek araç ehliyeti'),
+('EHLIYET_C',          'C Sınıfı Ehliyet',                'ehliyet',  60,   0, 'Ticari araç ehliyeti'),
+('SRC',                'SRC Belgesi',                      'ehliyet',  60,   0, 'Mesleki yeterlilik belgesi (sürücü)'),
+('FORKLIFT',           'Forklift Operatör Belgesi',        'ehliyet',  60,   0, 'Forklift kullanım belgesi'),
+('SEPETLI',            'Sepetli Araç Operatör Belgesi',    'ehliyet',  36,   0, 'Sepetli araç kullanım belgesi'),
+('YUKSEKTE_CALISMA',   'Yüksekte Çalışma Eğitimi',        'isg',      12,   0, 'Yüksekte çalışma güvenliği eğitimi'),
+('ENERJI_ALTINDA',     'Enerji Altında Çalışma Eğitimi',   'isg',      12,   0, 'Enerji altında çalışma güvenliği eğitimi'),
+('ISG_TEMEL',          'İSG Temel Eğitimi (16 saat)',      'isg',      12,   1, 'Tüm çalışanlar için zorunlu İSG eğitimi'),
+('SGK',                'SGK İşe Giriş Bildirgesi',         'diger',    NULL, 1, 'SGK işe giriş bildirimi'),
+('SAGLIK_RAPORU',      'Sağlık Raporu',                    'diger',    12,   1, 'İşe giriş ve periyodik sağlık raporu'),
+('DIPLOMA',            'Diploma / Mezuniyet Belgesi',      'diger',    NULL, 0, 'En son mezuniyet belgesi');
+
+-- ═══════════════════════════════════════════════════
+-- YETKİNLİK TANIMLARI
+-- ═══════════════════════════════════════════════════
+INSERT OR IGNORE INTO yetkinlik_tanimlari (kod, ad, kategori, aciklama) VALUES
+('ag_montaj',        'AG Hat Montajı',                 'teknik',   'Alçak gerilim hat çekimi ve montaj'),
+('og_montaj',        'OG Hat Montajı',                 'teknik',   'Orta gerilim hat çekimi ve montaj'),
+('trafo_montaj',     'Trafo Montajı',                  'teknik',   'Dağıtım trafosu montaj ve bağlantı'),
+('direk_dikme',      'Direk Dikme',                    'teknik',   'Beton/ahşap/çelik direk dikimi'),
+('kablo_eki',        'Kablo Eki ve Başlığı',           'teknik',   'OG/AG kablo eki ve başlık yapımı'),
+('topraklama',       'Topraklama Tesisatı',            'teknik',   'Topraklama montajı ve ölçümü'),
+('sayac_montaj',     'Sayaç Montajı',                  'teknik',   'Elektrik sayacı montaj ve programlama'),
+('pano_montaj',      'Pano Montajı',                   'teknik',   'AG/OG pano montajı ve kablajı'),
+('aydinlatma',       'Aydınlatma Sistemi',             'teknik',   'Sokak ve tesis aydınlatma montajı'),
+('jenerator',        'Jeneratör Bakım/Montaj',         'teknik',   'Jeneratör montajı, bakımı, test'),
+('olcum_alet',       'Ölçüm Aletleri Kullanımı',      'teknik',   'Topraklama ölçer, izolasyon ölçer vb.'),
+('autocad',          'AutoCAD / DXF',                   'yazilim',  'Proje çizimi ve okuma'),
+('metraj',           'Metraj Hesabı',                   'idari',    'İmalat miktarı hesaplama'),
+('hakedis',          'Hakediş Hazırlama',               'idari',    'Hakediş dosyası düzenleme'),
+('teknik_sartname',  'Teknik Şartname Okuma',           'idari',    'Şartname analizi ve uyumluluk'),
+('excel_ileri',      'İleri Excel',                      'yazilim',  'Formül, pivot, makro'),
+('resmi_yazi',       'Resmi Yazışma',                    'idari',    'Kurum yazışma formatı ve prosedürleri'),
+('sepetli_kullanim', 'Sepetli Araç Kullanımı',          'teknik',   'Sepetli platformlu araç operasyonu'),
+('vinc_kullanim',    'Vinç Kullanımı',                   'teknik',   'Mobil vinç operasyonu'),
+('agir_vasita',      'Ağır Vasıta Kullanımı',            'teknik',   'Kamyon, TIR kullanımı');
