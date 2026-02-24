@@ -106,24 +106,34 @@ router.post('/personel', (req, res) => {
     }
 
     // Varsayılan şifre hash (bcrypt "1234")
-    const bcrypt = require('bcryptjs');
+    const bcrypt = require('bcrypt');
     const sifre_hash = bcrypt.hashSync('1234', 10);
+
+    // pozisyon_id aslında roller tablosundan bir rol_id — kullanicilar tablosuna değil kullanici_rolleri'ne yazılacak
+    const rolId = pozisyon_id || null;
 
     const sonuc = db.prepare(`
       INSERT INTO kullanicilar (kullanici_adi, sifre_hash, ad_soyad, email, telefon, ekip_id,
-        pozisyon_id, ust_kullanici_id, tc_kimlik, dogum_tarihi, ise_giris_tarihi,
+        ust_kullanici_id, tc_kimlik, dogum_tarihi, ise_giris_tarihi,
         kan_grubu, acil_kisi, acil_telefon, adres, notlar)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       kullanici_adi, sifre_hash, ad_soyad,
       email || null, telefon || null, ekip_id || null,
-      pozisyon_id || null, ust_kullanici_id || null,
+      ust_kullanici_id || null,
       tc_kimlik || null, dogum_tarihi || null, ise_giris_tarihi || null,
       kan_grubu || null, acil_kisi || null, acil_telefon || null,
       adres || null, notlar || null
     );
 
-    const yeni = servis.kullaniciDetay(sonuc.lastInsertRowid);
+    const yeniId = sonuc.lastInsertRowid;
+
+    // Rol ataması (ünvan)
+    if (rolId) {
+      db.prepare('INSERT OR IGNORE INTO kullanici_rolleri (kullanici_id, rol_id) VALUES (?, ?)').run(yeniId, rolId);
+    }
+
+    const yeni = servis.kullaniciDetay(yeniId);
     res.status(201).json(yeni);
   } catch (err) {
     res.status(500).json({ error: err.message });

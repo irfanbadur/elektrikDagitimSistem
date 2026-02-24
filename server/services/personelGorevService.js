@@ -77,11 +77,12 @@ class PersonelGorevService {
 
   kullaniciDetay(id) {
     const kullanici = this.db.prepare(`
-      SELECT k.*, p.ad as pozisyon_adi, p.seviye as pozisyon_seviye,
-             p.kod as pozisyon_kodu, p.kategori as pozisyon_kategori,
+      SELECT k.*, r.rol_adi as pozisyon_adi, r.seviye as pozisyon_seviye,
+             r.rol_kodu as pozisyon_kodu, r.id as rol_id,
              ust.ad_soyad as ust_kullanici_adi
       FROM kullanicilar k
-      LEFT JOIN pozisyonlar p ON k.pozisyon_id = p.id
+      LEFT JOIN kullanici_rolleri kr ON kr.kullanici_id = k.id
+      LEFT JOIN roller r ON kr.rol_id = r.id
       LEFT JOIN kullanicilar ust ON k.ust_kullanici_id = ust.id
       WHERE k.id = ?
     `).get(id);
@@ -451,14 +452,16 @@ class PersonelGorevService {
   personelListesi() {
     return this.db.prepare(`
       SELECT k.id, k.kullanici_adi, k.ad_soyad, k.email, k.telefon, k.durum,
-             k.pozisyon_id, k.ust_kullanici_id, k.ise_giris_tarihi,
-             p.ad as pozisyon_adi, p.seviye as pozisyon_seviye, p.kod as pozisyon_kodu,
+             k.ust_kullanici_id, k.ise_giris_tarihi,
+             r.rol_adi as pozisyon_adi, r.seviye as pozisyon_seviye, r.rol_kodu as pozisyon_kodu,
              ust.ad_soyad as ust_kullanici_adi
       FROM kullanicilar k
-      LEFT JOIN pozisyonlar p ON k.pozisyon_id = p.id
+      LEFT JOIN kullanici_rolleri kr ON kr.kullanici_id = k.id
+      LEFT JOIN roller r ON kr.rol_id = r.id
       LEFT JOIN kullanicilar ust ON k.ust_kullanici_id = ust.id
       WHERE k.durum = 'aktif'
-      ORDER BY p.seviye, k.ad_soyad
+      GROUP BY k.id
+      ORDER BY r.seviye DESC, k.ad_soyad
     `).all();
   }
 
@@ -527,7 +530,7 @@ class PersonelGorevService {
 
   kullaniciGuncelle(id, data) {
     const izinliAlanlar = [
-      'pozisyon_id', 'ust_kullanici_id', 'tc_kimlik', 'dogum_tarihi',
+      'ust_kullanici_id', 'tc_kimlik', 'dogum_tarihi',
       'ise_giris_tarihi', 'kan_grubu', 'acil_kisi', 'acil_telefon', 'adres', 'notlar',
       'ad_soyad', 'email', 'telefon'
     ];
@@ -542,12 +545,20 @@ class PersonelGorevService {
       }
     }
 
-    if (alanlar.length === 0) return;
+    if (alanlar.length > 0) {
+      alanlar.push('guncelleme_tarihi = CURRENT_TIMESTAMP');
+      degerler.push(id);
+      this.db.prepare(`UPDATE kullanicilar SET ${alanlar.join(', ')} WHERE id = ?`).run(...degerler);
+    }
 
-    alanlar.push('guncelleme_tarihi = CURRENT_TIMESTAMP');
-    degerler.push(id);
-
-    this.db.prepare(`UPDATE kullanicilar SET ${alanlar.join(', ')} WHERE id = ?`).run(...degerler);
+    // pozisyon_id aslında rol_id — kullanici_rolleri tablosunu güncelle
+    if (data.pozisyon_id !== undefined) {
+      const rolId = data.pozisyon_id === '' ? null : data.pozisyon_id;
+      this.db.prepare('DELETE FROM kullanici_rolleri WHERE kullanici_id = ?').run(id);
+      if (rolId) {
+        this.db.prepare('INSERT OR IGNORE INTO kullanici_rolleri (kullanici_id, rol_id) VALUES (?, ?)').run(id, rolId);
+      }
+    }
   }
 }
 
