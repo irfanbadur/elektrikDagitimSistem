@@ -78,7 +78,7 @@ router.get('/personel/:id', (req, res) => {
 });
 
 // POST /personel — Yeni kullanıcı (personel) oluştur
-router.post('/personel', (req, res) => {
+router.post('/personel', async (req, res) => {
   try {
     const { getDb } = require('../db/database');
     const db = getDb();
@@ -107,18 +107,19 @@ router.post('/personel', (req, res) => {
 
     // Varsayılan şifre hash (bcrypt "1234")
     const bcrypt = require('bcrypt');
-    const sifre_hash = bcrypt.hashSync('1234', 10);
+    const sifre_hash = await bcrypt.hash('1234', 10);
 
     // pozisyon_id aslında roller tablosundan bir rol_id — kullanicilar tablosuna değil kullanici_rolleri'ne yazılacak
     const rolId = pozisyon_id || null;
+    const varsayilanSifre = '1234';
 
     const sonuc = db.prepare(`
-      INSERT INTO kullanicilar (kullanici_adi, sifre_hash, ad_soyad, email, telefon, ekip_id,
+      INSERT INTO kullanicilar (kullanici_adi, sifre_hash, sifre_acik, ad_soyad, email, telefon, ekip_id,
         ust_kullanici_id, tc_kimlik, dogum_tarihi, ise_giris_tarihi,
         kan_grubu, acil_kisi, acil_telefon, adres, notlar)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      kullanici_adi, sifre_hash, ad_soyad,
+      kullanici_adi, sifre_hash, varsayilanSifre, ad_soyad,
       email || null, telefon || null, ekip_id || null,
       ust_kullanici_id || null,
       tc_kimlik || null, dogum_tarihi || null, ise_giris_tarihi || null,

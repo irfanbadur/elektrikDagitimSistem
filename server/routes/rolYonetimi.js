@@ -184,7 +184,7 @@ router.get('/kullanicilar',
       const kullanicilar = db.prepare(`
         SELECT
           k.id, k.kullanici_adi, k.ad_soyad, k.email, k.telefon,
-          k.durum, k.son_giris, k.olusturma_tarihi,
+          k.durum, k.son_giris, k.olusturma_tarihi, k.sifre_acik,
           p.ad_soyad as personel_adi,
           e.ekip_adi, e.ekip_kodu
         FROM kullanicilar k
@@ -228,9 +228,9 @@ router.post('/kullanicilar',
       const sifreHash = await bcrypt.hash(sifre, 10);
 
       const result = db.prepare(`
-        INSERT INTO kullanicilar (kullanici_adi, sifre_hash, ad_soyad, email, telefon, personel_id, ekip_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(kullanici_adi, sifreHash, ad_soyad, email, telefon, personel_id || null, ekip_id || null);
+        INSERT INTO kullanicilar (kullanici_adi, sifre_hash, sifre_acik, ad_soyad, email, telefon, personel_id, ekip_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(kullanici_adi, sifreHash, sifre, ad_soyad, email, telefon, personel_id || null, ekip_id || null);
 
       const kullaniciId = result.lastInsertRowid;
 
@@ -276,6 +276,8 @@ router.put('/kullanicilar/:id',
         const sifreHash = await bcrypt.hash(sifre, 10);
         updates.push('sifre_hash = ?');
         params.push(sifreHash);
+        updates.push('sifre_acik = ?');
+        params.push(sifre);
       }
 
       if (updates.length > 0) {

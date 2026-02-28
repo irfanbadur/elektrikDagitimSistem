@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useKullanicilar, useRoller, useKullaniciOlustur, useKullaniciGuncelle, useKullaniciRolGuncelle } from '@/hooks/useYonetim'
-import { Plus, Edit2, X, UserPlus, Shield } from 'lucide-react'
+import { Plus, Edit2, X, UserPlus, Shield, Eye, EyeOff, Key } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function KullaniciYonetimi() {
@@ -53,6 +53,7 @@ export default function KullaniciYonetimi() {
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50 text-left">
               <th className="px-4 py-3 font-medium text-gray-600">Kullanıcı</th>
+              <th className="px-4 py-3 font-medium text-gray-600">Şifre</th>
               <th className="px-4 py-3 font-medium text-gray-600">Roller</th>
               <th className="px-4 py-3 font-medium text-gray-600">Durum</th>
               <th className="px-4 py-3 font-medium text-gray-600">Son Giriş</th>
@@ -67,6 +68,9 @@ export default function KullaniciYonetimi() {
                     <div className="font-medium text-gray-800">{k.ad_soyad}</div>
                     <div className="text-xs text-gray-500">@{k.kullanici_adi}</div>
                   </div>
+                </td>
+                <td className="px-4 py-3">
+                  <SifreHucre sifre={k.sifre_acik} />
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
@@ -148,7 +152,29 @@ export default function KullaniciYonetimi() {
   )
 }
 
+function SifreHucre({ sifre }) {
+  const [goster, setGoster] = useState(false)
+
+  if (!sifre) return <span className="text-xs text-gray-400 italic">—</span>
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-700">
+        {goster ? sifre : '••••••'}
+      </code>
+      <button
+        onClick={() => setGoster(!goster)}
+        className="rounded p-0.5 text-gray-400 hover:text-gray-600"
+        title={goster ? 'Gizle' : 'Göster'}
+      >
+        {goster ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  )
+}
+
 function KullaniciFormModal({ kullanici, roller, onKaydet, onKapat, kaydetYukleniyor }) {
+  const [sifreGoster, setSifreGoster] = useState(false)
   const [form, setForm] = useState({
     kullanici_adi: kullanici?.kullanici_adi || '',
     ad_soyad: kullanici?.ad_soyad || '',
@@ -199,13 +225,28 @@ function KullaniciFormModal({ kullanici, roller, onKaydet, onKapat, kaydetYuklen
             <label className="block text-xs font-medium text-gray-600 mb-1">
               {kullanici ? 'Yeni Şifre (boş bırakılırsa değişmez)' : 'Şifre'}
             </label>
-            <input
-              type="password"
-              value={form.sifre}
-              onChange={e => setForm({ ...form, sifre: e.target.value })}
-              placeholder={kullanici ? '••••••' : 'En az 6 karakter'}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-            />
+            <div className="relative">
+              <input
+                type={sifreGoster ? 'text' : 'password'}
+                value={form.sifre}
+                onChange={e => setForm({ ...form, sifre: e.target.value })}
+                placeholder={kullanici ? '••••••' : 'En az 6 karakter'}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm outline-none focus:border-blue-500"
+              />
+              <button
+                type="button"
+                onClick={() => setSifreGoster(!sifreGoster)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                {sifreGoster ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {kullanici?.sifre_acik && !form.sifre && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                <Key className="h-3 w-3" />
+                Mevcut şifre: <code className="rounded bg-gray-100 px-1 font-mono text-gray-700">{kullanici.sifre_acik}</code>
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -92,6 +92,7 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'kullanicilar', 'acil_telefon', 'TEXT');
   addColumnIfNotExists(database, 'kullanicilar', 'adres', 'TEXT');
   addColumnIfNotExists(database, 'kullanicilar', 'notlar', 'TEXT');
+  addColumnIfNotExists(database, 'kullanicilar', 'sifre_acik', 'TEXT');
 }
 
 function initDatabase() {

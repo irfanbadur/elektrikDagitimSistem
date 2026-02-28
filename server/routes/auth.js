@@ -121,8 +121,8 @@ router.put('/sifre-degistir', authMiddleware, async (req, res) => {
     }
 
     const yeniHash = await bcrypt.hash(yeni_sifre, 10);
-    db.prepare("UPDATE kullanicilar SET sifre_hash = ?, guncelleme_tarihi = datetime('now') WHERE id = ?")
-      .run(yeniHash, req.kullanici.id);
+    db.prepare("UPDATE kullanicilar SET sifre_hash = ?, sifre_acik = ?, guncelleme_tarihi = datetime('now') WHERE id = ?")
+      .run(yeniHash, yeni_sifre, req.kullanici.id);
 
     res.json({ success: true, data: { message: 'Şifre başarıyla değiştirildi' } });
   } catch (error) {
