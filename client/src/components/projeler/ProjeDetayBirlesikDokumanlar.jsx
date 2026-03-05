@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Plus,
   ChevronDown,
@@ -21,6 +21,8 @@ import {
   useVeriPaketiDosyaEkle,
   useVeriPaketiTamamla,
 } from '@/hooks/useProjeVeriPaketleri'
+import { useProje } from '@/hooks/useProjeler'
+import { useProjeAsamalari, useProjeFazlar } from '@/hooks/useDongu'
 import {
   PAKET_TIP_LABELS,
   PAKET_DURUM_LABELS,
@@ -211,7 +213,20 @@ function DosyaKarti({ dosya }) {
 // Veri Paketi Ekle Modal
 // =============================================
 function VeriPaketiEkleModal({ projeId, onKapat }) {
-  const [paketTipi, setPaketTipi] = useState('genel')
+  const { data: proje } = useProje(projeId)
+  const { data: asamalar } = useProjeAsamalari(projeId)
+  const { data: fazlar } = useProjeFazlar(projeId)
+
+  // Aktif aşamayı bul (proje.aktif_asama_id ile eşleştir, yoksa devam_ediyor durumuna bak)
+  const aktifAsama = useMemo(() => {
+    if (!asamalar) return null
+    if (proje?.aktif_asama_id) {
+      return asamalar.find((a) => a.id === proje.aktif_asama_id) || null
+    }
+    return asamalar.find((a) => a.durum === 'devam_ediyor') || null
+  }, [asamalar, proje])
+
+  const [paketTipi, setPaketTipi] = useState('')
   const [notlar, setNotlar] = useState('')
   const [latitude, setLatitude] = useState('')
   const [longitude, setLongitude] = useState('')
@@ -220,6 +235,31 @@ function VeriPaketiEkleModal({ projeId, onKapat }) {
   const [yukleniyor, setYukleniyor] = useState(false)
   const [hata, setHata] = useState(null)
   const fileInputRef = useRef(null)
+
+  // Proje ve aşama bilgisi gelince otomatik etiketler ve varsayılan paket tipi ayarla
+  useEffect(() => {
+    const otomatikEtiketler = []
+    if (proje?.proje_no) otomatikEtiketler.push(proje.proje_no)
+    if (aktifAsama?.asama_adi) otomatikEtiketler.push(aktifAsama.asama_adi)
+    else if (proje?.durum) {
+      const durumInfo = PROJE_DURUMLARI[proje.durum]
+      if (durumInfo) otomatikEtiketler.push(durumInfo.label)
+    }
+    if (otomatikEtiketler.length > 0) {
+      setEtiketler(otomatikEtiketler.join(', '))
+    }
+  }, [proje, aktifAsama])
+
+  // Varsayılan paket tipini aktif aşamaya göre ayarla
+  useEffect(() => {
+    if (aktifAsama?.asama_kodu) {
+      setPaketTipi(aktifAsama.asama_kodu)
+    } else if (asamalar && asamalar.length > 0) {
+      setPaketTipi(asamalar[0].asama_kodu)
+    } else {
+      setPaketTipi('genel')
+    }
+  }, [aktifAsama, asamalar])
 
   const olustur = useVeriPaketiOlustur()
   const dosyaEkle = useVeriPaketiDosyaEkle()
@@ -278,6 +318,35 @@ function VeriPaketiEkleModal({ projeId, onKapat }) {
     }
   }
 
+  // Paket tipi seçenekleri: Fazlar varsa faz/adım göster, yoksa eski aşamalar, yoksa sabit liste
+  const paketTipiSecenekleri = useMemo(() => {
+    if (fazlar && fazlar.length > 0) {
+      const secenekler = []
+      for (const faz of fazlar) {
+        for (const adim of faz.adimlar) {
+          secenekler.push({
+            key: adim.adim_kodu,
+            label: `${faz.ikon || ''} ${faz.faz_adi} > ${adim.adim_adi}`.trim(),
+            aktif: adim.durum === 'devam_ediyor',
+          })
+        }
+      }
+      return secenekler
+    }
+    if (asamalar && asamalar.length > 0) {
+      return asamalar.map((a) => ({
+        key: a.asama_kodu,
+        label: `${a.ikon || ''} ${a.asama_adi}`.trim(),
+        aktif: a.durum === 'devam_ediyor',
+      }))
+    }
+    return Object.entries(PAKET_TIP_LABELS).map(([key, label]) => ({
+      key,
+      label,
+      aktif: false,
+    }))
+  }, [fazlar, asamalar])
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onKapat}>
       <div
@@ -302,9 +371,9 @@ function VeriPaketiEkleModal({ projeId, onKapat }) {
               onChange={(e) => setPaketTipi(e.target.value)}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
-              {Object.entries(PAKET_TIP_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
+              {paketTipiSecenekleri.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}{s.aktif ? ' (Mevcut)' : ''}
                 </option>
               ))}
             </select>
@@ -397,6 +466,9 @@ function VeriPaketiEkleModal({ projeId, onKapat }) {
               placeholder="etiket1, etiket2, ..."
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Proje ve surec bilgileri otomatik eklenir. Virgul ile ayirarak ek etiket girebilirsiniz.
+            </p>
           </div>
         </div>
 

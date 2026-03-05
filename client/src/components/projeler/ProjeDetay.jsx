@@ -17,7 +17,7 @@ import {
   GitBranch,
 } from 'lucide-react'
 import { useProje, useProjeSil, useProjeDurumDegistir, useProjeDurumGecmisi } from '@/hooks/useProjeler'
-import { useProjeAsamalari } from '@/hooks/useDongu'
+import { useProjeAsamalari, useProjeFazlar } from '@/hooks/useDongu'
 import { ProjeDurumBadge, OncelikBadge } from '@/components/shared/StatusBadge'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { CardSkeleton, TableSkeleton } from '@/components/shared/LoadingSkeleton'
@@ -44,6 +44,7 @@ export default function ProjeDetay() {
   const { data: proje, isLoading } = useProje(id)
   const { data: durumGecmisi } = useProjeDurumGecmisi(id)
   const { data: projeAsamalari } = useProjeAsamalari(id)
+  const { data: projeFazlar } = useProjeFazlar(id)
   const projeSil = useProjeSil()
   const durumDegistir = useProjeDurumDegistir()
 
@@ -126,6 +127,11 @@ export default function ProjeDetay() {
                 asamaAdi={proje.aktif_asama_adi}
                 asamaRenk={proje.aktif_asama_renk}
                 asamaIkon={proje.aktif_asama_ikon}
+                fazAdi={proje.aktif_faz_adi}
+                adimAdi={proje.aktif_adim_adi}
+                adimRenk={proje.aktif_adim_renk}
+                adimIkon={proje.aktif_adim_ikon}
+                sorumluRolAdi={proje.aktif_sorumlu_rol_adi}
               />
               <OncelikBadge oncelik={proje.oncelik} />
             </div>
@@ -179,7 +185,29 @@ export default function ProjeDetay() {
                     onClick={() => setDurumMenuAcik(false)}
                   />
                   <div className="absolute right-0 z-20 mt-1 w-48 rounded-md border border-border bg-white py-1 shadow-lg">
-                    {projeAsamalari && projeAsamalari.length > 0
+                    {projeFazlar && projeFazlar.length > 0
+                      ? projeFazlar.map((faz) => (
+                          <div key={faz.faz_kodu}>
+                            <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase bg-muted/30">
+                              {faz.ikon} {faz.faz_adi}
+                            </div>
+                            {faz.adimlar.map((a) => (
+                              <button
+                                key={a.id}
+                                onClick={() => handleDurumDegistir(a.faz_kodu)}
+                                disabled={a.faz_kodu === proje.durum}
+                                className={cn(
+                                  'flex w-full items-center gap-2 px-4 py-1.5 text-left text-sm hover:bg-muted',
+                                  a.faz_kodu === proje.durum && 'bg-muted/50 text-muted-foreground opacity-50'
+                                )}
+                              >
+                                <span className="text-xs text-muted-foreground">{a.adim_sira}.</span>
+                                <span>{a.adim_adi}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ))
+                      : projeAsamalari && projeAsamalari.length > 0
                       ? projeAsamalari.map((a) => (
                           <button
                             key={a.asama_kodu}
@@ -334,7 +362,7 @@ export default function ProjeDetay() {
         )}
 
         {aktifTab === 'dongu' && (
-          <ProjeDongu projeId={id} />
+          <ProjeDongu projeId={id} projeTipi={proje?.proje_tipi} />
         )}
 
         {aktifTab === 'raporlar' && (

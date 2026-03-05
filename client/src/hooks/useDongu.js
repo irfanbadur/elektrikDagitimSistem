@@ -119,3 +119,75 @@ export function useAsamaAtla() {
     },
   })
 }
+
+// ─── FAZ/ADIM HOOKS (yeni sistem) ─────────────
+
+export function useProjeFazlar(projeId) {
+  return useQuery({
+    queryKey: ['proje-fazlar', projeId],
+    queryFn: () => api.get(`/dongu/proje/${projeId}/faz`),
+    select: (res) => res.data,
+    enabled: !!projeId,
+  })
+}
+
+export function useProjeFazIlerleme(projeId) {
+  return useQuery({
+    queryKey: ['proje-faz-ilerleme', projeId],
+    queryFn: () => api.get(`/dongu/proje/${projeId}/faz-ilerleme`),
+    select: (res) => res.data,
+    enabled: !!projeId,
+  })
+}
+
+export function useProjeFazAta() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ projeId, isTipiId }) =>
+      api.post(`/dongu/proje/${projeId}/faz-ata`, { is_tipi_id: isTipiId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proje-fazlar'] })
+      qc.invalidateQueries({ queryKey: ['proje-faz-ilerleme'] })
+      qc.invalidateQueries({ queryKey: ['proje'] })
+    },
+  })
+}
+
+export function useAdimBaslat() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ adimId, ...data }) =>
+      api.put(`/dongu/adim/${adimId}/baslat`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proje-fazlar'] })
+      qc.invalidateQueries({ queryKey: ['proje-faz-ilerleme'] })
+      qc.invalidateQueries({ queryKey: ['proje'] })
+    },
+  })
+}
+
+export function useAdimTamamla() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ adimId, ...data }) =>
+      api.put(`/dongu/adim/${adimId}/tamamla`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proje-fazlar'] })
+      qc.invalidateQueries({ queryKey: ['proje-faz-ilerleme'] })
+      qc.invalidateQueries({ queryKey: ['proje'] })
+    },
+  })
+}
+
+export function useAdimAtla() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ adimId, ...data }) =>
+      api.put(`/dongu/adim/${adimId}/atla`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proje-fazlar'] })
+      qc.invalidateQueries({ queryKey: ['proje-faz-ilerleme'] })
+      qc.invalidateQueries({ queryKey: ['proje'] })
+    },
+  })
+}

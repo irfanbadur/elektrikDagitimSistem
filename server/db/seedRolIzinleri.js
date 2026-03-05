@@ -66,9 +66,9 @@ function seedTemelVeriler() {
   if (rolSayisi === 0) {
     db.exec(`
       INSERT OR IGNORE INTO roller (rol_adi, rol_kodu, aciklama, renk, ikon, seviye, sistem_rolu) VALUES
-        ('Patron',          'patron',       'Tüm yetkilere sahip, firma sahibi',           '#dc2626', '👑', 100, 1),
-        ('Koordinatör',     'koordinator',  'Günlük operasyon yönetimi',                    '#2563eb', '📋', 90,  1),
-        ('Şantiye Şefi',   'santiye_sefi', 'Şantiye bazlı proje ve ekip yönetimi',         '#f59e0b', '🏗️', 80,  1),
+        ('Genel Müdür',     'patron',       'Tüm yetkilere sahip, firma sahibi',           '#dc2626', '👑', 100, 1),
+        ('Koordinatör',     'koordinator',  'Günlük operasyon yönetimi, tüm yetkiler',      '#2563eb', '📋', 90,  1),
+        ('Sistem Yöneticisi','santiye_sefi','Sistem yönetimi, tüm yetkiler',                '#f59e0b', '🏗️', 80,  1),
         ('Saha Mühendisi',  'saha_muhendis','Sahada teknik kontrol ve denetim',             '#10b981', '🔍', 70,  1),
         ('Ekip Başı',       'ekip_basi',   'Saha ekip yönetimi, veri paketi gönderimi',     '#8b5cf6', '👷', 60,  1),
         ('Depocu',          'depocu',      'Malzeme ve stok yönetimi',                      '#0ea5e9', '📦', 50,  1),
@@ -109,7 +109,7 @@ function seedRolIzinleri() {
     }
   }
 
-  // ─── PATRON — HER ŞEY ──────────────────────────
+  // ─── GENEL MÜDÜR (patron) — HER ŞEY ──────────────────────────
   const patronIzinler = db.prepare('SELECT id FROM izinler').all();
   const pId = rolId('patron');
   if (pId) {
@@ -118,62 +118,21 @@ function seedRolIzinleri() {
     }
   }
 
-  // ─── KOORDİNATÖR ─────────────────────────────────
-  ata('koordinator', 'projeler', 'okuma');
-  ata('koordinator', 'projeler', 'yazma');
-  ata('koordinator', 'projeler', 'silme');
-  ata('koordinator', 'projeler', 'onaylama');
-  ata('koordinator', 'dongu', 'okuma');
-  ata('koordinator', 'dongu', 'yazma');
-  ata('koordinator', 'dongu', 'sablon');
-  ata('koordinator', 'ekipler', 'okuma');
-  ata('koordinator', 'ekipler', 'yazma');
-  ata('koordinator', 'ekipler', 'silme');
-  ata('koordinator', 'personel', 'okuma');
-  ata('koordinator', 'personel', 'yazma');
-  ata('koordinator', 'personel', 'silme');
-  ata('koordinator', 'veri_paketi', 'okuma');
-  ata('koordinator', 'veri_paketi', 'yazma');
-  ata('koordinator', 'veri_paketi', 'silme');
-  ata('koordinator', 'veri_paketi', 'onaylama');
-  ata('koordinator', 'dosyalar', 'okuma');
-  ata('koordinator', 'dosyalar', 'yazma');
-  ata('koordinator', 'dosyalar', 'silme');
-  ata('koordinator', 'saha_harita', 'okuma');
-  ata('koordinator', 'saha_harita', 'yazma');
-  ata('koordinator', 'saha_mesaj', 'okuma');
-  ata('koordinator', 'saha_mesaj', 'yazma');
-  ata('koordinator', 'saha_mesaj', 'onaylama');
-  ata('koordinator', 'malzeme', 'okuma');
-  ata('koordinator', 'malzeme', 'yazma');
-  ata('koordinator', 'malzeme', 'silme');
-  ata('koordinator', 'malzeme', 'talep');
-  ata('koordinator', 'malzeme', 'onaylama');
-  ata('koordinator', 'finansal', 'okuma');
-  ata('koordinator', 'isg', 'okuma');
-  ata('koordinator', 'raporlar', 'genel');
-  ata('koordinator', 'ayarlar', 'telegram');
-  ata('koordinator', 'ayarlar', 'dongu');
+  // ─── KOORDİNATÖR — HER ŞEY ─────────────────────
+  const kId = rolId('koordinator');
+  if (kId) {
+    for (const izin of patronIzinler) {
+      db.prepare('INSERT OR IGNORE INTO rol_izinleri (rol_id, izin_id, veri_kapsami) VALUES (?, ?, ?)').run(kId, izin.id, 'tum');
+    }
+  }
 
-  // ─── ŞANTİYE ŞEFİ ─────────────────────────────
-  ata('santiye_sefi', 'projeler', 'okuma', 'kendi_santiye');
-  ata('santiye_sefi', 'projeler', 'yazma', 'kendi_santiye');
-  ata('santiye_sefi', 'dongu', 'okuma', 'kendi_santiye');
-  ata('santiye_sefi', 'dongu', 'yazma', 'kendi_santiye');
-  ata('santiye_sefi', 'ekipler', 'okuma', 'kendi_santiye');
-  ata('santiye_sefi', 'ekipler', 'yazma', 'kendi_santiye');
-  ata('santiye_sefi', 'personel', 'okuma', 'kendi_santiye');
-  ata('santiye_sefi', 'veri_paketi', 'okuma', 'kendi_santiye');
-  ata('santiye_sefi', 'veri_paketi', 'yazma', 'kendi_santiye');
-  ata('santiye_sefi', 'dosyalar', 'okuma', 'kendi_santiye');
-  ata('santiye_sefi', 'dosyalar', 'yazma', 'kendi_santiye');
-  ata('santiye_sefi', 'dosyalar', 'silme', 'kendi_santiye');
-  ata('santiye_sefi', 'saha_harita', 'okuma');
-  ata('santiye_sefi', 'saha_harita', 'yazma', 'kendi_santiye');
-  ata('santiye_sefi', 'saha_mesaj', 'okuma', 'kendi_santiye');
-  ata('santiye_sefi', 'malzeme', 'okuma');
-  ata('santiye_sefi', 'malzeme', 'talep');
-  ata('santiye_sefi', 'raporlar', 'genel');
+  // ─── SİSTEM YÖNETİCİSİ (eski Şantiye Şefi) — HER ŞEY ─────
+  const sId = rolId('santiye_sefi');
+  if (sId) {
+    for (const izin of patronIzinler) {
+      db.prepare('INSERT OR IGNORE INTO rol_izinleri (rol_id, izin_id, veri_kapsami) VALUES (?, ?, ?)').run(sId, izin.id, 'tum');
+    }
+  }
 
   // ─── SAHA MÜHENDİSİ ────────────────────────────
   ata('saha_muhendis', 'projeler', 'okuma');

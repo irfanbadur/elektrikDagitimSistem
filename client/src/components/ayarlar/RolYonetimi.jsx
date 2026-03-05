@@ -100,7 +100,7 @@ export default function RolYonetimi() {
               </span>
               {rol.sistem_rolu && (
                 <span className="inline-block rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
-                  Sistem Rolü
+                  Sistem Rolü / Ünvan
                 </span>
               )}
             </div>

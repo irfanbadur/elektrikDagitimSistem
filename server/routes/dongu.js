@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const donguService = require('../services/donguService');
+const fazService = require('../services/fazService');
 
 // ═══════════════════════════════════════════════
 // ŞABLON ENDPOINT'LERİ
@@ -128,6 +129,73 @@ router.put('/asama/:id/atla', (req, res) => {
 router.put('/asama/:id/tarih', (req, res) => {
   try {
     donguService.asamaTarihGuncelle(parseInt(req.params.id), req.body);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════
+// FAZ/ADIM ENDPOINT'LERİ (yeni sistem)
+// ═══════════════════════════════════════════════
+
+// POST /api/dongu/proje/:projeId/faz-ata
+router.post('/proje/:projeId/faz-ata', (req, res) => {
+  try {
+    const fazlar = fazService.projeAdimAta(
+      parseInt(req.params.projeId),
+      parseInt(req.body.is_tipi_id)
+    );
+    res.json({ success: true, data: fazlar });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/dongu/proje/:projeId/faz
+router.get('/proje/:projeId/faz', (req, res) => {
+  try {
+    const fazlar = fazService.projeAdimGetir(parseInt(req.params.projeId));
+    res.json({ success: true, data: fazlar });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/dongu/proje/:projeId/faz-ilerleme
+router.get('/proje/:projeId/faz-ilerleme', (req, res) => {
+  try {
+    const ilerleme = fazService.projeIlerlemeFaz(parseInt(req.params.projeId));
+    res.json({ success: true, data: ilerleme });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/dongu/adim/:id/baslat
+router.put('/adim/:id/baslat', (req, res) => {
+  try {
+    const sonuc = fazService.adimBaslat(parseInt(req.params.id), req.body);
+    res.json({ success: true, data: sonuc });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/dongu/adim/:id/tamamla
+router.put('/adim/:id/tamamla', (req, res) => {
+  try {
+    const sonuc = fazService.adimTamamla(parseInt(req.params.id), req.body);
+    res.json({ success: true, data: sonuc });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/dongu/adim/:id/atla
+router.put('/adim/:id/atla', (req, res) => {
+  try {
+    fazService.adimAtla(parseInt(req.params.id), req.body);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

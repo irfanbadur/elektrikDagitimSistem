@@ -27,11 +27,23 @@ router.get('/roller',
         ORDER BY i.modul, i.aksiyon
       `);
 
-      const sonuc = roller.map(r => ({
-        ...r,
-        izinler: stmt.all(r.id),
-        kullanici_sayisi: db.prepare('SELECT COUNT(*) as sayi FROM kullanici_rolleri WHERE rol_id = ?').get(r.id).sayi,
-      }));
+      const kullaniciStmt = db.prepare(`
+        SELECT k.id, k.ad_soyad
+        FROM kullanici_rolleri kr
+        JOIN kullanicilar k ON kr.kullanici_id = k.id
+        WHERE kr.rol_id = ? AND k.durum = 'aktif'
+        ORDER BY k.ad_soyad
+      `);
+
+      const sonuc = roller.map(r => {
+        const kullanicilar = kullaniciStmt.all(r.id);
+        return {
+          ...r,
+          izinler: stmt.all(r.id),
+          kullanici_sayisi: kullanicilar.length,
+          kullanicilar,
+        };
+      });
 
       res.json({ success: true, data: sonuc });
     } catch (error) {

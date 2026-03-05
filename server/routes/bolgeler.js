@@ -13,6 +13,37 @@ router.get('/', (req, res) => {
   }
 });
 
+// GET /api/bolgeler/matris
+router.get('/matris', (req, res) => {
+  try {
+    const db = getDb();
+    const bolgeler = db.prepare('SELECT id, bolge_adi, bolge_tipi FROM bolgeler WHERE aktif = 1 ORDER BY sira, bolge_adi').all();
+    const isTipleri = db.prepare('SELECT id, kod, ad FROM is_tipleri WHERE aktif = 1 ORDER BY sira, ad').all();
+    const ekipler = db.prepare(`
+      SELECT id as ekip_id, ekip_adi, ekip_kodu, varsayilan_bolge_id, varsayilan_is_tipi_id
+      FROM ekipler
+      WHERE durum = 'aktif' AND varsayilan_bolge_id IS NOT NULL AND varsayilan_is_tipi_id IS NOT NULL
+    `).all();
+
+    const atamalar = {};
+    for (const b of bolgeler) {
+      for (const it of isTipleri) {
+        atamalar[`${b.id}_${it.id}`] = [];
+      }
+    }
+    for (const e of ekipler) {
+      const key = `${e.varsayilan_bolge_id}_${e.varsayilan_is_tipi_id}`;
+      if (atamalar[key]) {
+        atamalar[key].push({ ekip_id: e.ekip_id, ekip_adi: e.ekip_adi, ekip_kodu: e.ekip_kodu });
+      }
+    }
+
+    basarili(res, { bolgeler, isTipleri, atamalar });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
 // GET /api/bolgeler/:id
 router.get('/:id', (req, res) => {
   try {

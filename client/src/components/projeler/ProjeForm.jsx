@@ -4,7 +4,7 @@ import { ArrowLeft, Save, X } from 'lucide-react'
 import { useProje, useProjeOlustur, useProjeGuncelle } from '@/hooks/useProjeler'
 import { useBolgeler } from '@/hooks/useBolgeler'
 import { useEkipler } from '@/hooks/useEkipler'
-import { useDonguSablonlari } from '@/hooks/useDongu'
+import { useIsTipleri } from '@/hooks/useIsTipleri'
 import { PROJE_DURUMLARI, ONCELIK_LABELS } from '@/utils/constants'
 import { CardSkeleton } from '@/components/shared/LoadingSkeleton'
 import { cn } from '@/lib/utils'
@@ -35,29 +35,29 @@ export default function ProjeForm() {
   const { data: proje, isLoading: projeYukleniyor } = useProje(id)
   const { data: bolgeler } = useBolgeler()
   const { data: ekipler } = useEkipler()
-  const { data: sablonlar } = useDonguSablonlari()
+  const { data: isTipleri } = useIsTipleri()
   const projeOlustur = useProjeOlustur()
   const projeGuncelle = useProjeGuncelle()
 
   const [form, setForm] = useState(BOS_FORM)
   const [hatalar, setHatalar] = useState({})
   const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [genelHata, setGenelHata] = useState('')
 
-  // Proje tipine göre eşleşen döngü şablonu aşamaları
-  const eslesmisAsamalar = useMemo(() => {
-    if (!sablonlar || !form.proje_tipi) return null
-    const sablon = sablonlar.find(
-      (s) => s.sablon_kodu.toUpperCase() === form.proje_tipi.toUpperCase()
-    )
-    return sablon?.asamalar || null
-  }, [sablonlar, form.proje_tipi])
+  // Proje tipine göre eşleşen iş tipi fazları
+  const eslesmisIsTipi = useMemo(() => {
+    if (!isTipleri || !form.proje_tipi) return null
+    return isTipleri.find(
+      (t) => t.kod.toUpperCase() === form.proje_tipi.toUpperCase()
+    ) || null
+  }, [isTipleri, form.proje_tipi])
 
-  // Proje tipi değiştiğinde durum'u ilk aşama kodu yap (sadece yeni proje modunda)
+  // Proje tipi değiştiğinde durum'u ilk faz kodu yap (sadece yeni proje modunda)
   useEffect(() => {
-    if (!duzenleModu && eslesmisAsamalar && eslesmisAsamalar.length > 0) {
-      setForm((prev) => ({ ...prev, durum: eslesmisAsamalar[0].asama_kodu }))
+    if (!duzenleModu && eslesmisIsTipi && eslesmisIsTipi.fazlar.length > 0) {
+      setForm((prev) => ({ ...prev, durum: eslesmisIsTipi.fazlar[0].faz_kodu }))
     }
-  }, [eslesmisAsamalar, duzenleModu])
+  }, [eslesmisIsTipi, duzenleModu])
 
   // Load existing project data for edit mode
   useEffect(() => {
@@ -111,6 +111,7 @@ export default function ProjeForm() {
     if (!validate()) return
 
     setGonderiliyor(true)
+    setGenelHata('')
 
     const payload = {
       ...form,
@@ -129,6 +130,9 @@ export default function ProjeForm() {
     mutation.mutate(mutationData, {
       onSuccess: () => {
         navigate(duzenleModu ? `/projeler/${id}` : '/projeler')
+      },
+      onError: (err) => {
+        setGenelHata(err.message || 'Kaydetme sırasında bir hata oluştu.')
       },
       onSettled: () => {
         setGonderiliyor(false)
@@ -202,9 +206,16 @@ export default function ProjeForm() {
                 )}
               >
                 <option value="">Seciniz</option>
-                <option value="YB">YB</option>
-                <option value="KET">KET</option>
-                <option value="Tesis">Tesis</option>
+                {isTipleri?.map((t) => (
+                  <option key={t.id} value={t.kod}>{t.ad} ({t.kod})</option>
+                ))}
+                {(!isTipleri || isTipleri.length === 0) && (
+                  <>
+                    <option value="YB">YB</option>
+                    <option value="KET">KET</option>
+                    <option value="Tesis">Tesis</option>
+                  </>
+                )}
               </select>
               {hatalar.proje_tipi && (
                 <p className="mt-1 text-xs text-red-500">{hatalar.proje_tipi}</p>
@@ -248,10 +259,10 @@ export default function ProjeForm() {
                 onChange={(e) => handleChange('durum', e.target.value)}
                 className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
-                {eslesmisAsamalar
-                  ? eslesmisAsamalar.map((a) => (
-                      <option key={a.asama_kodu} value={a.asama_kodu}>
-                        {a.ikon} {a.asama_adi}
+                {eslesmisIsTipi
+                  ? eslesmisIsTipi.fazlar.map((f) => (
+                      <option key={f.faz_kodu} value={f.faz_kodu}>
+                        {f.ikon} {f.faz_adi}
                       </option>
                     ))
                   : Object.entries(PROJE_DURUMLARI).map(([key, val]) => (
@@ -287,9 +298,9 @@ export default function ProjeForm() {
                 className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
                 <option value="">Seciniz</option>
-                {ekipler?.map((e) => (
-                  <option key={e.ekip_id} value={e.ekip_id}>
-                    {e.ekip_adi}
+                {ekipler?.map((ekip) => (
+                  <option key={ekip.id} value={ekip.id}>
+                    {ekip.ekip_adi}
                   </option>
                 ))}
               </select>
@@ -422,6 +433,13 @@ export default function ProjeForm() {
             </div>
           </div>
         </div>
+
+        {/* Hata Mesajı */}
+        {genelHata && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {genelHata}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3">

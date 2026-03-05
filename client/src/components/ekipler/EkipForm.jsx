@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Save, Loader2 } from 'lucide-react'
-import { useEkipOlustur, useEkipGuncelle } from '@/hooks/useEkipler'
-import { usePersonelListesi } from '@/hooks/usePersonel'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Save, Loader2, UserPlus, X, Users } from 'lucide-react'
+import { useEkip, useEkipOlustur, useEkipGuncelle } from '@/hooks/useEkipler'
+import { usePersonelListesi, usePersonelEkipAta } from '@/hooks/usePersonel'
 import { useBolgeler } from '@/hooks/useBolgeler'
+import { useIsTipleri } from '@/hooks/useIsTipleri'
 import { cn } from '@/lib/utils'
 
 const DURUM_SECENEKLERI = [
@@ -17,23 +18,28 @@ const bosForm = {
   ekip_kodu: '',
   ekip_basi_id: '',
   varsayilan_bolge_id: '',
+  varsayilan_is_tipi_id: '',
   arac_plaka: '',
   durum: 'aktif',
   notlar: '',
 }
 
-export default function EkipForm({ ekip = null }) {
+export default function EkipForm() {
+  const { id } = useParams()
   const navigate = useNavigate()
-  const duzenleModu = !!ekip
+  const duzenleModu = !!id
 
+  const { data: ekip, isLoading: ekipLoading } = useEkip(id)
   const ekipOlustur = useEkipOlustur()
   const ekipGuncelle = useEkipGuncelle()
-  const { data: personelListesi } = usePersonelListesi()
+  const { data: personelListesi = [] } = usePersonelListesi()
   const { data: bolgeler } = useBolgeler()
+  const { data: isTipleri } = useIsTipleri()
+  const personelEkipAta = usePersonelEkipAta()
 
   const [form, setForm] = useState(bosForm)
   const [hatalar, setHatalar] = useState({})
-  const [gonderildi, setGonderildi] = useState(false)
+  const [personelEkleAcik, setPersonelEkleAcik] = useState(false)
 
   useEffect(() => {
     if (ekip) {
@@ -42,6 +48,7 @@ export default function EkipForm({ ekip = null }) {
         ekip_kodu: ekip.ekip_kodu || '',
         ekip_basi_id: ekip.ekip_basi_id || '',
         varsayilan_bolge_id: ekip.varsayilan_bolge_id || '',
+        varsayilan_is_tipi_id: ekip.varsayilan_is_tipi_id || '',
         arac_plaka: ekip.arac_plaka || '',
         durum: ekip.durum || 'aktif',
         notlar: ekip.notlar || '',
@@ -71,29 +78,47 @@ export default function EkipForm({ ekip = null }) {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    setGonderildi(true)
 
-    if (!dogrula()) {
-      setGonderildi(false)
-      return
-    }
+    if (!dogrula()) return
 
     const payload = {
       ...form,
       ekip_basi_id: form.ekip_basi_id || null,
       varsayilan_bolge_id: form.varsayilan_bolge_id || null,
+      varsayilan_is_tipi_id: form.varsayilan_is_tipi_id || null,
     }
 
     const mutation = duzenleModu ? ekipGuncelle : ekipOlustur
-    const mutationData = duzenleModu ? { id: ekip.ekip_id, ...payload } : payload
+    const mutationData = duzenleModu ? { id: ekip.id, ...payload } : payload
 
     mutation.mutate(mutationData, {
       onSuccess: () => navigate('/ekipler'),
-      onError: () => setGonderildi(false),
     })
   }
 
+  const handlePersonelEkle = (personelId) => {
+    personelEkipAta.mutate({ id: personelId, ekip_id: parseInt(id) })
+    setPersonelEkleAcik(false)
+  }
+
+  const handlePersonelCikar = (personelId) => {
+    personelEkipAta.mutate({ id: personelId, ekip_id: null })
+  }
+
   const isSubmitting = ekipOlustur.isPending || ekipGuncelle.isPending
+
+  // Ekipteki personeller
+  const ekipPersonelleri = ekip?.personeller || []
+  const ekipPersonelIds = ekipPersonelleri.map(p => p.id)
+
+  // Atanabilir personeller (bu ekipte olmayan aktif personeller)
+  const atanabilirPersoneller = personelListesi.filter(p =>
+    !ekipPersonelIds.includes(p.id) && p.durum !== 'pasif'
+  )
+
+  if (duzenleModu && ekipLoading) {
+    return <div className="py-8 text-center text-muted-foreground">Yukleniyor...</div>
+  }
 
   return (
     <div className="space-y-6">
@@ -111,7 +136,7 @@ export default function EkipForm({ ekip = null }) {
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {duzenleModu
-              ? `"${ekip.ekip_adi}" ekibini duzenliyorsunuz.`
+              ? `"${ekip?.ekip_adi}" ekibini duzenliyorsunuz.`
               : 'Yeni bir ekip olusturmak icin formu doldurun.'}
           </p>
         </div>
@@ -177,8 +202,8 @@ export default function EkipForm({ ekip = null }) {
               className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             >
               <option value="">Seciniz...</option>
-              {personelListesi?.map((p) => (
-                <option key={p.personel_id} value={p.personel_id}>
+              {personelListesi.map((p) => (
+                <option key={p.id} value={p.id}>
                   {p.ad_soyad}
                 </option>
               ))}
@@ -199,8 +224,29 @@ export default function EkipForm({ ekip = null }) {
             >
               <option value="">Seciniz...</option>
               {bolgeler?.map((b) => (
-                <option key={b.bolge_id} value={b.bolge_id}>
+                <option key={b.id} value={b.id}>
                   {b.bolge_adi}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Varsayilan Is Tipi */}
+          <div>
+            <label htmlFor="varsayilan_is_tipi_id" className="mb-1.5 block text-sm font-medium">
+              Varsayilan Is Tipi
+            </label>
+            <select
+              id="varsayilan_is_tipi_id"
+              name="varsayilan_is_tipi_id"
+              value={form.varsayilan_is_tipi_id}
+              onChange={handleChange}
+              className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            >
+              <option value="">Seciniz...</option>
+              {isTipleri?.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.ad} ({t.fazlar?.length || 0} faz)
                 </option>
               ))}
             </select>
@@ -263,7 +309,7 @@ export default function EkipForm({ ekip = null }) {
         {(ekipOlustur.isError || ekipGuncelle.isError) && (
           <div className="mt-4 rounded-md bg-red-50 border border-red-200 p-3">
             <p className="text-sm text-red-700">
-              Islem sirasinda bir hata olustu. Lutfen tekrar deneyin.
+              {ekipOlustur.error?.message || ekipGuncelle.error?.message || 'Islem sirasinda bir hata olustu.'}
             </p>
           </div>
         )}
@@ -291,6 +337,101 @@ export default function EkipForm({ ekip = null }) {
           </button>
         </div>
       </form>
+
+      {/* Personel Yönetimi - sadece düzenleme modunda */}
+      {duzenleModu && (
+        <div className="rounded-lg border border-border bg-card p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Ekip Personeli</h2>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {ekipPersonelleri.length}
+              </span>
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setPersonelEkleAcik(!personelEkleAcik)}
+                className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+              >
+                <UserPlus className="h-4 w-4" />
+                Personel Ekle
+              </button>
+
+              {/* Personel seçim dropdown */}
+              {personelEkleAcik && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setPersonelEkleAcik(false)} />
+                  <div className="absolute right-0 top-full z-30 mt-1 w-72 rounded-lg border border-border bg-white p-2 shadow-lg">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground">Personel Sec</span>
+                      <button onClick={() => setPersonelEkleAcik(false)} className="rounded p-0.5 hover:bg-gray-100">
+                        <X className="h-3.5 w-3.5 text-muted-foreground" />
+                      </button>
+                    </div>
+                    {atanabilirPersoneller.length === 0 ? (
+                      <p className="py-3 text-center text-xs text-muted-foreground">Eklenebilir personel yok</p>
+                    ) : (
+                      <div className="max-h-60 space-y-0.5 overflow-y-auto">
+                        {atanabilirPersoneller.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => handlePersonelEkle(p.id)}
+                            disabled={personelEkipAta.isPending}
+                            className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-blue-50 disabled:opacity-50"
+                          >
+                            <span className="font-medium">{p.ad_soyad}</span>
+                            <span className="text-xs text-muted-foreground">{p.pozisyon_adi || p.unvan || '-'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {ekipPersonelleri.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Bu ekipte henuz personel yok.</p>
+          ) : (
+            <div className="overflow-hidden rounded-md border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="px-4 py-2 text-left font-medium">Ad Soyad</th>
+                    <th className="px-4 py-2 text-left font-medium">Gorev</th>
+                    <th className="px-4 py-2 text-left font-medium">Telefon</th>
+                    <th className="px-4 py-2 text-right font-medium">Islem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ekipPersonelleri.map(p => (
+                    <tr key={p.id} className="border-b border-border last:border-b-0 hover:bg-muted/30">
+                      <td className="px-4 py-2 font-medium">{p.ad_soyad}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{p.pozisyon_adi || p.gorev || '-'}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{p.telefon || '-'}</td>
+                      <td className="px-4 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handlePersonelCikar(p.id)}
+                          disabled={personelEkipAta.isPending}
+                          className="rounded-md p-1 text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                          title="Ekipten cikar"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

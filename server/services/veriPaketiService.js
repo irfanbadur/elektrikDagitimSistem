@@ -1,6 +1,7 @@
 const { getDb } = require('../db/database');
 const dosyaService = require('./dosyaService');
 const donguService = require('./donguService');
+const fazService = require('./fazService');
 
 class VeriPaketiService {
 
@@ -11,15 +12,16 @@ class VeriPaketiService {
   olustur({ paketTipi, personelId, ekipId, projeId, bolgeId, baslik, notlar, kaynak = 'web' }) {
     const db = getDb();
 
-    // Aktif aşamayı otomatik bağla
+    // Aktif aşama ve adımı otomatik bağla
     const aktifAsamaId = donguService.aktifAsamaIdGetir(projeId);
+    const aktifAdimId = fazService.aktifAdimIdGetir(projeId);
 
     const result = db.prepare(`
       INSERT INTO veri_paketleri (
         paket_tipi, personel_id, ekip_id, proje_id, bolge_id,
-        baslik, notlar, kaynak, proje_asama_id, durum
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'devam_ediyor')
-    `).run(paketTipi, personelId, ekipId, projeId, bolgeId, baslik, notlar, kaynak, aktifAsamaId);
+        baslik, notlar, kaynak, proje_asama_id, proje_adim_id, durum
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'devam_ediyor')
+    `).run(paketTipi, personelId, ekipId, projeId, bolgeId, baslik, notlar, kaynak, aktifAsamaId, aktifAdimId);
 
     // Paket no otomatik trigger ile oluşur
     const paket = db.prepare('SELECT * FROM veri_paketleri WHERE id = ?').get(result.lastInsertRowid);

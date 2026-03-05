@@ -3,7 +3,6 @@ import MainLayout from '@/components/layout/MainLayout'
 import FirmaBilgileri from '@/components/ayarlar/FirmaBilgileri'
 import BolgeYonetimi from '@/components/ayarlar/BolgeYonetimi'
 import ProjeTipleri from '@/components/ayarlar/ProjeTipleri'
-import DonguSablonYonetimi from '@/components/ayarlar/DonguSablonYonetimi'
 import RolYonetimi from '@/components/ayarlar/RolYonetimi'
 import KullaniciYonetimi from '@/components/ayarlar/KullaniciYonetimi'
 import { cn } from '@/lib/utils'
@@ -13,7 +12,6 @@ const sekmeler = [
   { id: 'firma', label: 'Firma Bilgileri' },
   { id: 'bolgeler', label: 'Bolge Yonetimi' },
   { id: 'tipler', label: 'İş Tipleri' },
-  { id: 'dongu', label: 'Dongu Sablonlari' },
   { id: 'roller', label: 'Rol Yönetimi', modul: 'ayarlar', aksiyon: 'roller' },
   { id: 'kullanicilar', label: 'Kullanıcılar', modul: 'ayarlar', aksiyon: 'kullanicilar' },
 ]
@@ -48,7 +46,6 @@ export default function AyarlarPage() {
       {aktifSekme === 'firma' && <FirmaBilgileri />}
       {aktifSekme === 'bolgeler' && <BolgeYonetimi />}
       {aktifSekme === 'tipler' && <ProjeTipleri />}
-      {aktifSekme === 'dongu' && <DonguSablonYonetimi />}
       {aktifSekme === 'roller' && <RolYonetimi />}
       {aktifSekme === 'kullanicilar' && <KullaniciYonetimi />}
     </MainLayout>

@@ -56,6 +56,9 @@ app.use('/api/mesaj', require('./routes/mesaj'));
 // Döngü (proje yaşam döngüsü) routes
 app.use('/api/dongu', require('./routes/dongu'));
 
+// İş Tipleri (faz/adım tabanlı yaşam döngüsü) routes
+app.use('/api/is-tipleri', require('./routes/isTipleri'));
+
 // Auth ve RBAC routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/yonetim', require('./routes/rolYonetimi'));

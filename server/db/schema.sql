@@ -773,6 +773,96 @@ CREATE INDEX IF NOT EXISTS idx_sablon_asama_sablon ON dongu_sablon_asamalari(sab
 -- idx_paket_asama ve idx_dosya_asama migration sonrasi database.js'de olusturulur
 
 -- ============================================
+-- İŞ TİPLERİ (Faz/Adım tabanlı yaşam döngüsü)
+-- ============================================
+CREATE TABLE IF NOT EXISTS is_tipleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kod TEXT UNIQUE NOT NULL,
+    ad TEXT NOT NULL,
+    aciklama TEXT,
+    aktif INTEGER DEFAULT 1,
+    sira INTEGER DEFAULT 0,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS is_tipi_fazlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    is_tipi_id INTEGER NOT NULL,
+    sira INTEGER NOT NULL,
+    faz_adi TEXT NOT NULL,
+    faz_kodu TEXT NOT NULL,
+    ikon TEXT DEFAULT '📋',
+    renk TEXT DEFAULT '#6b7280',
+    sorumlu_rol_id INTEGER,
+    sorumlu_kullanici_id INTEGER,
+    aciklama TEXT,
+    tahmini_gun INTEGER,
+    FOREIGN KEY (is_tipi_id) REFERENCES is_tipleri(id) ON DELETE CASCADE,
+    FOREIGN KEY (sorumlu_rol_id) REFERENCES roller(id),
+    FOREIGN KEY (sorumlu_kullanici_id) REFERENCES kullanicilar(id),
+    UNIQUE(is_tipi_id, sira),
+    UNIQUE(is_tipi_id, faz_kodu)
+);
+
+CREATE TABLE IF NOT EXISTS faz_adimlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    faz_id INTEGER NOT NULL,
+    sira INTEGER NOT NULL,
+    adim_adi TEXT NOT NULL,
+    adim_kodu TEXT NOT NULL,
+    ikon TEXT DEFAULT '📋',
+    aciklama TEXT,
+    tahmini_gun INTEGER,
+    FOREIGN KEY (faz_id) REFERENCES is_tipi_fazlari(id) ON DELETE CASCADE,
+    UNIQUE(faz_id, sira),
+    UNIQUE(faz_id, adim_kodu)
+);
+
+CREATE TABLE IF NOT EXISTS proje_adimlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    faz_tanim_id INTEGER,
+    adim_tanim_id INTEGER,
+    sira_global INTEGER NOT NULL,
+    faz_sira INTEGER NOT NULL,
+    adim_sira INTEGER NOT NULL,
+    faz_adi TEXT NOT NULL,
+    faz_kodu TEXT NOT NULL,
+    adim_adi TEXT NOT NULL,
+    adim_kodu TEXT NOT NULL,
+    renk TEXT DEFAULT '#6b7280',
+    ikon TEXT DEFAULT '📋',
+    durum TEXT DEFAULT 'bekliyor',
+    baslangic_tarihi DATE,
+    bitis_tarihi DATE,
+    planlanan_baslangic DATE,
+    planlanan_bitis DATE,
+    tahmini_gun INTEGER,
+    notlar TEXT,
+    tamamlanma_notu TEXT,
+    baslatan_id INTEGER,
+    tamamlayan_id INTEGER,
+    sorumlu_rol_id INTEGER,
+    sorumlu_kullanici_id INTEGER,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE,
+    FOREIGN KEY (faz_tanim_id) REFERENCES is_tipi_fazlari(id),
+    FOREIGN KEY (adim_tanim_id) REFERENCES faz_adimlari(id),
+    FOREIGN KEY (baslatan_id) REFERENCES kullanicilar(id),
+    FOREIGN KEY (tamamlayan_id) REFERENCES kullanicilar(id),
+    FOREIGN KEY (sorumlu_rol_id) REFERENCES roller(id),
+    FOREIGN KEY (sorumlu_kullanici_id) REFERENCES kullanicilar(id),
+    UNIQUE(proje_id, sira_global)
+);
+
+CREATE INDEX IF NOT EXISTS idx_proje_adim_proje ON proje_adimlari(proje_id);
+CREATE INDEX IF NOT EXISTS idx_proje_adim_durum ON proje_adimlari(durum);
+CREATE INDEX IF NOT EXISTS idx_is_tipi_faz ON is_tipi_fazlari(is_tipi_id);
+CREATE INDEX IF NOT EXISTS idx_faz_adim ON faz_adimlari(faz_id);
+
+-- ============================================
 -- ROLLER — Özelleştirilebilir rol tanımları
 -- ============================================
 CREATE TABLE IF NOT EXISTS roller (

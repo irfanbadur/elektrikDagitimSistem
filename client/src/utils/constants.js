@@ -167,3 +167,24 @@ export const YETKINLIK_SEVIYELERI = {
 }
 
 export const KAN_GRUPLARI = ['A Rh+', 'A Rh-', 'B Rh+', 'B Rh-', 'AB Rh+', 'AB Rh-', '0 Rh+', '0 Rh-']
+
+// ═══════════════════════════════════════════
+// FAZ / ADIM — Yaşam Döngüsü
+// ═══════════════════════════════════════════
+
+export const ADIM_DURUMLARI = {
+  bekliyor: { label: 'Bekliyor', renk: 'bg-gray-100 text-gray-500', emoji: '\u23F3' },
+  devam_ediyor: { label: 'Devam Ediyor', renk: 'bg-blue-100 text-blue-700', emoji: '\uD83D\uDD04' },
+  tamamlandi: { label: 'Tamamland\u0131', renk: 'bg-green-100 text-green-700', emoji: '\u2705' },
+  atlandi: { label: 'Atland\u0131', renk: 'bg-yellow-100 text-yellow-700', emoji: '\u23ED\uFE0F' },
+}
+
+export const VARSAYILAN_FAZ_RENKLER = [
+  '#6366f1', '#8b5cf6', '#0ea5e9', '#f59e0b', '#3b82f6', '#14b8a6', '#10b981',
+  '#f43f5e', '#ec4899', '#84cc16',
+]
+
+export const VARSAYILAN_FAZ_IKONLAR = [
+  '\uD83D\uDE80', '\uD83D\uDCD0', '\uD83D\uDCCB', '\uD83D\uDD27', '\uD83D\uDCB0', '\u2705', '\uD83C\uDFC1',
+  '\uD83D\uDCCD', '\uD83D\uDCE6', '\uD83D\uDDFA\uFE0F', '\uD83D\uDD34', '\uD83D\uDCCA', '\uD83D\uDD0D', '\uD83D\uDCDD',
+]

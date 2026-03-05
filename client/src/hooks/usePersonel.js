@@ -52,7 +52,7 @@ export function usePersonelSil() {
 export function usePersonelEkipAta() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }) => api.put(`/organizasyon/personel/${id}`, data),
+    mutationFn: ({ id, ekip_id }) => api.patch(`/personel/${id}/ekip`, { ekip_id }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['personel'] })
       qc.invalidateQueries({ queryKey: ['ekipler'] })

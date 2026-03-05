@@ -84,16 +84,36 @@ export default function ProjeListesi() {
         cell: ({ row }) => row.original.musteri_adi || '-',
       },
       {
+        accessorKey: 'ekip_adi',
+        header: 'Ekip',
+        cell: ({ row }) => row.original.ekip_adi
+          ? <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{row.original.ekip_adi}</span>
+          : <span className="text-muted-foreground">-</span>,
+      },
+      {
+        accessorKey: 'aktif_sorumlu_adi',
+        header: 'Sorumlu',
+        cell: ({ row }) => row.original.aktif_sorumlu_adi || <span className="text-muted-foreground">-</span>,
+      },
+      {
         accessorKey: 'durum',
         header: 'Durum',
-        cell: ({ row }) => (
-          <ProjeDurumBadge
-            durum={row.original.durum}
-            asamaAdi={row.original.aktif_asama_adi}
-            asamaRenk={row.original.aktif_asama_renk}
-            asamaIkon={row.original.aktif_asama_ikon}
-          />
-        ),
+        cell: ({ row }) => {
+          const p = row.original
+          return (
+            <ProjeDurumBadge
+              durum={p.durum}
+              asamaAdi={p.aktif_asama_adi}
+              asamaRenk={p.aktif_asama_renk}
+              asamaIkon={p.aktif_asama_ikon}
+              fazAdi={p.aktif_faz_adi}
+              adimAdi={p.aktif_adim_adi}
+              adimRenk={p.aktif_adim_renk}
+              adimIkon={p.aktif_adim_ikon}
+              sorumluRolAdi={p.aktif_sorumlu_rol_adi}
+            />
+          )
+        },
       },
       {
         accessorKey: 'tamamlanma_yuzdesi',

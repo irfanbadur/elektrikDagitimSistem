@@ -452,7 +452,7 @@ class PersonelGorevService {
   personelListesi() {
     return this.db.prepare(`
       SELECT k.id, k.kullanici_adi, k.ad_soyad, k.email, k.telefon, k.durum,
-             k.ust_kullanici_id, k.ise_giris_tarihi,
+             k.ekip_id, k.ust_kullanici_id, k.ise_giris_tarihi,
              r.rol_adi as pozisyon_adi, r.seviye as pozisyon_seviye, r.rol_kodu as pozisyon_kodu,
              ust.ad_soyad as ust_kullanici_adi
       FROM kullanicilar k

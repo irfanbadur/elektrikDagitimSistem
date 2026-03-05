@@ -9,10 +9,12 @@ router.get('/', (req, res) => {
     const ekipler = db.prepare(`
       SELECT e.*, b.bolge_adi,
         p.ad_soyad as ekip_basi_adi,
+        it.ad as varsayilan_is_tipi_adi,
         (SELECT COUNT(*) FROM personel per WHERE per.ekip_id = e.id AND per.aktif = 1) as personel_sayisi
       FROM ekipler e
       LEFT JOIN bolgeler b ON e.varsayilan_bolge_id = b.id
       LEFT JOIN personel p ON e.ekip_basi_id = p.id
+      LEFT JOIN is_tipleri it ON e.varsayilan_is_tipi_id = it.id
       WHERE e.durum != 'pasif'
       ORDER BY e.ekip_adi
     `).all();
@@ -27,14 +29,22 @@ router.get('/:id', (req, res) => {
   try {
     const db = getDb();
     const ekip = db.prepare(`
-      SELECT e.*, b.bolge_adi, p.ad_soyad as ekip_basi_adi
+      SELECT e.*, b.bolge_adi, p.ad_soyad as ekip_basi_adi, it.ad as varsayilan_is_tipi_adi
       FROM ekipler e
       LEFT JOIN bolgeler b ON e.varsayilan_bolge_id = b.id
       LEFT JOIN personel p ON e.ekip_basi_id = p.id
+      LEFT JOIN is_tipleri it ON e.varsayilan_is_tipi_id = it.id
       WHERE e.id = ?
     `).get(req.params.id);
     if (!ekip) return hata(res, 'Ekip bulunamadı', 404);
-    ekip.personeller = db.prepare('SELECT * FROM personel WHERE ekip_id = ? AND aktif = 1').all(req.params.id);
+    ekip.personeller = db.prepare(`
+      SELECT k.id, k.ad_soyad, k.telefon, k.email, k.ekip_id, k.durum,
+        p2.ad as pozisyon_adi
+      FROM kullanicilar k
+      LEFT JOIN pozisyonlar p2 ON k.pozisyon_id = p2.id
+      WHERE k.ekip_id = ? AND k.durum = 'aktif'
+      ORDER BY k.ad_soyad
+    `).all(req.params.id);
     basarili(res, ekip);
   } catch (err) {
     hata(res, err.message, 500);
@@ -45,9 +55,9 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   try {
     const db = getDb();
-    const { ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, arac_plaka, notlar } = req.body;
+    const { ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, varsayilan_is_tipi_id, arac_plaka, notlar } = req.body;
     if (!ekip_adi) return hata(res, 'Ekip adı zorunludur');
-    const result = db.prepare('INSERT INTO ekipler (ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, arac_plaka, notlar) VALUES (?, ?, ?, ?, ?, ?)').run(ekip_adi, ekip_kodu, ekip_basi_id || null, varsayilan_bolge_id || null, arac_plaka, notlar);
+    const result = db.prepare('INSERT INTO ekipler (ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, varsayilan_is_tipi_id, arac_plaka, notlar) VALUES (?, ?, ?, ?, ?, ?, ?)').run(ekip_adi, ekip_kodu, ekip_basi_id || null, varsayilan_bolge_id || null, varsayilan_is_tipi_id || null, arac_plaka, notlar);
     const yeni = db.prepare('SELECT * FROM ekipler WHERE id = ?').get(result.lastInsertRowid);
     aktiviteLogla('ekip', 'olusturma', yeni.id, `Yeni ekip: ${ekip_adi}`);
     basarili(res, yeni, 201);
@@ -61,10 +71,27 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const db = getDb();
-    const { ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, arac_plaka, durum, notlar } = req.body;
-    db.prepare('UPDATE ekipler SET ekip_adi=?, ekip_kodu=?, ekip_basi_id=?, varsayilan_bolge_id=?, arac_plaka=?, durum=?, notlar=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(ekip_adi, ekip_kodu, ekip_basi_id || null, varsayilan_bolge_id || null, arac_plaka, durum || 'aktif', notlar, req.params.id);
+    const { ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, varsayilan_is_tipi_id, arac_plaka, durum, notlar } = req.body;
+    db.prepare('UPDATE ekipler SET ekip_adi=?, ekip_kodu=?, ekip_basi_id=?, varsayilan_bolge_id=?, varsayilan_is_tipi_id=?, arac_plaka=?, durum=?, notlar=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(ekip_adi, ekip_kodu, ekip_basi_id || null, varsayilan_bolge_id || null, varsayilan_is_tipi_id || null, arac_plaka, durum || 'aktif', notlar, req.params.id);
     const guncellenen = db.prepare('SELECT * FROM ekipler WHERE id = ?').get(req.params.id);
     aktiviteLogla('ekip', 'guncelleme', guncellenen.id, `Ekip güncellendi: ${ekip_adi}`);
+    basarili(res, guncellenen);
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// PATCH /api/ekipler/:id/atama - Update team's bolge+is_tipi assignment
+router.patch('/:id/atama', (req, res) => {
+  try {
+    const db = getDb();
+    const ekip = db.prepare('SELECT * FROM ekipler WHERE id = ?').get(req.params.id);
+    if (!ekip) return hata(res, 'Ekip bulunamadı', 404);
+    const { varsayilan_bolge_id, varsayilan_is_tipi_id } = req.body;
+    db.prepare('UPDATE ekipler SET varsayilan_bolge_id = ?, varsayilan_is_tipi_id = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(varsayilan_bolge_id || null, varsayilan_is_tipi_id || null, req.params.id);
+    const guncellenen = db.prepare('SELECT * FROM ekipler WHERE id = ?').get(req.params.id);
+    aktiviteLogla('ekip', 'guncelleme', guncellenen.id, `Ekip atama güncellendi: ${ekip.ekip_adi}`);
     basarili(res, guncellenen);
   } catch (err) {
     hata(res, err.message, 500);

@@ -18,11 +18,22 @@ export function useBolge(id) {
   })
 }
 
+export function useBolgeMatris() {
+  return useQuery({
+    queryKey: ['bolge-matris'],
+    queryFn: () => api.get('/bolgeler/matris'),
+    select: (res) => res.data,
+  })
+}
+
 export function useBolgeOlustur() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data) => api.post('/bolgeler', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['bolgeler'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bolgeler'] })
+      qc.invalidateQueries({ queryKey: ['bolge-matris'] })
+    },
   })
 }
 
@@ -30,7 +41,10 @@ export function useBolgeGuncelle() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...data }) => api.put(`/bolgeler/${id}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['bolgeler'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bolgeler'] })
+      qc.invalidateQueries({ queryKey: ['bolge-matris'] })
+    },
   })
 }
 
@@ -38,6 +52,21 @@ export function useBolgeSil() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id) => api.delete(`/bolgeler/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['bolgeler'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bolgeler'] })
+      qc.invalidateQueries({ queryKey: ['bolge-matris'] })
+    },
+  })
+}
+
+export function useEkipAtama() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ekipId, varsayilan_bolge_id, varsayilan_is_tipi_id }) =>
+      api.patch(`/ekipler/${ekipId}/atama`, { varsayilan_bolge_id, varsayilan_is_tipi_id }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bolge-matris'] })
+      qc.invalidateQueries({ queryKey: ['ekipler'] })
+    },
   })
 }

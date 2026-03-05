@@ -70,15 +70,15 @@ router.delete('/:id', (req, res) => {
   }
 });
 
-// PATCH /:id/ekip - Assign/unassign personnel to team
+// PATCH /:id/ekip - Assign/unassign personnel to team (kullanicilar tablosu)
 router.patch('/:id/ekip', (req, res) => {
   try {
     const db = getDb();
     const { ekip_id } = req.body;
-    const kisi = db.prepare('SELECT * FROM personel WHERE id = ?').get(req.params.id);
+    const kisi = db.prepare('SELECT * FROM kullanicilar WHERE id = ?').get(req.params.id);
     if (!kisi) return hata(res, 'Personel bulunamadı', 404);
-    db.prepare('UPDATE personel SET ekip_id = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?').run(ekip_id || null, req.params.id);
-    const guncellenen = db.prepare(`SELECT p.*, e.ekip_adi FROM personel p LEFT JOIN ekipler e ON p.ekip_id = e.id WHERE p.id = ?`).get(req.params.id);
+    db.prepare('UPDATE kullanicilar SET ekip_id = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?').run(ekip_id || null, req.params.id);
+    const guncellenen = db.prepare(`SELECT k.*, e.ekip_adi FROM kullanicilar k LEFT JOIN ekipler e ON k.ekip_id = e.id WHERE k.id = ?`).get(req.params.id);
     const ekipAdi = guncellenen.ekip_adi || 'Atanmamış';
     aktiviteLogla('personel', 'ekip_atama', kisi.id, `${kisi.ad_soyad} → ${ekipAdi}`);
     basarili(res, guncellenen);

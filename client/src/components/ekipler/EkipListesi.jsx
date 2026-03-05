@@ -17,7 +17,7 @@ export default function EkipListesi() {
 
   const handleSil = () => {
     if (!silinecekEkip) return
-    ekipSil.mutate(silinecekEkip.ekip_id, {
+    ekipSil.mutate(silinecekEkip.id, {
       onSettled: () => {
         setSilinecekEkip(null)
         setSilmeDialogAcik(false)
@@ -31,7 +31,12 @@ export default function EkipListesi() {
         accessorKey: 'ekip_kodu',
         header: 'Ekip Kodu',
         cell: ({ row }) => (
-          <span className="font-medium text-primary">{row.original.ekip_kodu}</span>
+          <button
+            onClick={() => navigate(`/ekipler/${row.original.id}`)}
+            className="font-medium text-primary hover:underline"
+          >
+            {row.original.ekip_kodu}
+          </button>
         ),
       },
       {
@@ -80,7 +85,7 @@ export default function EkipListesi() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                navigate(`/ekipler/${row.original.ekip_id}`)
+                navigate(`/ekipler/${row.original.id}`)
               }}
               className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               title="Goruntule"
@@ -90,7 +95,7 @@ export default function EkipListesi() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                navigate(`/ekipler/${row.original.ekip_id}/duzenle`)
+                navigate(`/ekipler/${row.original.id}/duzenle`)
               }}
               className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               title="Duzenle"

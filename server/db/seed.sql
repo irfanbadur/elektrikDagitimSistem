@@ -5,7 +5,7 @@ UPDATE firma_ayarlari SET deger = 'YEDAŞ' WHERE anahtar = 'dagitim_sirketi';
 INSERT INTO bolgeler (bolge_adi, bolge_tipi, ust_bolge_id, sira) VALUES ('Samsun', 'il', NULL, 1);
 INSERT INTO bolgeler (bolge_adi, bolge_tipi, ust_bolge_id, sira) VALUES ('Bafra', 'ilce', 1, 1), ('Alaçam', 'ilce', 1, 2), ('Yakakent', 'ilce', 1, 3), ('19 Mayıs', 'ilce', 1, 4);
 
-INSERT INTO personel (ad_soyad, telefon, gorev) VALUES
+INSERT OR IGNORE INTO personel (ad_soyad, telefon, gorev) VALUES
 ('Ahmet Yıldız', '0532-111-2233', 'ekip_basi'),
 ('Mehmet Kara', '0533-222-3344', 'usta'),
 ('Ali Demir', '0534-333-4455', 'teknisyen'),
