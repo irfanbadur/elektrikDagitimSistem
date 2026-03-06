@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import api from '@/api/client'
 import {
   Plus,
   ChevronDown,
@@ -505,6 +507,37 @@ function VeriPaketiEkleModal({ projeId, onKapat }) {
 // =============================================
 // Ana Bilesen
 // =============================================
+// =============================================
+// Dongu Dosyalari Bolumu
+// =============================================
+function DonguDosyalari({ projeId }) {
+  const { data: dosyalar, isLoading } = useQuery({
+    queryKey: ['dosya', 'proje', projeId],
+    queryFn: () => api.get(`/dosya?proje_id=${projeId}`),
+    select: (res) => (res.data || []).filter(d => d.proje_adim_id),
+    enabled: !!projeId,
+  })
+
+  if (isLoading || !dosyalar || dosyalar.length === 0) return null
+
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
+        <File className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-semibold">Dongu Dosyalari</span>
+        <span className="text-xs text-muted-foreground">({dosyalar.length})</span>
+      </div>
+      <div className="p-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {dosyalar.map((dosya) => (
+            <DosyaKarti key={dosya.id} dosya={dosya} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ProjeDetayBirlesikDokumanlar({ projeId }) {
   const [siralama, setSiralama] = useState('tarih_yeni')
   const [kategoriFiltre, setKategoriFiltre] = useState('')
@@ -576,6 +609,9 @@ export default function ProjeDetayBirlesikDokumanlar({ projeId }) {
           Ekle
         </button>
       </div>
+
+      {/* Dongu Dosyalari */}
+      <DonguDosyalari projeId={projeId} />
 
       {/* Paket Listesi */}
       {isLoading ? (

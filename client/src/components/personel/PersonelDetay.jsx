@@ -5,7 +5,6 @@ import {
   Pencil,
   Trash2,
   Phone,
-  Send,
   Briefcase,
   Users,
   User,
@@ -167,21 +166,6 @@ export default function PersonelDetay() {
         </div>
         <div className="rounded-lg border border-border bg-card p-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-50">
-              <Send className="h-5 w-5 text-sky-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Telegram</p>
-              <p className="font-semibold">
-                {personel.telegram_kullanici_adi
-                  ? `@${personel.telegram_kullanici_adi}`
-                  : '-'}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-5">
-          <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-50">
               <Building className="h-5 w-5 text-purple-600" />
             </div>
@@ -239,10 +223,6 @@ export default function PersonelDetay() {
               <div className="grid grid-cols-1 sm:grid-cols-3 px-5 py-3">
                 <span className="text-sm text-muted-foreground">Telefon</span>
                 <span className="sm:col-span-2 text-sm font-medium">{personel.telefon || '-'}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 px-5 py-3">
-                <span className="text-sm text-muted-foreground">Telegram ID</span>
-                <span className="sm:col-span-2 text-sm font-medium">{personel.telegram_id || '-'}</span>
               </div>
               {personel.email && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 px-5 py-3">

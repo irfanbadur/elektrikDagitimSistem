@@ -83,9 +83,9 @@ router.post('/personel', async (req, res) => {
     const { getDb } = require('../db/database');
     const db = getDb();
     const {
-      ad_soyad, telefon, email, ekip_id, pozisyon_id, ust_kullanici_id,
+      ad_soyad, telefon, email, rol_id, ekip_id, pozisyon_id, ust_kullanici_id,
       gorev, tc_kimlik, dogum_tarihi, ise_giris_tarihi, kan_grubu,
-      acil_kisi, acil_telefon, adres, notlar, telegram_id, telegram_kullanici_adi
+      acil_kisi, acil_telefon, adres, notlar
     } = req.body;
 
     if (!ad_soyad) return res.status(400).json({ error: 'ad_soyad zorunludur' });
@@ -109,8 +109,8 @@ router.post('/personel', async (req, res) => {
     const bcrypt = require('bcrypt');
     const sifre_hash = await bcrypt.hash('1234', 10);
 
-    // pozisyon_id aslında roller tablosundan bir rol_id — kullanicilar tablosuna değil kullanici_rolleri'ne yazılacak
-    const rolId = pozisyon_id || null;
+    // rol_id veya pozisyon_id — kullanici_rolleri tablosuna yazılacak
+    const rolId = rol_id || pozisyon_id || null;
     const varsayilanSifre = '1234';
 
     const sonuc = db.prepare(`

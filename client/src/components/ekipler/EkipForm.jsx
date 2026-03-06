@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Save, Loader2, UserPlus, X, Users } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useEkip, useEkipOlustur, useEkipGuncelle } from '@/hooks/useEkipler'
 import { usePersonelListesi, usePersonelEkipAta } from '@/hooks/usePersonel'
 import { useBolgeler } from '@/hooks/useBolgeler'
 import { useIsTipleri } from '@/hooks/useIsTipleri'
+import api from '@/api/client'
 import { cn } from '@/lib/utils'
 
 const DURUM_SECENEKLERI = [
@@ -36,6 +38,21 @@ export default function EkipForm() {
   const { data: bolgeler } = useBolgeler()
   const { data: isTipleri } = useIsTipleri()
   const personelEkipAta = usePersonelEkipAta()
+  const { data: departmanlarRaw } = useQuery({
+    queryKey: ['departmanlar'],
+    queryFn: () => api.get('/departmanlar'),
+  })
+  const { data: rollerRaw } = useQuery({
+    queryKey: ['yonetim', 'roller'],
+    queryFn: () => api.get('/yonetim/roller'),
+  })
+  const departmanlarAll = departmanlarRaw?.data || []
+  const rollerAll = rollerRaw?.data || []
+
+  // Saha-Operasyon departmanındaki personelleri ekip başı olarak filtrele
+  const sahaDepId = departmanlarAll.find(d => d.departman_kodu === 'saha_operasyon')?.id
+  const ekipBasiRolId = rollerAll.find(r => r.rol_kodu === 'ekip_basi')?.id
+  const ekipBasiAdaylari = personelListesi.filter(p => p.departman_id && p.departman_id === sahaDepId)
 
   const [form, setForm] = useState(bosForm)
   const [hatalar, setHatalar] = useState({})
@@ -58,6 +75,22 @@ export default function EkipForm() {
 
   const handleChange = (e) => {
     const { name, value } = e.target
+
+    // Ekip başı seçildiğinde rolü kontrol et
+    if (name === 'ekip_basi_id' && value) {
+      const secilen = personelListesi.find(p => p.id === Number(value))
+      if (secilen && Number(secilen.rol_id) !== Number(ekipBasiRolId)) {
+        const onay = confirm(
+          `"${secilen.ad_soyad}" şu anda "${secilen.pozisyon_adi || 'atanmamış'}" rolünde.\n\nEkip Başı olarak atamak rolünü de "Ekip Başı" olarak değiştirecektir. Onaylıyor musunuz?`
+        )
+        if (!onay) return
+        // Rolü Ekip Başı olarak güncelle
+        if (ekipBasiRolId) {
+          api.put(`/organizasyon/personel/${secilen.id}`, { rol_id: ekipBasiRolId })
+        }
+      }
+    }
+
     setForm((prev) => ({ ...prev, [name]: value }))
     if (hatalar[name]) {
       setHatalar((prev) => ({ ...prev, [name]: undefined }))
@@ -91,9 +124,7 @@ export default function EkipForm() {
     const mutation = duzenleModu ? ekipGuncelle : ekipOlustur
     const mutationData = duzenleModu ? { id: ekip.id, ...payload } : payload
 
-    mutation.mutate(mutationData, {
-      onSuccess: () => navigate('/ekipler'),
-    })
+    mutation.mutateAsync(mutationData).then(() => navigate('/ekipler'))
   }
 
   const handlePersonelEkle = (personelId) => {
@@ -111,9 +142,9 @@ export default function EkipForm() {
   const ekipPersonelleri = ekip?.personeller || []
   const ekipPersonelIds = ekipPersonelleri.map(p => p.id)
 
-  // Atanabilir personeller (bu ekipte olmayan aktif personeller)
+  // Atanabilir personeller (Saha-Operasyon departmanında, bu ekipte olmayan aktif personeller)
   const atanabilirPersoneller = personelListesi.filter(p =>
-    !ekipPersonelIds.includes(p.id) && p.durum !== 'pasif'
+    !ekipPersonelIds.includes(p.id) && p.durum !== 'pasif' && p.departman_id === sahaDepId
   )
 
   if (duzenleModu && ekipLoading) {
@@ -192,7 +223,7 @@ export default function EkipForm() {
           {/* Ekip Basi */}
           <div>
             <label htmlFor="ekip_basi_id" className="mb-1.5 block text-sm font-medium">
-              Ekip Basi
+              Ekip Başı <span className="text-xs font-normal text-muted-foreground">(Saha-Operasyon)</span>
             </label>
             <select
               id="ekip_basi_id"
@@ -201,10 +232,10 @@ export default function EkipForm() {
               onChange={handleChange}
               className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             >
-              <option value="">Seciniz...</option>
-              {personelListesi.map((p) => (
+              <option value="">Seçiniz...</option>
+              {ekipBasiAdaylari.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.ad_soyad}
+                  {p.ad_soyad}{p.pozisyon_adi ? ` — ${p.pozisyon_adi}` : ''}
                 </option>
               ))}
             </select>

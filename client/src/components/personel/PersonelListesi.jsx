@@ -144,6 +144,7 @@ export default function PersonelListesi() {
         columns={columns}
         data={personeller || []}
         searchPlaceholder="Personel ara..."
+        onRowDoubleClick={(row) => navigate(`/personel/${row.id}/duzenle`)}
       />
 
       <ConfirmDialog

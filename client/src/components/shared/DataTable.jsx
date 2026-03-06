@@ -10,7 +10,7 @@ import {
 import { ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import SearchInput from './SearchInput'
 
-export default function DataTable({ columns, data = [], searchable = true, searchPlaceholder = 'Ara...', pagination = true, pageSize = 10 }) {
+export default function DataTable({ columns, data = [], searchable = true, searchPlaceholder = 'Ara...', pagination = true, pageSize = 10, onRowDoubleClick }) {
   const [sorting, setSorting] = useState([])
   const [globalFilter, setGlobalFilter] = useState('')
 
@@ -63,8 +63,14 @@ export default function DataTable({ columns, data = [], searchable = true, searc
             {table.getRowModel().rows.length === 0 ? (
               <tr><td colSpan={columns.length} className="px-4 py-8 text-center text-muted-foreground">Kayıt bulunamadı</td></tr>
             ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+              table.getRowModel().rows.map((row, i) => (
+                <tr
+                  key={row.id}
+                  onDoubleClick={() => onRowDoubleClick?.(row.original)}
+                  className={`border-b border-border last:border-0 transition-colors ${
+                    i % 2 === 1 ? 'bg-muted/50' : 'bg-white'
+                  } hover:bg-primary/8 hover:shadow-[inset_3px_0_0_0_hsl(var(--primary))] ${onRowDoubleClick ? 'cursor-pointer' : ''}`}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

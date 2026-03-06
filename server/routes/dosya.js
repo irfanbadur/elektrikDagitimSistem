@@ -114,6 +114,24 @@ router.get('/istatistik/proje/:projeId', (req, res) => {
   }
 });
 
+// ─── ADIM BAZLI DOSYA LİSTELEME ─────────────────────
+// GET /api/dosya/adim/:adimId
+router.get('/adim/:adimId', (req, res) => {
+  try {
+    const db = getDb();
+    const dosyalar = db.prepare(`
+      SELECT id, dosya_adi, orijinal_adi, thumbnail_yolu, kategori, mime_tipi, dosya_boyutu, olusturma_tarihi
+      FROM dosyalar
+      WHERE proje_adim_id = ? AND durum = 'aktif'
+      ORDER BY olusturma_tarihi DESC
+    `).all(parseInt(req.params.adimId));
+    res.json({ success: true, data: dosyalar });
+  } catch (error) {
+    console.error('Adım dosya listeleme hatası:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ─── DOSYA YÜKLEME ────────────────────────────────────
 // POST /api/dosya/yukle — Tekli dosya yükleme
 router.post('/yukle', upload.single('dosya'), async (req, res) => {
@@ -148,6 +166,7 @@ router.post('/yukle', upload.single('dosya'), async (req, res) => {
       longitude: req.body.longitude ? parseFloat(req.body.longitude) : null,
       konumAdi: req.body.konum_adi || null,
       kaynak: req.body.kaynak || 'web',
+      projeAdimId: req.body.proje_adim_id ? parseInt(req.body.proje_adim_id) : null,
     });
 
     res.json({ success: true, data: sonuc });
@@ -185,6 +204,7 @@ router.post('/toplu-yukle', upload.array('dosyalar', 20), async (req, res) => {
         notlar: req.body.notlar || null,
         etiketler: req.body.etiketler ? JSON.parse(req.body.etiketler) : [],
         kaynak: req.body.kaynak || 'web',
+        projeAdimId: req.body.proje_adim_id ? parseInt(req.body.proje_adim_id) : null,
       });
       sonuclar.push(sonuc);
     }

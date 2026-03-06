@@ -46,6 +46,7 @@ class DosyaService {
     konumKaynagi = null,
     kaynak = 'web',
     projeAsamaId = null,
+    projeAdimId = null,
   }) {
     const db = getDb();
 
@@ -146,7 +147,7 @@ class DosyaService {
         latitude, longitude, konum_adi, konum_kaynagi, altitude,
         proje_id, ekip_id, yukleyen_id, veri_paketi_id,
         baslik, notlar, etiketler, ozel_alanlar,
-        kaynak, proje_asama_id, durum, olusturma_tarihi
+        kaynak, proje_asama_id, proje_adim_id, durum, olusturma_tarihi
       ) VALUES (
         ?, ?, ?, ?,
         ?, ?, ?,
@@ -154,7 +155,7 @@ class DosyaService {
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, 'aktif', datetime('now')
+        ?, ?, ?, 'aktif', datetime('now')
       )
     `).run(
       dosyaAdi, orijinalAdi, goreceliYol, thumbnailYolu,
@@ -165,7 +166,7 @@ class DosyaService {
       baslik, notlar,
       etiketler.length > 0 ? JSON.stringify(etiketler) : null,
       Object.keys(ozelAlanlarObj).length > 0 ? JSON.stringify(ozelAlanlarObj) : null,
-      kaynak, projeAsamaId
+      kaynak, projeAsamaId, projeAdimId
     );
 
     return {

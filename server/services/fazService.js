@@ -271,7 +271,10 @@ class FazService {
   projeIlerlemeFaz(projeId) {
     const db = getDb();
     const adimlar = db.prepare(`
-      SELECT * FROM proje_adimlari WHERE proje_id = ? ORDER BY sira_global
+      SELECT pa.*,
+        (SELECT COUNT(*) FROM dosyalar d WHERE d.proje_adim_id = pa.id AND d.durum = 'aktif') as dosya_sayisi,
+        (SELECT COUNT(*) FROM veri_paketleri vp WHERE vp.proje_adim_id = pa.id) as paket_sayisi
+      FROM proje_adimlari pa WHERE pa.proje_id = ? ORDER BY pa.sira_global
     `).all(projeId);
 
     const toplam = adimlar.length;

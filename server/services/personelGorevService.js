@@ -78,7 +78,7 @@ class PersonelGorevService {
   kullaniciDetay(id) {
     const kullanici = this.db.prepare(`
       SELECT k.*, r.rol_adi as pozisyon_adi, r.seviye as pozisyon_seviye,
-             r.rol_kodu as pozisyon_kodu, r.id as rol_id,
+             r.rol_kodu as pozisyon_kodu, r.id as rol_id, r.departman_id,
              ust.ad_soyad as ust_kullanici_adi
       FROM kullanicilar k
       LEFT JOIN kullanici_rolleri kr ON kr.kullanici_id = k.id
@@ -239,7 +239,7 @@ class PersonelGorevService {
   }
 
   projeZorunluGorevKontrol(projeId) {
-    const zorunluGorevler = ['santiye_sefi', 'proje_sorumlusu'];
+    const zorunluGorevler = ['sistem_yoneticisi', 'proje_sorumlusu'];
     const eksikler = [];
 
     for (const kod of zorunluGorevler) {
@@ -453,6 +453,7 @@ class PersonelGorevService {
     return this.db.prepare(`
       SELECT k.id, k.kullanici_adi, k.ad_soyad, k.email, k.telefon, k.durum,
              k.ekip_id, k.ust_kullanici_id, k.ise_giris_tarihi,
+             kr.rol_id, r.departman_id,
              r.rol_adi as pozisyon_adi, r.seviye as pozisyon_seviye, r.rol_kodu as pozisyon_kodu,
              ust.ad_soyad as ust_kullanici_adi
       FROM kullanicilar k
@@ -551,9 +552,10 @@ class PersonelGorevService {
       this.db.prepare(`UPDATE kullanicilar SET ${alanlar.join(', ')} WHERE id = ?`).run(...degerler);
     }
 
-    // pozisyon_id aslında rol_id — kullanici_rolleri tablosunu güncelle
-    if (data.pozisyon_id !== undefined) {
-      const rolId = data.pozisyon_id === '' ? null : data.pozisyon_id;
+    // rol_id veya pozisyon_id — kullanici_rolleri tablosunu güncelle
+    const gRolId = data.rol_id !== undefined ? data.rol_id : data.pozisyon_id;
+    if (gRolId !== undefined) {
+      const rolId = gRolId === '' ? null : gRolId;
       this.db.prepare('DELETE FROM kullanici_rolleri WHERE kullanici_id = ?').run(id);
       if (rolId) {
         this.db.prepare('INSERT OR IGNORE INTO kullanici_rolleri (kullanici_id, rol_id) VALUES (?, ?)').run(id, rolId);

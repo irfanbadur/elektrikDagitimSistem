@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Eye, Pencil, Trash2 } from 'lucide-react'
 import { useProjeler, useProjeSil } from '@/hooks/useProjeler'
+import { useIsTipleri } from '@/hooks/useIsTipleri'
 import { useBolgeler } from '@/hooks/useBolgeler'
 import { useDonguSablonlari } from '@/hooks/useDongu'
 import DataTable from '@/components/shared/DataTable'
@@ -16,6 +17,7 @@ export default function ProjeListesi() {
   const [filtreler, setFiltreler] = useState({ durum: '', bolge_id: '', tip: '' })
   const { data: projeler, isLoading } = useProjeler(filtreler)
   const { data: bolgeler } = useBolgeler()
+  const { data: isTipleri } = useIsTipleri()
   const { data: sablonlar } = useDonguSablonlari()
   const projeSil = useProjeSil()
 
@@ -224,10 +226,10 @@ export default function ProjeListesi() {
           onChange={(e) => handleFiltreChange('tip', e.target.value)}
           className="rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         >
-          <option value="">Tum Tipler</option>
-          <option value="YB">YB</option>
-          <option value="KET">KET</option>
-          <option value="Tesis">Tesis</option>
+          <option value="">Tüm Tipler</option>
+          {(isTipleri || []).map(t => (
+            <option key={t.id} value={t.kod}>{t.ad}</option>
+          ))}
         </select>
         <select
           value={filtreler.durum}

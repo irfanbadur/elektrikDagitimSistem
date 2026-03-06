@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import api from '@/api/client'
-import { GOREV_TIPLERI, KAN_GRUPLARI } from '@/utils/constants'
+import { KAN_GRUPLARI } from '@/utils/constants'
 import { cn } from '@/lib/utils'
 
 const bosForm = {
   ad_soyad: '',
   telefon: '',
-  telegram_id: '',
-  telegram_kullanici_adi: '',
-  gorev: '',
-  ekip_id: '',
+  departman_id: '',
+  rol_id: '',
   pozisyon_id: '',
   ust_kullanici_id: '',
   tc_kimlik: '',
@@ -25,11 +23,18 @@ const bosForm = {
   notlar: '',
 }
 
-export default function PersonelForm({ personel = null }) {
+export default function PersonelForm() {
+  const { id } = useParams()
   const navigate = useNavigate()
-  const duzenleModu = !!personel
-
   const qc = useQueryClient()
+
+  // Düzenleme modunda mevcut personeli API'den çek
+  const { data: personel, isLoading: personelLoading } = useQuery({
+    queryKey: ['organizasyon', 'personel', id],
+    queryFn: () => api.get(`/organizasyon/personel/${id}`),
+    enabled: !!id,
+  })
+  const duzenleModu = !!id
 
   const personelOlustur = useMutation({
     mutationFn: (data) => api.post('/organizasyon/personel', data),
@@ -50,10 +55,13 @@ export default function PersonelForm({ personel = null }) {
     queryKey: ['organizasyon', 'unvanlar'],
     queryFn: () => api.get('/organizasyon/unvanlar'),
   })
-  const { data: ekiplerRaw } = useQuery({
-    queryKey: ['ekipler'],
-    queryFn: () => api.get('/ekipler'),
-    select: (res) => res?.data,
+  const { data: rollerRaw } = useQuery({
+    queryKey: ['yonetim', 'roller'],
+    queryFn: () => api.get('/yonetim/roller'),
+  })
+  const { data: departmanlarRaw } = useQuery({
+    queryKey: ['departmanlar'],
+    queryFn: () => api.get('/departmanlar'),
   })
   const { data: kullanicilarRaw } = useQuery({
     queryKey: ['organizasyon', 'personel'],
@@ -61,7 +69,8 @@ export default function PersonelForm({ personel = null }) {
   })
 
   const unvanlar = Array.isArray(unvanlarRaw) ? unvanlarRaw : []
-  const ekipler = Array.isArray(ekiplerRaw) ? ekiplerRaw : []
+  const roller = rollerRaw?.data || []
+  const departmanlar = departmanlarRaw?.data || []
   const kullanicilar = Array.isArray(kullanicilarRaw) ? kullanicilarRaw : []
 
   const [form, setForm] = useState(bosForm)
@@ -73,10 +82,8 @@ export default function PersonelForm({ personel = null }) {
       setForm({
         ad_soyad: personel.ad_soyad || '',
         telefon: personel.telefon || '',
-        telegram_id: personel.telegram_id || '',
-        telegram_kullanici_adi: personel.telegram_kullanici_adi || '',
-        gorev: personel.gorev || '',
-        ekip_id: personel.ekip_id || '',
+        departman_id: personel.departman_id || '',
+        rol_id: personel.rol_id || '',
         pozisyon_id: personel.pozisyon_id || '',
         ust_kullanici_id: personel.ust_kullanici_id || '',
         tc_kimlik: personel.tc_kimlik || '',
@@ -93,7 +100,11 @@ export default function PersonelForm({ personel = null }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    setForm((prev) => {
+      const yeni = { ...prev, [name]: value }
+      if (name === 'departman_id') yeni.rol_id = ''
+      return yeni
+    })
     if (hatalar[name]) {
       setHatalar((prev) => ({ ...prev, [name]: undefined }))
     }
@@ -119,11 +130,9 @@ export default function PersonelForm({ personel = null }) {
 
     const payload = {
       ...form,
-      ekip_id: form.ekip_id || null,
+      rol_id: form.rol_id || null,
       pozisyon_id: form.pozisyon_id || null,
       ust_kullanici_id: form.ust_kullanici_id || null,
-      telegram_id: form.telegram_id || null,
-      telegram_kullanici_adi: form.telegram_kullanici_adi || null,
       tc_kimlik: form.tc_kimlik || null,
       dogum_tarihi: form.dogum_tarihi || null,
       ise_giris_tarihi: form.ise_giris_tarihi || null,
@@ -135,7 +144,7 @@ export default function PersonelForm({ personel = null }) {
 
     const mutation = duzenleModu ? personelGuncelle : personelOlustur
     const mutationData = duzenleModu
-      ? { id: personel.id, ...payload }
+      ? { id: Number(id), ...payload }
       : payload
 
     mutation.mutate(mutationData, {
@@ -147,6 +156,10 @@ export default function PersonelForm({ personel = null }) {
   const isSubmitting = personelOlustur.isPending || personelGuncelle.isPending
 
   const inputCls = 'w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
+
+  if (duzenleModu && personelLoading) {
+    return <div className="py-8 text-center text-muted-foreground">Personel bilgileri yükleniyor...</div>
+  }
 
   return (
     <div className="space-y-6">
@@ -164,7 +177,7 @@ export default function PersonelForm({ personel = null }) {
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {duzenleModu
-              ? `"${personel.ad_soyad}" personelini düzenliyorsunuz.`
+              ? `"${personel?.ad_soyad || ''}" personelini düzenliyorsunuz.`
               : 'Yeni bir personel eklemek için formu doldurun.'}
           </p>
         </div>
@@ -264,25 +277,33 @@ export default function PersonelForm({ personel = null }) {
               </select>
             </div>
 
-            {/* Görev (eski sistem) */}
+            {/* Departman */}
             <div>
-              <label htmlFor="gorev" className="mb-1.5 block text-sm font-medium">Saha Görevi</label>
-              <select id="gorev" name="gorev" value={form.gorev} onChange={handleChange} className={inputCls}>
+              <label htmlFor="departman_id" className="mb-1.5 block text-sm font-medium">Departman</label>
+              <select id="departman_id" name="departman_id" value={form.departman_id} onChange={handleChange} className={inputCls}>
                 <option value="">Seçiniz...</option>
-                {Object.entries(GOREV_TIPLERI).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
+                {departmanlar.map(d => (
+                  <option key={d.id} value={d.id}>{d.departman_adi}</option>
                 ))}
               </select>
             </div>
 
-            {/* Ekip */}
+            {/* Rol */}
             <div>
-              <label htmlFor="ekip_id" className="mb-1.5 block text-sm font-medium">Ekip</label>
-              <select id="ekip_id" name="ekip_id" value={form.ekip_id} onChange={handleChange} className={inputCls}>
-                <option value="">Seçiniz...</option>
-                {ekipler.map((e) => (
-                  <option key={e.ekip_id} value={e.ekip_id}>{e.ekip_adi}</option>
-                ))}
+              <label htmlFor="rol_id" className="mb-1.5 block text-sm font-medium">Rol</label>
+              <select
+                id="rol_id"
+                name="rol_id"
+                value={form.rol_id}
+                onChange={handleChange}
+                disabled={!form.departman_id}
+                className={cn(inputCls, !form.departman_id && 'opacity-50 cursor-not-allowed')}
+              >
+                <option value="">{form.departman_id ? 'Seçiniz...' : 'Önce departman seçin'}</option>
+                {roller
+                  .filter(r => String(r.departman_id) === String(form.departman_id))
+                  .map(r => <option key={r.id} value={r.id}>{r.rol_adi}</option>)
+                }
               </select>
             </div>
           </div>
@@ -294,18 +315,6 @@ export default function PersonelForm({ personel = null }) {
             İletişim & Acil Durum
           </h2>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            {/* Telegram ID */}
-            <div>
-              <label htmlFor="telegram_id" className="mb-1.5 block text-sm font-medium">Telegram ID</label>
-              <input id="telegram_id" name="telegram_id" type="text" value={form.telegram_id} onChange={handleChange} placeholder="123456789" className={inputCls} />
-            </div>
-
-            {/* Telegram Kullanıcı Adı */}
-            <div>
-              <label htmlFor="telegram_kullanici_adi" className="mb-1.5 block text-sm font-medium">Telegram Kullanıcı Adı</label>
-              <input id="telegram_kullanici_adi" name="telegram_kullanici_adi" type="text" value={form.telegram_kullanici_adi} onChange={handleChange} placeholder="ahmetyilmaz" className={inputCls} />
-            </div>
-
             {/* Acil Durum Kişisi */}
             <div>
               <label htmlFor="acil_kisi" className="mb-1.5 block text-sm font-medium">Acil Durumda Aranacak Kişi</label>

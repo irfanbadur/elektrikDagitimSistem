@@ -40,7 +40,9 @@ export function useEkipOlustur() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data) => api.post('/ekipler', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ekipler'] }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['ekipler'] })
+    },
   })
 }
 
@@ -48,7 +50,9 @@ export function useEkipGuncelle() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...data }) => api.put(`/ekipler/${id}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ekipler'] }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['ekipler'] })
+    },
   })
 }
 
