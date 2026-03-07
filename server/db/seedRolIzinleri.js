@@ -52,7 +52,7 @@ function seedTemelVeriler() {
         ('raporlar', 'isg',      'Raporlar', 'İSG',      'İSG raporlarını görüntüleme'),
         ('raporlar', 'depo',     'Raporlar', 'Depo',     'Depo/malzeme raporlarını görüntüleme'),
         ('ayarlar', 'genel',      'Ayarlar', 'Genel',      'Genel ayarlar (firma bilgileri)'),
-        ('ayarlar', 'telegram',   'Ayarlar', 'Telegram/AI', 'Telegram bot ve AI ayarları'),
+        ('ayarlar', 'ai',         'Ayarlar', 'AI Ayarları', 'AI ayarları'),
         ('ayarlar', 'dongu',      'Ayarlar', 'Döngü Şablon','Döngü şablon yönetimi'),
         ('ayarlar', 'roller',     'Ayarlar', 'Rol Yönetimi','Rol oluşturma ve izin atama'),
         ('ayarlar', 'kullanicilar','Ayarlar', 'Kullanıcılar','Kullanıcı oluşturma ve rol atama');
@@ -61,24 +61,7 @@ function seedTemelVeriler() {
     console.log('  İzin tanımları eklendi');
   }
 
-  // Roller yoksa ekle
-  const rolSayisi = db.prepare('SELECT COUNT(*) as sayi FROM roller').get().sayi;
-  if (rolSayisi === 0) {
-    db.exec(`
-      INSERT OR IGNORE INTO roller (rol_adi, rol_kodu, aciklama, renk, ikon, seviye, sistem_rolu) VALUES
-        ('Genel Müdür',     'patron',       'Tüm yetkilere sahip, firma sahibi',           '#dc2626', '👑', 100, 1),
-        ('Koordinatör',     'koordinator',  'Günlük operasyon yönetimi, tüm yetkiler',      '#2563eb', '📋', 90,  1),
-        ('Sistem Yöneticisi','santiye_sefi','Sistem yönetimi, tüm yetkiler',                '#f59e0b', '🏗️', 80,  1),
-        ('Saha Mühendisi',  'saha_muhendis','Sahada teknik kontrol ve denetim',             '#10b981', '🔍', 70,  1),
-        ('Ekip Başı',       'ekip_basi',   'Saha ekip yönetimi, veri paketi gönderimi',     '#8b5cf6', '👷', 60,  1),
-        ('Depocu',          'depocu',      'Malzeme ve stok yönetimi',                      '#0ea5e9', '📦', 50,  1),
-        ('İSG Uzmanı',      'isg_uzmani',  'İş sağlığı ve güvenliği denetimi',             '#f43f5e', '🛡️', 50,  1),
-        ('Muhasebeci',      'muhasebeci',  'Hak ediş, maliyet ve finansal işlemler',        '#84cc16', '💰', 50,  1),
-        ('Sürveyan',        'surveyan',    'Saha kontrolü ve yapım denetimi',               '#14b8a6', '📏', 55,  0),
-        ('Taşeron',         'taseron',     'Dış firma — sadece kendi işi',                   '#6b7280', '🤝', 30,  0);
-    `);
-    console.log('  Varsayılan roller eklendi');
-  }
+  // Roller seed.sql'den geliyor (departman bazlı), burada tekrar eklemeye gerek yok
 }
 
 function seedRolIzinleri() {
@@ -109,11 +92,11 @@ function seedRolIzinleri() {
     }
   }
 
-  // ─── GENEL MÜDÜR (patron) — HER ŞEY ──────────────────────────
-  const patronIzinler = db.prepare('SELECT id FROM izinler').all();
-  const pId = rolId('patron');
+  // ─── GENEL MÜDÜR — HER ŞEY ──────────────────────────
+  const tumIzinlerList = db.prepare('SELECT id FROM izinler').all();
+  const pId = rolId('genel_mudur');
   if (pId) {
-    for (const izin of patronIzinler) {
+    for (const izin of tumIzinlerList) {
       db.prepare('INSERT OR IGNORE INTO rol_izinleri (rol_id, izin_id, veri_kapsami) VALUES (?, ?, ?)').run(pId, izin.id, 'tum');
     }
   }
@@ -121,15 +104,15 @@ function seedRolIzinleri() {
   // ─── KOORDİNATÖR — HER ŞEY ─────────────────────
   const kId = rolId('koordinator');
   if (kId) {
-    for (const izin of patronIzinler) {
+    for (const izin of tumIzinlerList) {
       db.prepare('INSERT OR IGNORE INTO rol_izinleri (rol_id, izin_id, veri_kapsami) VALUES (?, ?, ?)').run(kId, izin.id, 'tum');
     }
   }
 
-  // ─── SİSTEM YÖNETİCİSİ (eski Şantiye Şefi) — HER ŞEY ─────
-  const sId = rolId('santiye_sefi');
+  // ─── SİSTEM YÖNETİCİSİ — HER ŞEY ─────
+  const sId = rolId('sistem_yoneticisi');
   if (sId) {
-    for (const izin of patronIzinler) {
+    for (const izin of tumIzinlerList) {
       db.prepare('INSERT OR IGNORE INTO rol_izinleri (rol_id, izin_id, veri_kapsami) VALUES (?, ?, ?)').run(sId, izin.id, 'tum');
     }
   }
@@ -225,13 +208,13 @@ function seedIlkKullanici() {
 
   const mevcut = db.prepare('SELECT COUNT(*) as sayi FROM kullanicilar').get();
   if (mevcut.sayi > 0) {
-    // Kullanıcı var ama rolü yoksa patron rolü ata
+    // Kullanıcı var ama rolü yoksa sistem yöneticisi rolü ata
     const rolAtamasi = db.prepare('SELECT COUNT(*) as sayi FROM kullanici_rolleri').get();
     if (rolAtamasi.sayi === 0) {
       const ilkKullanici = db.prepare('SELECT id FROM kullanicilar LIMIT 1').get();
-      const patronRol = db.prepare("SELECT id FROM roller WHERE rol_kodu = 'patron'").get();
-      if (ilkKullanici && patronRol) {
-        db.prepare('INSERT OR IGNORE INTO kullanici_rolleri (kullanici_id, rol_id) VALUES (?, ?)').run(ilkKullanici.id, patronRol.id);
+      const syRol = db.prepare("SELECT id FROM roller WHERE rol_kodu = 'sistem_yoneticisi'").get();
+      if (ilkKullanici && syRol) {
+        db.prepare('INSERT OR IGNORE INTO kullanici_rolleri (kullanici_id, rol_id) VALUES (?, ?)').run(ilkKullanici.id, syRol.id);
       }
     }
     return;
@@ -244,9 +227,9 @@ function seedIlkKullanici() {
     VALUES ('admin', ?, 'Sistem Yöneticisi', 'admin@firma.com')
   `).run(sifreHash);
 
-  const patronRol = db.prepare("SELECT id FROM roller WHERE rol_kodu = 'patron'").get();
-  if (patronRol) {
-    db.prepare('INSERT INTO kullanici_rolleri (kullanici_id, rol_id) VALUES (?, ?)').run(result.lastInsertRowid, patronRol.id);
+  const syRol = db.prepare("SELECT id FROM roller WHERE rol_kodu = 'sistem_yoneticisi'").get();
+  if (syRol) {
+    db.prepare('INSERT INTO kullanici_rolleri (kullanici_id, rol_id) VALUES (?, ?)').run(result.lastInsertRowid, syRol.id);
   }
 
   console.log('  İlk kullanıcı oluşturuldu: admin / admin123');

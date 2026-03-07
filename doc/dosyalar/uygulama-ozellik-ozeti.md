@@ -212,25 +212,7 @@ ElektraTrack, elektrik dağıtım müteahhitleri için geliştirilmiş kapsamlı
 
 ---
 
-## 14. Telegram Bot Entegrasyonu
-
-| Özellik | Açıklama |
-|---------|----------|
-| Kullanıcı Kaydı | Telegram ID ↔ Personel eşleştirme |
-| Bot Komutları | `/start`, `/kayit`, `/durum`, `/ekip`, `/paket`, `/yardim`, `/iptal` |
-| Fotoğraf Analizi | AI görüntü analizi (hasar tespiti, direk durumu, OCR) |
-| Konum Paylaşımı | GPS konum işleme |
-| Metin Ayrıştırma | NLP ile saha mesajı işleme |
-| Veri Paketi Yönetimi | Bot üzerinden paket oluşturma/yönetme |
-| Mesaj Logu | Tüm bot mesajlarının kaydı ve filtrelenmesi |
-| İstatistikler | Kullanıcı sayısı, mesaj dağılımı, 7 günlük trend |
-| Zamanlanmış Görevler | Süresi dolan paketleri otomatik tamamlama (5dk), rapor hatırlatması (18:00) |
-
-**Sayfa:** `/telegram` | **API:** `/api/telegram/*`
-
----
-
-## 15. Veri Paketleri (Saha Veri Toplama)
+## 14. Veri Paketleri (Saha Veri Toplama)
 
 | Özellik | Açıklama |
 |---------|----------|
@@ -316,7 +298,7 @@ ElektraTrack/
 │       └── api/             # Axios HTTP istemcisi
 ├── server/                  # Node.js + Express Backend
 │   ├── routes/              # API rotaları
-│   ├── services/            # AI ayrıştırma, Telegram bot
+│   ├── services/            # AI ayrıştırma, iş servisleri
 │   ├── middleware/          # Auth, RBAC, dosya yükleme
 │   └── database/            # SQLite şema, seed, bağlantı
 └── uploads/                 # Yüklenen dosyalar

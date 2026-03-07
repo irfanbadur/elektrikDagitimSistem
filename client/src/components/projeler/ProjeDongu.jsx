@@ -85,7 +85,7 @@ function DosyaOnizleme({ dosya }) {
 }
 
 // --- ADIM KARTI (3 sutunlu, orta sutun = dosya penceresi) ---
-function AdimKarti({ adim, projeId, onBaslat, onTamamla, onAtla }) {
+function AdimKarti({ adim, projeId, projeNo, onBaslat, onTamamla, onAtla }) {
   const stil = getDurumStil(adim.durum)
   const aktif = adim.durum === 'devam_ediyor'
   const dosyaYuklenebilir = adim.durum === 'devam_ediyor'
@@ -114,6 +114,7 @@ function AdimKarti({ adim, projeId, onBaslat, onTamamla, onAtla }) {
         formData.append('dosya', file)
         formData.append('proje_id', projeId)
         formData.append('proje_adim_id', adim.id)
+        if (projeNo) formData.append('proje_no', projeNo)
         formData.append('kaynak', 'web')
         if (kullanici?.id) formData.append('yukleyen_id', kullanici.id)
         await api.post('/dosya/yukle', formData, {
@@ -123,12 +124,13 @@ function AdimKarti({ adim, projeId, onBaslat, onTamamla, onAtla }) {
       qc.invalidateQueries({ queryKey: ['adim-dosyalar', adim.id] })
       qc.invalidateQueries({ queryKey: ['proje-faz-ilerleme'] })
       qc.invalidateQueries({ queryKey: ['dosya'] })
+      qc.invalidateQueries({ queryKey: ['proje-veri-paketleri'] })
     } catch (err) {
       console.error('Dosya yukleme hatasi:', err)
     } finally {
       setYukleniyor(false)
     }
-  }, [dosyaYuklenebilir, projeId, adim.id, kullanici, qc])
+  }, [dosyaYuklenebilir, projeId, projeNo, adim.id, kullanici, qc])
 
   const handleDrop = (e) => {
     e.preventDefault()
@@ -280,7 +282,7 @@ function AdimKarti({ adim, projeId, onBaslat, onTamamla, onAtla }) {
 }
 
 // --- FAZ GRUBU ---
-function FazGrubu({ faz, isLast, projeId, onBaslat, onTamamla, onAtla }) {
+function FazGrubu({ faz, isLast, projeId, projeNo, onBaslat, onTamamla, onAtla }) {
   const tamamlanan = faz.adimlar.filter(a => a.durum === 'tamamlandi' || a.durum === 'atlandi').length
   const toplam = faz.adimlar.length
   const aktif = faz.adimlar.some(a => a.durum === 'devam_ediyor')
@@ -357,6 +359,7 @@ function FazGrubu({ faz, isLast, projeId, onBaslat, onTamamla, onAtla }) {
             key={adim.id}
             adim={adim}
             projeId={projeId}
+            projeNo={projeNo}
             onBaslat={onBaslat}
             onTamamla={onTamamla}
             onAtla={onAtla}
@@ -420,7 +423,7 @@ function FazAtamaPanel({ projeId, projeTipi }) {
 }
 
 // === ANA BILESEN ===
-export default function ProjeDongu({ projeId, projeTipi }) {
+export default function ProjeDongu({ projeId, projeTipi, projeNo }) {
   const { data: ilerleme, isLoading } = useProjeFazIlerleme(projeId)
   const baslat = useAdimBaslat()
   const tamamla = useAdimTamamla()
@@ -470,6 +473,7 @@ export default function ProjeDongu({ projeId, projeTipi }) {
             faz={faz}
             isLast={i === fazGruplari.length - 1}
             projeId={projeId}
+            projeNo={projeNo}
             onBaslat={handleBaslat}
             onTamamla={handleTamamla}
             onAtla={handleAtla}

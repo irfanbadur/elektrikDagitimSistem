@@ -3,11 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import api from '@/api/client'
 import {
   Plus,
-  ChevronDown,
-  ChevronUp,
   Package,
   MapPin,
   Download,
+  Eye,
   Image,
   FileText,
   File,
@@ -15,6 +14,8 @@ import {
   Upload,
   Loader2,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import {
   useProjeVeriPaketleri,
@@ -47,6 +48,66 @@ function dosyaIkonu(kategori) {
   }
 }
 
+// =============================================
+// Foto Lightbox
+// =============================================
+function FotoLightbox({ dosya, fotograflar, onKapat }) {
+  const [aktifIndex, setAktifIndex] = useState(() =>
+    fotograflar ? fotograflar.findIndex(f => f.id === dosya.id) : 0
+  )
+  const aktif = fotograflar ? fotograflar[aktifIndex] : dosya
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') onKapat()
+    if (fotograflar && e.key === 'ArrowRight') setAktifIndex(i => Math.min(i + 1, fotograflar.length - 1))
+    if (fotograflar && e.key === 'ArrowLeft') setAktifIndex(i => Math.max(i - 1, 0))
+  }
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={onKapat}>
+      <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <img
+          src={`/api/dosya/${aktif.id}/dosya`}
+          alt={aktif.orijinal_adi || aktif.dosya_adi}
+          className="max-w-full max-h-[85vh] object-contain rounded"
+        />
+        <div className="absolute bottom-0 inset-x-0 bg-black/60 px-4 py-2 rounded-b flex items-center justify-between">
+          <span className="text-sm text-white truncate">{aktif.orijinal_adi || aktif.dosya_adi}</span>
+          <div className="flex items-center gap-2">
+            <a href={`/api/dosya/${aktif.id}/indir`} className="text-white/70 hover:text-white" title="Indir">
+              <Download className="h-4 w-4" />
+            </a>
+          </div>
+        </div>
+        <button onClick={onKapat} className="absolute top-2 right-2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70">
+          <X className="h-5 w-5" />
+        </button>
+        {fotograflar && fotograflar.length > 1 && (
+          <>
+            {aktifIndex > 0 && (
+              <button onClick={() => setAktifIndex(i => i - 1)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70">
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+            )}
+            {aktifIndex < fotograflar.length - 1 && (
+              <button onClick={() => setAktifIndex(i => i + 1)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70">
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function boyutFormat(byte) {
   if (!byte) return '-'
   if (byte < 1024) return `${byte} B`
@@ -55,123 +116,151 @@ function boyutFormat(byte) {
 }
 
 // =============================================
-// Paket Karti
+// Paket Karti (Gorsel Kart)
 // =============================================
 function PaketKarti({ paket }) {
-  const [acik, setAcik] = useState(false)
+  const { data: detay, isLoading } = useVeriPaketiDetay(paket.id)
+  const dosyalar = detay?.dosyalar || []
+  const fotograflar = dosyalar.filter(d => d.kategori === 'fotograf')
+  const ilkFoto = fotograflar[0]
+  const toplamDosya = dosyalar.length || paket.dosya_sayisi || paket.foto_sayisi || 0
+
   const durumInfo = PAKET_DURUM_LABELS[paket.durum] || PAKET_DURUM_LABELS.tamamlandi
   const tipLabel = PAKET_TIP_LABELS[paket.paket_tipi] || paket.paket_tipi
 
+  const [lightboxDosya, setLightboxDosya] = useState(null)
+  const [detayAcik, setDetayAcik] = useState(false)
+
+  const handleOnizlemeTikla = () => {
+    if (ilkFoto) {
+      setLightboxDosya(ilkFoto)
+    } else if (detayAcik) {
+      setDetayAcik(false)
+    } else {
+      setDetayAcik(true)
+    }
+  }
+
+  // Etiketleri parse et
+  const etiketler = useMemo(() => {
+    if (!paket.etiketler) return []
+    try {
+      const parsed = JSON.parse(paket.etiketler)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return paket.etiketler.split(',').map(s => s.trim()).filter(Boolean)
+    }
+  }, [paket.etiketler])
+
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      {/* Kart Header */}
-      <button
-        onClick={() => setAcik(!acik)}
-        className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/50 transition-colors"
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Package className="h-5 w-5" />
+    <div className="group relative rounded-md border border-border bg-white overflow-hidden">
+      {/* Thumbnail / On izleme */}
+      <div className="relative cursor-pointer" onClick={handleOnizlemeTikla}>
+        {isLoading ? (
+          <div className="flex aspect-square items-center justify-center bg-gray-50">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" />
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-sm">{paket.paket_no}</span>
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium">
-                {tipLabel}
-              </span>
-              <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', durumInfo.renk)}>
-                {durumInfo.label}
-              </span>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                {formatGecenSure(paket.olusturma_tarihi)}
-              </span>
-              {paket.personel_adi && <span>{paket.personel_adi}</span>}
-              {paket.latitude && (
-                <span className="flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
-                  Konum
-                </span>
-              )}
-              <span>
-                {(paket.dosya_sayisi || paket.foto_sayisi || 0)} dosya
-              </span>
-            </div>
+        ) : ilkFoto && ilkFoto.thumbnail_yolu ? (
+          <div className="aspect-square bg-gray-100">
+            <img
+              src={`/api/dosya/${ilkFoto.id}/thumb`}
+              alt={paket.paket_no}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
           </div>
-        </div>
-        {acik ? (
-          <ChevronUp className="h-5 w-5 shrink-0 text-muted-foreground" />
         ) : (
-          <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <div className="flex aspect-square items-center justify-center bg-gray-50">
+            <Package className="h-8 w-8 text-muted-foreground/50" />
+          </div>
         )}
-      </button>
 
-      {/* Acilan Detay */}
-      {acik && <PaketDetay paket={paket} />}
-    </div>
-  )
-}
+        {/* Coklu foto sayaci */}
+        {fotograflar.length > 1 && (
+          <div className="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
+            <Image className="h-3 w-3" />
+            {fotograflar.length}
+          </div>
+        )}
 
-function PaketDetay({ paket }) {
-  const { data: detay, isLoading } = useVeriPaketiDetay(paket.id)
-  const dosyalar = detay?.dosyalar || []
-
-  return (
-    <div className="border-t border-border bg-muted/30 p-4 space-y-3">
-      {/* Notlar */}
-      {paket.notlar && (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-1">Not</p>
-          <p className="text-sm whitespace-pre-wrap">{paket.notlar}</p>
+        {/* Alt gradient + baslik ve durum */}
+        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6">
+          <p className="text-[11px] font-semibold text-white truncate">{paket.paket_no}</p>
+          <span className={cn('inline-block rounded-full px-1.5 py-0.5 text-[9px] font-medium mt-0.5', durumInfo.renk)}>
+            {durumInfo.label}
+          </span>
         </div>
-      )}
 
-      {/* Baslik */}
-      {paket.baslik && (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-1">Baslik</p>
-          <p className="text-sm">{paket.baslik}</p>
+        {/* Hover overlay */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+          <Eye className="h-6 w-6 text-white" />
         </div>
-      )}
+      </div>
 
-      {/* Dosya listesi */}
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Dosyalar yukleniyor...
-        </div>
-      ) : dosyalar.length > 0 ? (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2">
-            Dosyalar ({dosyalar.length})
+      {/* Alt bilgi */}
+      <div className="p-1.5 space-y-0.5">
+        <p className="text-[10px] text-muted-foreground truncate">
+          {tipLabel} &middot; {toplamDosya} dosya
+        </p>
+        {paket.notlar && (
+          <p className="text-[10px] text-muted-foreground truncate" title={paket.notlar}>
+            {paket.notlar}
           </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        )}
+        {etiketler.length > 0 && (
+          <div className="flex flex-wrap gap-0.5">
+            {etiketler.slice(0, 3).map((tag, i) => (
+              <span key={i} className="rounded bg-gray-100 px-1 py-px text-[9px] text-muted-foreground truncate max-w-[60px]">
+                {tag}
+              </span>
+            ))}
+            {etiketler.length > 3 && (
+              <span className="text-[9px] text-muted-foreground">+{etiketler.length - 3}</span>
+            )}
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground">
+          {formatGecenSure(paket.olusturma_tarihi)}
+        </p>
+      </div>
+
+      {/* Detay acilirsa (foto olmayan paketler icin) */}
+      {detayAcik && dosyalar.length > 0 && (
+        <div className="border-t border-border p-2">
+          <div className="grid grid-cols-2 gap-1">
             {dosyalar.map((dosya) => (
-              <DosyaKarti key={dosya.id} dosya={dosya} />
+              <DosyaKarti key={dosya.id} dosya={dosya} onFotoTikla={setLightboxDosya} />
             ))}
           </div>
         </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">Bu pakette dosya yok.</p>
       )}
 
-      {/* Tarih detay */}
-      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground pt-1">
-        <span>Olusturma: {formatTarihSaat(paket.olusturma_tarihi)}</span>
-        {paket.tamamlanma_zamani && (
-          <span>Tamamlanma: {formatTarihSaat(paket.tamamlanma_zamani)}</span>
-        )}
-        {paket.kaynak && <span>Kaynak: {paket.kaynak}</span>}
-      </div>
+      {/* Lightbox */}
+      {lightboxDosya && (
+        <FotoLightbox dosya={lightboxDosya} fotograflar={fotograflar} onKapat={() => setLightboxDosya(null)} />
+      )}
     </div>
   )
 }
 
-function DosyaKarti({ dosya }) {
+function dosyaTiklamaAdresi(dosya) {
+  const isFoto = dosya.kategori === 'fotograf'
+  const isPdf = dosya.mime_tipi === 'application/pdf'
+  if (isFoto || isPdf) return { href: `/api/dosya/${dosya.id}/dosya`, target: '_blank', indir: false }
+  return { href: `/api/dosya/${dosya.id}/indir`, target: '_self', indir: true }
+}
+
+function DosyaKarti({ dosya, onFotoTikla }) {
   const Icon = dosyaIkonu(dosya.kategori)
   const isFoto = dosya.kategori === 'fotograf'
+  const { href, target, indir } = dosyaTiklamaAdresi(dosya)
+
+  const handleClick = (e) => {
+    if (isFoto && onFotoTikla) {
+      e.preventDefault()
+      onFotoTikla(dosya)
+    }
+  }
 
   return (
     <div className="group relative rounded-md border border-border bg-white overflow-hidden">
@@ -199,13 +288,16 @@ function DosyaKarti({ dosya }) {
           {boyutFormat(dosya.dosya_boyutu)}
         </p>
       </div>
-      {/* Hover indirme */}
+      {/* Hover — ac veya indir */}
       <a
-        href={`/api/dosya/${dosya.id}/indir`}
+        href={href}
+        target={target}
+        rel={target === '_blank' ? 'noopener noreferrer' : undefined}
+        onClick={handleClick}
         className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
-        title="Indir"
+        title={indir ? 'Indir' : 'Ac'}
       >
-        <Download className="h-6 w-6 text-white" />
+        {indir ? <Download className="h-6 w-6 text-white" /> : <Eye className="h-6 w-6 text-white" />}
       </a>
     </div>
   )
@@ -512,13 +604,19 @@ function VeriPaketiEkleModal({ projeId, onKapat }) {
 // =============================================
 function DonguDosyalari({ projeId }) {
   const { data: dosyalar, isLoading } = useQuery({
-    queryKey: ['dosya', 'proje', projeId],
-    queryFn: () => api.get(`/dosya?proje_id=${projeId}`),
-    select: (res) => (res.data || []).filter(d => d.proje_adim_id),
+    queryKey: ['dosya', 'dongu', projeId],
+    queryFn: () => api.get(`/dosya`, { params: { proje_id: projeId, durum: 'aktif' } }),
+    select: (res) => {
+      const list = res?.data || res || []
+      return Array.isArray(list) ? list.filter(d => d.proje_adim_id) : []
+    },
     enabled: !!projeId,
   })
+  const [lightboxDosya, setLightboxDosya] = useState(null)
 
   if (isLoading || !dosyalar || dosyalar.length === 0) return null
+
+  const fotograflar = dosyalar.filter(d => d.kategori === 'fotograf')
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -530,10 +628,13 @@ function DonguDosyalari({ projeId }) {
       <div className="p-4">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {dosyalar.map((dosya) => (
-            <DosyaKarti key={dosya.id} dosya={dosya} />
+            <DosyaKarti key={dosya.id} dosya={dosya} onFotoTikla={setLightboxDosya} />
           ))}
         </div>
       </div>
+      {lightboxDosya && (
+        <FotoLightbox dosya={lightboxDosya} fotograflar={fotograflar} onKapat={() => setLightboxDosya(null)} />
+      )}
     </div>
   )
 }
@@ -541,12 +642,13 @@ function DonguDosyalari({ projeId }) {
 export default function ProjeDetayBirlesikDokumanlar({ projeId }) {
   const [siralama, setSiralama] = useState('tarih_yeni')
   const [kategoriFiltre, setKategoriFiltre] = useState('')
-  const [durumFiltre, setDurumFiltre] = useState('')
+  const [adimFiltre, setAdimFiltre] = useState('')
   const [modalAcik, setModalAcik] = useState(false)
+  const { data: fazlar } = useProjeFazlar(projeId)
 
   const queryFilters = { siralama }
   if (kategoriFiltre) queryFilters.dosya_kategori = kategoriFiltre
-  if (durumFiltre) queryFilters.proje_durum = durumFiltre
+  if (adimFiltre) queryFilters.paket_tipi = adimFiltre
 
   const { data: paketler, isLoading } = useProjeVeriPaketleri(projeId, queryFilters)
 
@@ -583,17 +685,19 @@ export default function ProjeDetayBirlesikDokumanlar({ projeId }) {
             ))}
         </select>
 
-        {/* Durum */}
+        {/* Surec Adimi */}
         <select
-          value={durumFiltre}
-          onChange={(e) => setDurumFiltre(e.target.value)}
+          value={adimFiltre}
+          onChange={(e) => setAdimFiltre(e.target.value)}
           className="rounded-md border border-input bg-background px-3 py-2 text-sm"
         >
-          <option value="">Tum Durumlar</option>
-          {Object.entries(PROJE_DURUMLARI).map(([key, val]) => (
-            <option key={key} value={key}>
-              {val.emoji} {val.label}
-            </option>
+          <option value="">Tum Adimlar</option>
+          {fazlar && fazlar.map((faz) => (
+            faz.adimlar?.map((adim) => (
+              <option key={adim.adim_kodu} value={adim.adim_kodu}>
+                {faz.ikon || ''} {faz.faz_adi} &gt; {adim.adim_adi}
+              </option>
+            ))
           ))}
         </select>
 
@@ -615,9 +719,9 @@ export default function ProjeDetayBirlesikDokumanlar({ projeId }) {
 
       {/* Paket Listesi */}
       {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-lg border border-border bg-muted/50" />
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="aspect-square animate-pulse rounded-md border border-border bg-muted/50" />
           ))}
         </div>
       ) : !paketler || paketler.length === 0 ? (
@@ -634,7 +738,7 @@ export default function ProjeDetayBirlesikDokumanlar({ projeId }) {
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {paketler.map((paket) => (
             <PaketKarti key={paket.id} paket={paket} />
           ))}

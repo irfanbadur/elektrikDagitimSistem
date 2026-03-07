@@ -115,6 +115,8 @@ export default function ProjeTipleri() {
   }
 
   const fazSil = (idx) => {
+    const fazAdi = form.fazlar[idx]?.faz_adi || 'Bu faz'
+    if (!confirm(`"${fazAdi}" fazını silmek istediğinize emin misiniz? Bu fazdaki tüm adımlar da silinecektir.`)) return
     const yeni = form.fazlar.filter((_, i) => i !== idx).map((f, i) => ({ ...f, sira: i + 1 }))
     setForm({ ...form, fazlar: yeni })
   }
@@ -287,10 +289,10 @@ export default function ProjeTipleri() {
 
                 <div className="space-y-2">
                   {form.fazlar.map((faz, fi) => (
-                    <div key={fi} className="rounded-lg border border-border overflow-hidden">
+                    <div key={fi} className={cn('rounded-lg border overflow-hidden', acikFazlar[fi] ? 'border-primary/30 bg-primary/5' : 'border-border')}>
                       {/* Faz başlık */}
                       <div
-                        className="flex items-center gap-2 px-3 py-2.5 bg-muted/50 cursor-pointer hover:bg-muted"
+                        className={cn('flex items-center gap-2 px-3 py-2.5 cursor-pointer', acikFazlar[fi] ? 'bg-primary/10 hover:bg-primary/15' : 'bg-muted/50 hover:bg-muted')}
                         onClick={() => toggleFaz(fi)}
                       >
                         <GripVertical className="h-4 w-4 text-muted-foreground/50" />
@@ -307,9 +309,9 @@ export default function ProjeTipleri() {
 
                       {/* Faz detay */}
                       {acikFazlar[fi] && (
-                        <div className="p-3 border-t border-border space-y-3">
-                          <div className="grid grid-cols-4 gap-3">
-                            <div className="col-span-2">
+                        <div className="border-t border-border bg-white space-y-3" style={{ padding: '16px 32px' }}>
+                          <div className="flex items-end gap-3">
+                            <div className="flex-1">
                               <label className="block text-xs text-muted-foreground mb-1">Faz Adı</label>
                               <input
                                 value={faz.faz_adi}
@@ -317,7 +319,7 @@ export default function ProjeTipleri() {
                                 className="w-full rounded-md border border-input bg-white px-2.5 py-1.5 text-sm outline-none focus:border-primary"
                               />
                             </div>
-                            <div>
+                            <div className="flex-1">
                               <label className="block text-xs text-muted-foreground mb-1">Sorumlu Rol</label>
                               <select
                                 value={faz.sorumlu_rol_id}
@@ -335,8 +337,8 @@ export default function ProjeTipleri() {
                                 })}
                               </select>
                             </div>
-                            <div>
-                              <label className="block text-xs text-muted-foreground mb-1">Tahmini Gün</label>
+                            <div style={{ width: '80px', flexShrink: 0 }}>
+                              <label className="block text-xs text-muted-foreground mb-1">Gün</label>
                               <input
                                 type="number"
                                 value={faz.tahmini_gun}
@@ -344,6 +346,13 @@ export default function ProjeTipleri() {
                                 className="w-full rounded-md border border-input bg-white px-2.5 py-1.5 text-sm outline-none focus:border-primary"
                               />
                             </div>
+                            <button
+                              onClick={() => fazSil(fi)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-md border border-red-200 shrink-0"
+                              title="Fazı Sil"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" /> Fazı Sil
+                            </button>
                           </div>
 
                           <div className="flex gap-2 items-center">
@@ -382,15 +391,7 @@ export default function ProjeTipleri() {
 
                           {/* Adımlar */}
                           <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <label className="text-xs font-medium text-muted-foreground">Adımlar</label>
-                              <button
-                                onClick={() => adimEkle(fi)}
-                                className="flex items-center gap-1 px-2 py-0.5 text-xs text-primary hover:bg-primary/10 rounded"
-                              >
-                                <Plus className="h-3 w-3" /> Adım Ekle
-                              </button>
-                            </div>
+                            <label className="text-xs font-medium text-muted-foreground mb-2 block">Adımlar</label>
                             <div className="space-y-1.5">
                               {faz.adimlar.map((adim, ai) => (
                                 <div key={ai} className="flex items-center gap-2">
@@ -420,16 +421,14 @@ export default function ProjeTipleri() {
                                 <p className="text-xs text-muted-foreground py-1">Henüz adım eklenmemiş</p>
                               )}
                             </div>
-                          </div>
-
-                          {/* Faz sil */}
-                          <div className="flex justify-end pt-1">
-                            <button
-                              onClick={() => fazSil(fi)}
-                              className="flex items-center gap-1 px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
-                            >
-                              <Trash2 className="h-3 w-3" /> Fazı Sil
-                            </button>
+                            <div className="flex justify-end pt-2">
+                              <button
+                                onClick={() => adimEkle(fi)}
+                                className="flex items-center gap-1 px-2 py-0.5 text-xs text-primary hover:bg-primary/10 rounded"
+                              >
+                                <Plus className="h-3 w-3" /> Adım Ekle
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}

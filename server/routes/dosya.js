@@ -140,6 +140,31 @@ router.post('/yukle', upload.single('dosya'), async (req, res) => {
       return res.status(400).json({ success: false, error: 'Dosya seçilmedi' });
     }
 
+    const projeId = req.body.proje_id ? parseInt(req.body.proje_id) : null;
+    const projeAdimId = req.body.proje_adim_id ? parseInt(req.body.proje_adim_id) : null;
+    let veriPaketiId = req.body.veri_paketi_id ? parseInt(req.body.veri_paketi_id) : null;
+
+    // Döngü adımından yüklenen dosyalar için otomatik veri paketi oluştur
+    if (projeAdimId && !veriPaketiId && projeId) {
+      const veriPaketiService = require('../services/veriPaketiService');
+      const db = require('../db/database').getDb();
+
+      // Adım bilgisini al (paket_tipi olarak adim_kodu kullanılacak)
+      const adim = db.prepare('SELECT adim_kodu, adim_adi FROM proje_adimlari WHERE id = ?').get(projeAdimId);
+      const paketTipi = adim?.adim_kodu || 'genel';
+
+      const paket = veriPaketiService.olustur({
+        paketTipi,
+        projeId,
+        notlar: null,
+        kaynak: req.body.kaynak || 'web',
+      });
+      veriPaketiId = paket.id;
+
+      // proje_adim_id'yi pakete de bağla
+      db.prepare('UPDATE veri_paketleri SET proje_adim_id = ? WHERE id = ?').run(projeAdimId, veriPaketiId);
+    }
+
     const sonuc = await dosyaService.dosyaYukle(req.file.buffer, {
       orijinalAdi: req.file.originalname,
       // v2 alan bazlı parametreler
@@ -154,11 +179,11 @@ router.post('/yukle', upload.single('dosya'), async (req, res) => {
       ozelAlanlar: req.body.ozel_alanlar ? JSON.parse(req.body.ozel_alanlar) : null,
       // mevcut parametreler
       projeNo: req.body.proje_no || null,
-      projeId: req.body.proje_id ? parseInt(req.body.proje_id) : null,
+      projeId,
       ekipId: req.body.ekip_id ? parseInt(req.body.ekip_id) : null,
       ekipKodu: req.body.ekip_kodu || null,
       yukleyenId: req.body.yukleyen_id ? parseInt(req.body.yukleyen_id) : null,
-      veriPaketiId: req.body.veri_paketi_id ? parseInt(req.body.veri_paketi_id) : null,
+      veriPaketiId,
       baslik: req.body.baslik || null,
       notlar: req.body.notlar || null,
       etiketler: req.body.etiketler ? JSON.parse(req.body.etiketler) : [],
@@ -166,8 +191,14 @@ router.post('/yukle', upload.single('dosya'), async (req, res) => {
       longitude: req.body.longitude ? parseFloat(req.body.longitude) : null,
       konumAdi: req.body.konum_adi || null,
       kaynak: req.body.kaynak || 'web',
-      projeAdimId: req.body.proje_adim_id ? parseInt(req.body.proje_adim_id) : null,
+      projeAdimId,
     });
+
+    // Otomatik oluşturulan paketi tamamla
+    if (projeAdimId && !req.body.veri_paketi_id && veriPaketiId) {
+      const veriPaketiService = require('../services/veriPaketiService');
+      veriPaketiService.tamamla(veriPaketiId);
+    }
 
     res.json({ success: true, data: sonuc });
   } catch (error) {

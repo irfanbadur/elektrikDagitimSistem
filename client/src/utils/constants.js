@@ -42,13 +42,17 @@ export const EKIP_DURUM_RENKLERI = {
   pasif: 'bg-gray-100 text-gray-600',
 }
 
-export const GOREV_TIPLERI = {
-  ekip_basi: 'Ekip Başı',
-  usta: 'Usta',
-  teknisyen: 'Teknisyen',
-  cirak: 'Çırak',
-  sofor: 'Şoför',
+export const DEPARTMANLAR = {
+  idari: { label: 'İdari', tooltip: 'Yönetim, muhasebe, satın alma vb.' },
+  teknik_ofis: { label: 'Teknik-Ofis', tooltip: 'Mühendis, teknisyen vb.' },
+  saha_operasyon: { label: 'Saha-Operasyon', tooltip: 'Ekip başı, işçiler, operatör vb.' },
+  destek_lojistik: { label: 'Destek-Lojistik', tooltip: 'Aşçı, şoför, temizlikçi vb.' },
 }
+
+// Geriye uyumluluk
+export const GOREV_TIPLERI = Object.fromEntries(
+  Object.entries(DEPARTMANLAR).map(([k, v]) => [k, v.label])
+)
 
 export const TALEP_TIPLERI = {
   malzeme: 'Malzeme Talebi',

@@ -362,7 +362,7 @@ export default function ProjeDetay() {
         )}
 
         {aktifTab === 'dongu' && (
-          <ProjeDongu projeId={id} projeTipi={proje?.proje_tipi} />
+          <ProjeDongu projeId={id} projeTipi={proje?.proje_tipi} projeNo={proje?.proje_no} />
         )}
 
         {aktifTab === 'raporlar' && (

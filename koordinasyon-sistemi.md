@@ -16,7 +16,7 @@ Türkiye genelinde elektrik dağıtım şirketleri (TEDAŞ, EDAŞ grupları vb.)
 - Raporlama ve Excel çıktı ihtiyaçları
 
 ### Teknik Yaklaşım
-Sistem, firma ofisindeki bir bilgisayarda çalışacak ve aynı WiFi ağındaki cihazlardan erişilebilir olacaktır. İlk aşamada **web uygulaması + SQLite backend** geliştirilecek, ilerleyen aşamalarda **Telegram bot + n8n otomasyon** entegrasyonu eklenecektir.
+Sistem, firma ofisindeki bir bilgisayarda çalışacak ve aynı WiFi ağındaki cihazlardan erişilebilir olacaktır. **Web uygulaması + SQLite backend** olarak geliştirilmiştir.
 
 ### Ölçeklenebilirlik
 Uygulama tek firma kullanımı için tasarlanmıştır. Her firma kendi sunucusunda kendi veritabanı ile çalışır. Firma adı, bölge tanımları, proje tipleri ve malzeme kategorileri tamamen yapılandırılabilir (configurable) olacaktır — böylece herhangi bir ildeki herhangi bir müteahhit firma sistemi kendi ihtiyaçlarına göre kurabilir.
@@ -205,8 +205,6 @@ CREATE TABLE IF NOT EXISTS personel (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ad_soyad TEXT NOT NULL,
     telefon TEXT,
-    telegram_id TEXT,
-    telegram_kullanici_adi TEXT,
     gorev TEXT,                          -- 'ekip_basi', 'usta', 'teknisyen', 'cirak', 'sofor'
     ekip_id INTEGER,
     aktif BOOLEAN DEFAULT 1,
@@ -279,7 +277,7 @@ CREATE TABLE IF NOT EXISTS proje_durum_gecmisi (
     proje_id INTEGER NOT NULL,
     eski_durum TEXT,
     yeni_durum TEXT NOT NULL,
-    degistiren TEXT,                      -- 'sistem', 'koordinator', 'telegram'
+    degistiren TEXT,                      -- 'sistem', 'koordinator'
     notlar TEXT,
     tarih DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (proje_id) REFERENCES projeler(id)
@@ -315,7 +313,7 @@ CREATE TABLE IF NOT EXISTS malzeme_hareketleri (
     proje_id INTEGER,
     teslim_alan TEXT,                     -- malzemeyi teslim alan kişi
     teslim_eden TEXT,                     -- malzemeyi veren kişi
-    kaynak TEXT DEFAULT 'web',            -- 'web', 'telegram', 'excel_import'
+    kaynak TEXT DEFAULT 'web',            -- 'web', 'mobil', 'excel_import'
     belge_no TEXT,                        -- irsaliye/fiş numarası
     notlar TEXT,
     tarih DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -344,7 +342,7 @@ CREATE TABLE IF NOT EXISTS gunluk_rapor (
     kesinti_detay TEXT,
     arac_km_baslangic INTEGER,
     arac_km_bitis INTEGER,
-    kaynak TEXT DEFAULT 'web',            -- 'web', 'telegram'
+    kaynak TEXT DEFAULT 'web',            -- 'web', 'mobil'
     notlar TEXT,
     olusturma_zamani DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (ekip_id) REFERENCES ekipler(id),
@@ -376,7 +374,7 @@ CREATE TABLE IF NOT EXISTS talepler (
     durum TEXT DEFAULT 'beklemede',       -- 'beklemede', 'isleniyor', 'onaylandi', 'reddedildi', 'tamamlandi'
     atanan_kisi TEXT,                     -- talebi işleyen kişi
     cozum_aciklama TEXT,
-    kaynak TEXT DEFAULT 'web',            -- 'web', 'telegram'
+    kaynak TEXT DEFAULT 'web',            -- 'web', 'mobil'
     olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
     guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
     cozum_tarihi DATETIME,
@@ -418,7 +416,7 @@ CREATE TABLE IF NOT EXISTS aktivite_log (
     islem TEXT NOT NULL,                  -- 'olusturma', 'guncelleme', 'silme', 'durum_degisikligi'
     kayit_id INTEGER,                     -- ilgili tablodaki kayıt ID
     detay TEXT,                           -- JSON: değişiklik detayları
-    kullanici TEXT DEFAULT 'koordinator', -- 'koordinator', 'telegram_bot', 'sistem'
+    kullanici TEXT DEFAULT 'koordinator', -- 'koordinator', 'sistem'
     tarih DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -968,47 +966,6 @@ Uygulama aşağıdaki raporları Excel formatında export edebilmelidir:
 6. **Ekip Performans Raporu**: Ekip bazlı tamamlanan iş, kullanılan malzeme, çalışma günü
 
 Her raporda üst bilgi olarak şirket adı, rapor tarihi, oluşturan bilgisi bulunmalıdır.
-
----
-
-## İleri Aşama: n8n + Telegram Entegrasyonu (Referans)
-
-> Bu bölüm ilk aşamada geliştirilmeyecektir. API tasarımı bu entegrasyona hazır olacak şekilde yapılmıştır.
-
-### Telegram Bot Mesaj Formatları
-
-Ekip başları şu formatlarda mesaj gönderecek:
-
-```
-Tür 1 - Günlük Rapor:
-"Bugün Ekip 1, [bölge adı]'da YB-2025-001 üzerinde çalıştık. 4 kişiydik. 
-Kablo çekimi yaptık, 120 metre 3x150 kablo kullandık."
-
-Tür 2 - Malzeme Talebi:
-"Yarın için 50 adet klemens ve 200 metre 3x70 kablo lazım."
-
-Tür 3 - Acil Bildirim:
-"Enerji kesintisi gerekiyor, YB-2025-001 sahası, yarın saat 09:00-14:00"
-
-Tür 4 - Malzeme Çıkışı:
-"Depodan aldık: 3x150 kablo 200m, 9m direk 5 adet, klemens 30 adet"
-```
-
-### n8n Workflow Yapısı
-
-```
-Telegram Trigger → HTTP Request (Claude API) → JSON Parse
-  → Switch (islem tipi)
-    → "gunluk_rapor" → HTTP Request (POST /api/puantaj)
-    → "malzeme_cikis" → HTTP Request (POST /api/malzeme-hareketleri)
-    → "malzeme_talep" → HTTP Request (POST /api/talepler)
-    → "enerji_kesintisi" → HTTP Request (POST /api/talepler)
-    → "bilinmeyen" → Telegram (koordinatöre ilet)
-```
-
-### API Hazırlığı
-
-Tüm POST endpoint'leri `kaynak` alanı kabul etmelidir: `'web'`, `'telegram'`, `'excel_import'`. Bu sayede n8n entegrasyonu eklendiğinde API'de değişiklik gerekmez.
 
 ---
 

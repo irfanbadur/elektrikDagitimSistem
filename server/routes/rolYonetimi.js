@@ -17,7 +17,13 @@ router.get('/roller',
   (req, res) => {
     try {
       const db = getDb();
-      const roller = db.prepare("SELECT * FROM roller WHERE durum = 'aktif' ORDER BY seviye DESC").all();
+      const roller = db.prepare(`
+        SELECT r.*, d.departman_adi, d.departman_kodu
+        FROM roller r
+        LEFT JOIN departmanlar d ON r.departman_id = d.id
+        WHERE r.durum = 'aktif'
+        ORDER BY d.sira, r.seviye DESC
+      `).all();
 
       const stmt = db.prepare(`
         SELECT i.id as izin_id, i.modul, i.aksiyon, i.modul_etiketi, i.aksiyon_etiketi, ri.veri_kapsami
@@ -86,7 +92,7 @@ router.post('/roller',
   (req, res) => {
     try {
       const db = getDb();
-      const { rol_adi, rol_kodu, aciklama, renk, ikon, seviye, izinler } = req.body;
+      const { rol_adi, rol_kodu, aciklama, renk, ikon, seviye, izinler, departman_id, birim_id } = req.body;
 
       if (!rol_adi || !rol_kodu) {
         return res.status(400).json({ success: false, error: 'Rol adı ve kodu zorunludur' });
@@ -98,9 +104,9 @@ router.post('/roller',
       }
 
       const result = db.prepare(`
-        INSERT INTO roller (rol_adi, rol_kodu, aciklama, renk, ikon, seviye, olusturan_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(rol_adi, rol_kodu, aciklama, renk || '#6b7280', ikon || '👤', seviye || 50, req.kullanici.id);
+        INSERT INTO roller (rol_adi, rol_kodu, aciklama, renk, ikon, seviye, departman_id, birim_id, olusturan_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(rol_adi, rol_kodu, aciklama, renk || '#6b7280', ikon || '', seviye || 50, departman_id || null, birim_id || null, req.kullanici.id);
 
       const rolId = result.lastInsertRowid;
 
@@ -128,7 +134,7 @@ router.put('/roller/:id',
     try {
       const db = getDb();
       const rolId = parseInt(req.params.id);
-      const { rol_adi, aciklama, renk, ikon, seviye, izinler } = req.body;
+      const { rol_adi, aciklama, renk, ikon, seviye, izinler, departman_id, birim_id } = req.body;
 
       const rol = db.prepare('SELECT * FROM roller WHERE id = ?').get(rolId);
       if (!rol) return res.status(404).json({ success: false, error: 'Rol bulunamadı' });
@@ -140,9 +146,11 @@ router.put('/roller/:id',
           renk = COALESCE(?, renk),
           ikon = COALESCE(?, ikon),
           seviye = COALESCE(?, seviye),
+          departman_id = ?,
+          birim_id = ?,
           guncelleme_tarihi = datetime('now')
         WHERE id = ?
-      `).run(rol_adi, aciklama, renk, ikon, seviye, rolId);
+      `).run(rol_adi, aciklama, renk, ikon, seviye, departman_id !== undefined ? departman_id : rol.departman_id, birim_id !== undefined ? birim_id : rol.birim_id, rolId);
 
       if (izinler) {
         db.prepare('DELETE FROM rol_izinleri WHERE rol_id = ?').run(rolId);

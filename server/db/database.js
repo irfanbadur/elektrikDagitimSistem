@@ -117,21 +117,25 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'veri_paketleri', 'proje_adim_id', 'INTEGER');
   addColumnIfNotExists(database, 'dosyalar', 'proje_adim_id', 'INTEGER');
 
+  // Departman sistemi: roller tablosuna departman_id ve birim_id
+  addColumnIfNotExists(database, 'roller', 'departman_id', 'INTEGER REFERENCES departmanlar(id)');
+  addColumnIfNotExists(database, 'roller', 'birim_id', 'INTEGER REFERENCES departman_birimleri(id)');
+
   // sorumlu_pozisyon_id → sorumlu_rol_id migration
   renameColumnIfNeeded(database, 'is_tipi_fazlari', 'sorumlu_pozisyon_id', 'sorumlu_rol_id');
   renameColumnIfNeeded(database, 'proje_adimlari', 'sorumlu_pozisyon_id', 'sorumlu_rol_id');
 
-  // Rol isim güncellemeleri: Patron → Genel Müdür, Şantiye Şefi → Sistem Yöneticisi
+  // Rol kod/isim güncellemeleri: patron → genel_mudur, santiye_sefi → sistem_yoneticisi
   try {
-    database.prepare("UPDATE roller SET rol_adi = 'Genel Müdür' WHERE rol_kodu = 'patron' AND rol_adi = 'Patron'").run();
-    database.prepare("UPDATE roller SET rol_adi = 'Sistem Yöneticisi', aciklama = 'Sistem yönetimi, tüm yetkiler' WHERE rol_kodu = 'santiye_sefi' AND rol_adi = 'Şantiye Şefi'").run();
+    database.prepare("UPDATE roller SET rol_adi = 'Genel Müdür', rol_kodu = 'genel_mudur' WHERE rol_kodu = 'patron'").run();
+    database.prepare("UPDATE roller SET rol_adi = 'Sistem Yöneticisi', rol_kodu = 'sistem_yoneticisi', aciklama = 'Sistem yönetimi, teknik altyapı ve kullanıcı yönetimi', ikon = '⚙️' WHERE rol_kodu = 'santiye_sefi'").run();
 
     // Koordinatör ve Sistem Yöneticisi'ne tüm izinleri ver (Genel Müdür gibi)
     const tumIzinler = database.prepare('SELECT id FROM izinler').all();
     const koordinatorRol = database.prepare("SELECT id FROM roller WHERE rol_kodu = 'koordinator'").get();
-    const santiyeSefiRol = database.prepare("SELECT id FROM roller WHERE rol_kodu = 'santiye_sefi'").get();
+    const sistemYoneticisiRol = database.prepare("SELECT id FROM roller WHERE rol_kodu = 'sistem_yoneticisi'").get();
 
-    for (const rol of [koordinatorRol, santiyeSefiRol]) {
+    for (const rol of [koordinatorRol, sistemYoneticisiRol]) {
       if (!rol) continue;
       for (const izin of tumIzinler) {
         database.prepare('INSERT OR IGNORE INTO rol_izinleri (rol_id, izin_id, veri_kapsami) VALUES (?, ?, ?)').run(rol.id, izin.id, 'tum');
@@ -144,12 +148,50 @@ function runMigrations(database) {
   }
 }
 
+function migrateDonguDosyalariToVeriPaketi(database) {
+  try {
+    // proje_adim_id olan ama veri_paketi_id olmayan dosyaları bul
+    const yetimDosyalar = database.prepare(`
+      SELECT d.id, d.proje_id, d.proje_adim_id, d.olusturma_tarihi,
+        pa.adim_kodu, pa.adim_adi
+      FROM dosyalar d
+      LEFT JOIN proje_adimlari pa ON d.proje_adim_id = pa.id
+      WHERE d.proje_adim_id IS NOT NULL
+        AND (d.veri_paketi_id IS NULL OR d.veri_paketi_id = 0)
+        AND d.durum = 'aktif'
+    `).all();
+
+    if (yetimDosyalar.length === 0) return;
+
+    // Her dosya için bir veri paketi oluştur ve bağla
+    const paketOlustur = database.prepare(`
+      INSERT INTO veri_paketleri (paket_tipi, proje_id, proje_adim_id, kaynak, durum, tamamlanma_zamani, olusturma_tarihi)
+      VALUES (?, ?, ?, 'web', 'tamamlandi', datetime('now'), ?)
+    `);
+    const dosyaGuncelle = database.prepare('UPDATE dosyalar SET veri_paketi_id = ? WHERE id = ?');
+
+    const transaction = database.transaction(() => {
+      for (const d of yetimDosyalar) {
+        const paketTipi = d.adim_kodu || 'genel';
+        const r = paketOlustur.run(paketTipi, d.proje_id, d.proje_adim_id, d.olusturma_tarihi);
+        dosyaGuncelle.run(r.lastInsertRowid, d.id);
+      }
+    });
+    transaction();
+
+    console.log(`✅ ${yetimDosyalar.length} döngü dosyası veri paketine dönüştürüldü`);
+  } catch (err) {
+    console.error('Döngü dosya migration hatası:', err.message);
+  }
+}
+
 function initDatabase() {
   const database = getDb();
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   database.exec(schema);
 
   runMigrations(database);
+  migrateDonguDosyalariToVeriPaketi(database);
 
   const count = database.prepare('SELECT COUNT(*) as c FROM personel').get();
   if (count.c === 0) {

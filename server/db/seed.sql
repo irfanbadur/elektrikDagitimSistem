@@ -147,25 +147,54 @@ INSERT OR IGNORE INTO izinler (modul, aksiyon, modul_etiketi, aksiyon_etiketi, a
 -- Ayarlar
 INSERT OR IGNORE INTO izinler (modul, aksiyon, modul_etiketi, aksiyon_etiketi, aciklama) VALUES
   ('ayarlar', 'genel',      'Ayarlar', 'Genel',      'Genel ayarlar (firma bilgileri)'),
-  ('ayarlar', 'telegram',   'Ayarlar', 'Telegram/AI', 'Telegram bot ve AI ayarları'),
+  ('ayarlar', 'ai',         'Ayarlar', 'AI Ayarları', 'AI ayarları'),
   ('ayarlar', 'dongu',      'Ayarlar', 'Döngü Şablon','Döngü şablon yönetimi'),
   ('ayarlar', 'roller',     'Ayarlar', 'Rol Yönetimi','Rol oluşturma ve izin atama'),
   ('ayarlar', 'kullanicilar','Ayarlar', 'Kullanıcılar','Kullanıcı oluşturma ve rol atama');
 
 -- ═══════════════════════════════════════════════════
--- VARSAYILAN ROLLER
+-- VARSAYILAN DEPARTMANLAR
 -- ═══════════════════════════════════════════════════
-INSERT OR IGNORE INTO roller (rol_adi, rol_kodu, aciklama, renk, ikon, seviye, sistem_rolu) VALUES
-  ('Patron',          'patron',       'Tüm yetkilere sahip, firma sahibi',           '#dc2626', '👑', 100, 1),
-  ('Koordinatör',     'koordinator',  'Günlük operasyon yönetimi',                    '#2563eb', '📋', 90,  1),
-  ('Şantiye Şefi',   'santiye_sefi', 'Şantiye bazlı proje ve ekip yönetimi',         '#f59e0b', '🏗️', 80,  1),
-  ('Saha Mühendisi',  'saha_muhendis','Sahada teknik kontrol ve denetim',             '#10b981', '🔍', 70,  1),
-  ('Ekip Başı',       'ekip_basi',   'Saha ekip yönetimi, veri paketi gönderimi',     '#8b5cf6', '👷', 60,  1),
-  ('Depocu',          'depocu',      'Malzeme ve stok yönetimi',                      '#0ea5e9', '📦', 50,  1),
-  ('İSG Uzmanı',      'isg_uzmani',  'İş sağlığı ve güvenliği denetimi',             '#f43f5e', '🛡️', 50,  1),
-  ('Muhasebeci',      'muhasebeci',  'Hak ediş, maliyet ve finansal işlemler',        '#84cc16', '💰', 50,  1),
-  ('Sürveyan',        'surveyan',    'Saha kontrolü ve yapım denetimi',               '#14b8a6', '📏', 55,  0),
-  ('Taşeron',         'taseron',     'Dış firma — sadece kendi işi',                   '#6b7280', '🤝', 30,  0);
+INSERT OR IGNORE INTO departmanlar (departman_adi, departman_kodu, aciklama, renk, sira) VALUES
+  ('İdari',             'idari',            'Yönetim, muhasebe, satın alma',              '#dc2626', 1),
+  ('Saha-Operasyon',    'saha_operasyon',   'Ekipler, işçiler',                           '#2563eb', 2),
+  ('Lojistik-Destek',   'lojistik_destek',  'Aşçı, temizlikçi, şoför',                   '#f59e0b', 3),
+  ('Teknik-Ofis',       'teknik_ofis',      'Mühendisler, teknikerler, uzmanlar',         '#10b981', 4);
+
+INSERT OR IGNORE INTO departman_birimleri (departman_id, birim_adi, birim_kodu, sira) VALUES
+  ((SELECT id FROM departmanlar WHERE departman_kodu='idari'), 'Genel Müdür',      'genel_mudur',    1),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='idari'), 'Koordinatör',      'koordinator',    2),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='idari'), 'Muhasebe',         'muhasebe',       3),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='idari'), 'Satın Alma',       'satin_alma',     4),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='saha_operasyon'), 'Ekipler',  'ekipler',       1),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='saha_operasyon'), 'İşçiler',  'isciler',       2),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='lojistik_destek'), 'Aşçı',     'asci',         1),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='lojistik_destek'), 'Temizlikçi','temizlikci',   2),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='lojistik_destek'), 'Şoför',    'sofor',        3),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='teknik_ofis'), 'Mühendisler',  'muhendisler',   1),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='teknik_ofis'), 'Teknikerler',  'teknikerler',   2),
+  ((SELECT id FROM departmanlar WHERE departman_kodu='teknik_ofis'), 'Uzmanlar',     'uzmanlar',      3);
+
+-- ═══════════════════════════════════════════════════
+-- VARSAYILAN ROLLER (departman bazlı)
+-- ═══════════════════════════════════════════════════
+INSERT OR IGNORE INTO roller (rol_adi, rol_kodu, aciklama, renk, ikon, seviye, sistem_rolu, departman_id) VALUES
+  ('Genel Müdür',       'genel_mudur',       'Tüm yetkilere sahip, firma sahibi',       '#dc2626', '', 100, 1, (SELECT id FROM departmanlar WHERE departman_kodu='idari')),
+  ('Koordinatör',       'koordinator',       'Günlük operasyon yönetimi',                '#2563eb', '', 90,  1, (SELECT id FROM departmanlar WHERE departman_kodu='idari')),
+  ('Sistem Yöneticisi', 'sistem_yoneticisi', 'Sistem yönetimi, teknik altyapı',         '#f59e0b', '', 80,  1, NULL),
+  ('Muhasebeci',        'muhasebeci',        'Hak ediş, maliyet ve finansal işlemler',   '#84cc16', '', 50,  1, (SELECT id FROM departmanlar WHERE departman_kodu='idari')),
+  ('Satın Alma',        'satin_alma',        'Malzeme tedariki ve sipariş yönetimi',     '#0ea5e9', '', 50,  0, (SELECT id FROM departmanlar WHERE departman_kodu='idari')),
+  ('Saha Mühendisi',    'saha_muhendis',     'Sahada teknik kontrol ve denetim',         '#10b981', '', 70,  1, (SELECT id FROM departmanlar WHERE departman_kodu='saha_operasyon')),
+  ('Ekip Başı',         'ekip_basi',         'Saha ekip yönetimi',                       '#8b5cf6', '', 60,  1, (SELECT id FROM departmanlar WHERE departman_kodu='saha_operasyon')),
+  ('İşçi',              'isci',              'Saha işçisi',                               '#6b7280', '', 30,  0, (SELECT id FROM departmanlar WHERE departman_kodu='saha_operasyon')),
+  ('Operatör',          'operator',          'Araç ve makine operatörü',                  '#14b8a6', '', 40,  0, (SELECT id FROM departmanlar WHERE departman_kodu='saha_operasyon')),
+  ('Aşçı',              'asci',              'Yemek hizmetleri',                          '#f59e0b', '', 20,  0, (SELECT id FROM departmanlar WHERE departman_kodu='lojistik_destek')),
+  ('Temizlikçi',        'temizlikci',        'Temizlik hizmetleri',                       '#f59e0b', '', 20,  0, (SELECT id FROM departmanlar WHERE departman_kodu='lojistik_destek')),
+  ('Şoför',             'sofor',             'Araç kullanma, nakliye',                    '#f59e0b', '', 30,  0, (SELECT id FROM departmanlar WHERE departman_kodu='lojistik_destek')),
+  ('Mühendis',          'muhendis',          'Proje tasarımı ve teknik işler',            '#10b981', '', 70,  1, (SELECT id FROM departmanlar WHERE departman_kodu='teknik_ofis')),
+  ('Tekniker',          'tekniker',          'Teknik destek, ölçüm, denetim',             '#10b981', '', 55,  0, (SELECT id FROM departmanlar WHERE departman_kodu='teknik_ofis')),
+  ('İSG Uzmanı',        'isg_uzmani',        'İş sağlığı ve güvenliği denetimi',         '#f43f5e', '', 50,  1, (SELECT id FROM departmanlar WHERE departman_kodu='teknik_ofis')),
+  ('Depocu',            'depocu',            'Malzeme ve stok yönetimi',                  '#0ea5e9', '', 50,  1, (SELECT id FROM departmanlar WHERE departman_kodu='lojistik_destek'));
 
 -- ─── DÖNGÜ ŞABLONLARI ────────────────────────────────
 INSERT INTO dongu_sablonlari (sablon_adi, sablon_kodu, aciklama, varsayilan)

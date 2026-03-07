@@ -41,6 +41,54 @@ export function useIzinTanimlari() {
   })
 }
 
+// ─── DEPARTMANLAR ─────────────────────────────────
+export function useDepartmanlar() {
+  return useQuery({
+    queryKey: ['departmanlar'],
+    queryFn: () => api.get('/departmanlar'),
+  })
+}
+
+export function useDepartmanOlustur() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => api.post('/departmanlar', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['departmanlar'] }),
+  })
+}
+
+export function useDepartmanGuncelle() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.put(`/departmanlar/${id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['departmanlar'] }),
+  })
+}
+
+export function useDepartmanSil() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/departmanlar/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['departmanlar'] }),
+  })
+}
+
+export function useBirimOlustur() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ departmanId, ...data }) => api.post(`/departmanlar/${departmanId}/birimler`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['departmanlar'] }),
+  })
+}
+
+export function useBirimSil() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (birimId) => api.delete(`/departmanlar/birimler/${birimId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['departmanlar'] }),
+  })
+}
+
 // ─── KULLANICILAR ────────────────────────────────
 export function useKullanicilar() {
   return useQuery({

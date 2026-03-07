@@ -14,7 +14,6 @@ import {
   Wrench,
   MapPin,
   FolderOpen,
-  Bot,
   MessageCircle,
   Settings,
   Network,
@@ -42,7 +41,6 @@ const navItems = [
 
 const bottomItems = [
   { label: 'AI Sohbet', icon: MessageCircle, path: '/ai-sohbet', herZaman: true },
-  { label: 'AI & Telegram', icon: Bot, path: '/telegram', modul: 'ayarlar', aksiyon: 'genel' },
   { label: 'Ayarlar', icon: Settings, path: '/ayarlar', modul: 'ayarlar', aksiyon: 'genel' },
 ]
 

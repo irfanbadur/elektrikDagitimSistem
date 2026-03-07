@@ -139,7 +139,10 @@ class VeriPaketiService {
 
     if (projeId) { where.push('vp.proje_id = ?'); params.push(projeId); }
     if (ekipId) { where.push('vp.ekip_id = ?'); params.push(ekipId); }
-    if (paketTipi) { where.push('vp.paket_tipi = ?'); params.push(paketTipi); }
+    if (paketTipi) {
+      where.push('(vp.paket_tipi = ? OR vp.proje_adim_id IN (SELECT id FROM proje_adimlari WHERE adim_kodu = ?))');
+      params.push(paketTipi, paketTipi);
+    }
     if (durum) { where.push('vp.durum = ?'); params.push(durum); }
     if (projeDurum) { where.push('p.durum = ?'); params.push(projeDurum); }
     if (dosyaKategori) {

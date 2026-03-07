@@ -25,7 +25,7 @@ bolgeler (id, bolge_adi, bolge_tipi, ust_bolge_id, aktif, sira)
 ekipler (id, ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, arac_plaka, durum, notlar)
 
 -- Personel
-personel (id, ad_soyad, telefon, telegram_id, gorev, ekip_id, aktif)
+personel (id, ad_soyad, telefon, gorev, ekip_id, aktif)
 
 -- Malzemeler (Depo Stok)
 malzemeler (id, malzeme_kodu, malzeme_adi, kategori, birim, stok_miktari, kritik_seviye, birim_fiyat, depo_konumu, notlar)

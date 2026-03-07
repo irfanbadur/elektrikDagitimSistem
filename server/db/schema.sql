@@ -32,8 +32,6 @@ CREATE TABLE IF NOT EXISTS personel (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ad_soyad TEXT NOT NULL,
     telefon TEXT,
-    telegram_id TEXT,
-    telegram_kullanici_adi TEXT,
     gorev TEXT,
     ekip_id INTEGER,
     aktif BOOLEAN DEFAULT 1,
@@ -263,22 +261,6 @@ BEGIN
 END;
 
 -- ============================================
--- TELEGRAM KULLANICI EŞLEŞTİRME
--- ============================================
-CREATE TABLE IF NOT EXISTS telegram_kullanicilar (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    telegram_id TEXT UNIQUE NOT NULL,
-    telegram_kullanici_adi TEXT,
-    telegram_ad TEXT,
-    personel_id INTEGER,
-    yetki_seviyesi TEXT DEFAULT 'ekip',
-    aktif BOOLEAN DEFAULT 1,
-    kayit_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
-    son_mesaj_tarihi DATETIME,
-    FOREIGN KEY (personel_id) REFERENCES personel(id)
-);
-
--- ============================================
 -- MEDYA / FOTOĞRAF DEPOSU
 -- ============================================
 CREATE TABLE IF NOT EXISTS medya (
@@ -299,7 +281,6 @@ CREATE TABLE IF NOT EXISTS medya (
     cekim_tarihi DATETIME,
     yukleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
     yukleyen_personel_id INTEGER,
-    yukleyen_telegram_id TEXT,
     proje_id INTEGER,
     ekip_id INTEGER,
     veri_paketi_id INTEGER,
@@ -337,22 +318,6 @@ CREATE TABLE IF NOT EXISTS veri_paketleri (
     FOREIGN KEY (ekip_id) REFERENCES ekipler(id),
     FOREIGN KEY (proje_id) REFERENCES projeler(id),
     FOREIGN KEY (bolge_id) REFERENCES bolgeler(id)
-);
-
--- ============================================
--- TELEGRAM MESAJ LOGU
--- ============================================
-CREATE TABLE IF NOT EXISTS telegram_mesaj_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    telegram_id TEXT NOT NULL,
-    mesaj_tipi TEXT,
-    yon TEXT NOT NULL,
-    ham_mesaj TEXT,
-    ai_parse_sonucu TEXT,
-    islem_durumu TEXT DEFAULT 'islendi',
-    hata_detay TEXT,
-    islem_suresi_ms INTEGER,
-    tarih DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ============================================
@@ -431,8 +396,7 @@ CREATE TABLE IF NOT EXISTS analiz_ekipman_eslesmesi (
     FOREIGN KEY (ekipman_katalog_id) REFERENCES ekipman_katalogu(id)
 );
 
--- TELEGRAM INDEXLER
-CREATE INDEX IF NOT EXISTS idx_telegram_kullanicilar_tid ON telegram_kullanicilar(telegram_id);
+-- INDEXLER
 CREATE INDEX IF NOT EXISTS idx_medya_proje ON medya(proje_id);
 CREATE INDEX IF NOT EXISTS idx_medya_paket ON medya(veri_paketi_id);
 CREATE INDEX IF NOT EXISTS idx_medya_tarih ON medya(yukleme_tarihi);
@@ -440,8 +404,6 @@ CREATE INDEX IF NOT EXISTS idx_medya_konum ON medya(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_veri_paketleri_proje ON veri_paketleri(proje_id);
 CREATE INDEX IF NOT EXISTS idx_veri_paketleri_ekip ON veri_paketleri(ekip_id);
 CREATE INDEX IF NOT EXISTS idx_veri_paketleri_tarih ON veri_paketleri(olusturma_tarihi);
-CREATE INDEX IF NOT EXISTS idx_mesaj_log_tid ON telegram_mesaj_log(telegram_id);
-CREATE INDEX IF NOT EXISTS idx_mesaj_log_tarih ON telegram_mesaj_log(tarih);
 CREATE INDEX IF NOT EXISTS idx_ekipman_katalogu_kategori ON ekipman_katalogu(kategori);
 CREATE INDEX IF NOT EXISTS idx_ekipman_katalogu_gerilim ON ekipman_katalogu(gerilim_sinifi);
 CREATE INDEX IF NOT EXISTS idx_foto_analiz_medya ON foto_analiz(medya_id);
@@ -451,7 +413,7 @@ CREATE INDEX IF NOT EXISTS idx_foto_analiz_onay ON foto_analiz(onay_durumu);
 CREATE INDEX IF NOT EXISTS idx_analiz_eslesmesi_analiz ON analiz_ekipman_eslesmesi(foto_analiz_id);
 CREATE INDEX IF NOT EXISTS idx_analiz_eslesmesi_katalog ON analiz_ekipman_eslesmesi(ekipman_katalog_id);
 
--- TELEGRAM TETİKLEYİCİLER
+-- VERİ PAKETİ TETİKLEYİCİLER
 CREATE TRIGGER IF NOT EXISTS trg_veri_paketi_no
 AFTER INSERT ON veri_paketleri
 WHEN NEW.paket_no IS NULL
@@ -512,9 +474,8 @@ CREATE INDEX IF NOT EXISTS idx_saha_mesaj_durum ON saha_mesajlari(durum);
 CREATE INDEX IF NOT EXISTS idx_saha_mesaj_tarih ON saha_mesajlari(olusturma_tarihi);
 CREATE INDEX IF NOT EXISTS idx_saha_mesaj_gonderen ON saha_mesajlari(gonderen_id);
 
--- Firma ayarları telegram eklentileri
+-- Firma ayarları AI eklentileri
 INSERT OR IGNORE INTO firma_ayarlari (anahtar, deger, aciklama) VALUES
-('telegram_bot_token', '', 'BotFather''dan alınan Telegram Bot Token'),
 ('ai_aktif_katmanlar', '{"katman1":true,"katman2":true,"katman3":false}', 'Aktif AI katmanları'),
 ('ollama_base_url', 'http://localhost:11434', 'Ollama sunucu adresi'),
 ('ollama_text_model', 'qwen2.5:7b', 'Katman 1: Metin parse modeli'),
@@ -522,7 +483,6 @@ INSERT OR IGNORE INTO firma_ayarlari (anahtar, deger, aciklama) VALUES
 ('cloud_ai_provider', 'claude', 'Katman 3 sağlayıcı: claude veya openai'),
 ('claude_api_key', '', 'Anthropic Claude API anahtarı'),
 ('openai_api_key', '', 'OpenAI API anahtarı'),
-('koordinator_telegram_id', '', 'Koordinatörün Telegram ID''si (bildirimler için)'),
 ('foto_oto_analiz_seviyesi', '2', 'Fotoğraf yüklendiğinde otomatik analiz: 0/1/2/3');
 
 -- ============================================
@@ -865,6 +825,34 @@ CREATE INDEX IF NOT EXISTS idx_faz_adim ON faz_adimlari(faz_id);
 -- ============================================
 -- ROLLER — Özelleştirilebilir rol tanımları
 -- ============================================
+-- ============================================
+-- DEPARTMANLAR
+-- ============================================
+CREATE TABLE IF NOT EXISTS departmanlar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    departman_adi TEXT NOT NULL,
+    departman_kodu TEXT UNIQUE NOT NULL,
+    aciklama TEXT,
+    renk TEXT DEFAULT '#6b7280',
+    ikon TEXT DEFAULT '',
+    sira INTEGER DEFAULT 0,
+    aktif INTEGER DEFAULT 1,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS departman_birimleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    departman_id INTEGER NOT NULL,
+    birim_adi TEXT NOT NULL,
+    birim_kodu TEXT NOT NULL,
+    aciklama TEXT,
+    sira INTEGER DEFAULT 0,
+    aktif INTEGER DEFAULT 1,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (departman_id) REFERENCES departmanlar(id) ON DELETE CASCADE,
+    UNIQUE(departman_id, birim_kodu)
+);
+
 CREATE TABLE IF NOT EXISTS roller (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     rol_adi TEXT NOT NULL,
@@ -874,11 +862,15 @@ CREATE TABLE IF NOT EXISTS roller (
     ikon TEXT DEFAULT '👤',
     seviye INTEGER DEFAULT 50,
     sistem_rolu INTEGER DEFAULT 0,
+    departman_id INTEGER,
+    birim_id INTEGER,
     durum TEXT DEFAULT 'aktif',
     olusturan_id INTEGER,
     olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
     guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (olusturan_id) REFERENCES kullanicilar(id)
+    FOREIGN KEY (olusturan_id) REFERENCES kullanicilar(id),
+    FOREIGN KEY (departman_id) REFERENCES departmanlar(id),
+    FOREIGN KEY (birim_id) REFERENCES departman_birimleri(id)
 );
 
 -- ============================================

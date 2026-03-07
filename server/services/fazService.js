@@ -140,6 +140,18 @@ class FazService {
         UPDATE is_tipleri SET ad = ?, aciklama = ?, guncelleme_tarihi = datetime('now') WHERE id = ?
       `).run(ad, aciklama || null, id);
 
+      // proje_adimlari FK referanslarını NULL yap (proje adımları korunur, sadece şablon bağı kopar)
+      const eskiFazIds = db.prepare('SELECT id FROM is_tipi_fazlari WHERE is_tipi_id = ?').all(id).map(r => r.id);
+      if (eskiFazIds.length > 0) {
+        const placeholders = eskiFazIds.map(() => '?').join(',');
+        db.prepare(`UPDATE proje_adimlari SET faz_tanim_id = NULL WHERE faz_tanim_id IN (${placeholders})`).run(...eskiFazIds);
+        const eskiAdimIds = db.prepare(`SELECT id FROM faz_adimlari WHERE faz_id IN (${placeholders})`).all(...eskiFazIds).map(r => r.id);
+        if (eskiAdimIds.length > 0) {
+          const adimPlaceholders = eskiAdimIds.map(() => '?').join(',');
+          db.prepare(`UPDATE proje_adimlari SET adim_tanim_id = NULL WHERE adim_tanim_id IN (${adimPlaceholders})`).run(...eskiAdimIds);
+        }
+      }
+
       // Mevcut fazları ve adımları sil (CASCADE ile adımlar da silinir)
       db.prepare('DELETE FROM is_tipi_fazlari WHERE is_tipi_id = ?').run(id);
 

@@ -103,7 +103,7 @@ router.post('/baslat', async (req, res) => {
     if (!medya) return res.status(404).json({ success: false, error: 'Medya bulunamadi' });
 
     const fs = require('fs');
-    const aiManager = require('../telegram/ai/aiManager');
+    const aiManager = require('../services/ai-engine/aiManager');
     const imageBuffer = fs.readFileSync(medya.dosya_yolu);
     const results = await aiManager.processPhotoAnalysis(medya_id, imageBuffer, katman || 2);
     res.json({ success: true, data: results });

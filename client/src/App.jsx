@@ -13,7 +13,6 @@ import TaleplerPage from '@/pages/TaleplerPage'
 import RaporlarPage from '@/pages/RaporlarPage'
 import VeriPaketleriPage from '@/pages/VeriPaketleriPage'
 import KatalogPage from '@/pages/KatalogPage'
-import TelegramPage from '@/pages/TelegramPage'
 import SahaPage from '@/pages/SahaPage'
 import SahaMesajPage from '@/pages/SahaMesajPage'
 import AyarlarPage from '@/pages/AyarlarPage'
@@ -68,7 +67,6 @@ function AppRoutes() {
         <Route path="/katalog" element={<KatalogPage />} />
         <Route path="/saha" element={<SahaPage />} />
         <Route path="/saha-mesaj" element={<SahaMesajPage />} />
-        <Route path="/telegram" element={<TelegramPage />} />
         <Route path="/ayarlar" element={<AyarlarPage />} />
         <Route path="/dosya-yonetimi" element={<DosyaYonetimiPage />} />
         <Route path="/ai-sohbet" element={<AiSohbetPage />} />
