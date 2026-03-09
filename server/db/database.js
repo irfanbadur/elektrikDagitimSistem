@@ -117,6 +117,10 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'veri_paketleri', 'proje_adim_id', 'INTEGER');
   addColumnIfNotExists(database, 'dosyalar', 'proje_adim_id', 'INTEGER');
 
+  // Projeler: teslim eden/alan alanları
+  addColumnIfNotExists(database, 'projeler', 'teslim_eden', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'teslim_alan_id', 'INTEGER');
+
   // Departman sistemi: roller tablosuna departman_id ve birim_id
   addColumnIfNotExists(database, 'roller', 'departman_id', 'INTEGER REFERENCES departmanlar(id)');
   addColumnIfNotExists(database, 'roller', 'birim_id', 'INTEGER REFERENCES departman_birimleri(id)');

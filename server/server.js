@@ -75,9 +75,13 @@ app.use('/api/organizasyon', require('./routes/organizasyon'));
 // Depo Malzeme Kataloğu routes
 app.use('/api/depo-katalog', require('./routes/depoKatalog'));
 
-// Proje Keşif ve Bono routes
+// Proje Keşif, Demontaj ve Bono routes
 app.use('/api/proje-kesif', require('./routes/projeKesif'));
+app.use('/api/proje-demontaj', require('./routes/projeDemontaj'));
 app.use('/api/bonolar', require('./routes/bonolar'));
+
+// Yer Teslim Tutanağı AI Parse
+app.use('/api/yer-teslim', require('./routes/yerTeslimParse'));
 
 // Error handler
 const { errorHandler } = require('./middleware/errorHandler');

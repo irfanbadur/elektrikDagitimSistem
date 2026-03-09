@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, X } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, Save, X, Sparkles } from 'lucide-react'
 import { useProje, useProjeOlustur, useProjeGuncelle } from '@/hooks/useProjeler'
+import api from '@/api/client'
 import { useBolgeler } from '@/hooks/useBolgeler'
 import { useEkipler } from '@/hooks/useEkipler'
 import { useIsTipleri } from '@/hooks/useIsTipleri'
+import { usePersonelListesi } from '@/hooks/usePersonel'
 import { PROJE_DURUMLARI, ONCELIK_LABELS } from '@/utils/constants'
 import { CardSkeleton } from '@/components/shared/LoadingSkeleton'
+import YerTeslimModal from './YerTeslimModal'
 import { cn } from '@/lib/utils'
 
 const BOS_FORM = {
@@ -25,6 +28,8 @@ const BOS_FORM = {
   teslim_tarihi: '',
   tamamlanma_yuzdesi: 0,
   notlar: '',
+  teslim_eden: '',
+  teslim_alan_id: '',
 }
 
 export default function ProjeForm() {
@@ -36,6 +41,8 @@ export default function ProjeForm() {
   const { data: bolgeler } = useBolgeler()
   const { data: ekipler } = useEkipler()
   const { data: isTipleri } = useIsTipleri()
+  const { data: personelRes } = usePersonelListesi()
+  const personeller = personelRes?.data || personelRes || []
   const projeOlustur = useProjeOlustur()
   const projeGuncelle = useProjeGuncelle()
 
@@ -43,6 +50,10 @@ export default function ProjeForm() {
   const [hatalar, setHatalar] = useState({})
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [genelHata, setGenelHata] = useState('')
+  const [yerTeslimAcik, setYerTeslimAcik] = useState(false)
+  const [demontajListesi, setDemontajListesi] = useState([])
+  const [yerTeslimDosya, setYerTeslimDosya] = useState(null)
+  const [yerTeslimEkBilgi, setYerTeslimEkBilgi] = useState(null)
 
   // Proje tipine göre eşleşen iş tipi fazları
   const eslesmisIsTipi = useMemo(() => {
@@ -78,6 +89,8 @@ export default function ProjeForm() {
         teslim_tarihi: proje.teslim_tarihi ? proje.teslim_tarihi.slice(0, 10) : '',
         tamamlanma_yuzdesi: proje.tamamlanma_yuzdesi || 0,
         notlar: proje.notlar || '',
+        teslim_eden: proje.teslim_eden || '',
+        teslim_alan_id: proje.teslim_alan_id || '',
       })
     }
   }, [duzenleModu, proje])
@@ -94,6 +107,32 @@ export default function ProjeForm() {
     }
   }
 
+  // Personel listesinde isim ara (fuzzy)
+  const findPersonByName = (name) => {
+    if (!name || !Array.isArray(personeller) || personeller.length === 0) return null
+    const normalized = name.toLowerCase().trim()
+    if (!normalized) return null
+    let match = personeller.find(p => p.ad_soyad?.toLowerCase().trim() === normalized)
+    if (match) return match
+    match = personeller.find(p => {
+      const pName = p.ad_soyad?.toLowerCase().trim()
+      return pName && (pName.includes(normalized) || normalized.includes(pName))
+    })
+    return match
+  }
+
+  const handleTeslimSwap = () => {
+    const currentAlanId = form.teslim_alan_id
+    const alanPerson = personeller.find(p => String(p.id) === String(currentAlanId))
+    const alanName = alanPerson?.ad_soyad || ''
+    const edenPerson = findPersonByName(form.teslim_eden)
+    setForm(prev => ({
+      ...prev,
+      teslim_eden: alanName,
+      teslim_alan_id: edenPerson ? edenPerson.id : '',
+    }))
+  }
+
   const validate = () => {
     const yeniHatalar = {}
     if (!form.proje_no.trim()) {
@@ -104,6 +143,52 @@ export default function ProjeForm() {
     }
     setHatalar(yeniHatalar)
     return Object.keys(yeniHatalar).length === 0
+  }
+
+  const handleYerTeslimSonuc = (sonuc) => {
+    setYerTeslimAcik(false)
+    const { _dosya, ...data } = sonuc
+    setYerTeslimDosya(_dosya || null)
+    setDemontajListesi(data.demontaj_listesi || [])
+    setYerTeslimEkBilgi({
+      yer_teslim_yapan: data.yer_teslim_yapan,
+      yer_teslim_alan: data.yer_teslim_alan,
+      ek_bilgiler: data.ek_bilgiler,
+    })
+
+    // Teslim eden/alan otomatik tespit: personel listesinde olan = teslim alan
+    const yapanAd = data.yer_teslim_yapan?.ad_soyad || ''
+    const alanAd = data.yer_teslim_alan?.ad_soyad || ''
+    const alanPersonel = findPersonByName(alanAd)
+    const yapanPersonel = findPersonByName(yapanAd)
+    let teslimEden = ''
+    let teslimAlanId = ''
+    if (alanPersonel) {
+      teslimAlanId = alanPersonel.id
+      teslimEden = yapanAd
+    } else if (yapanPersonel) {
+      // Form ters doldurulmuş: yapan aslında bizim personelimiz
+      teslimAlanId = yapanPersonel.id
+      teslimEden = alanAd
+    } else {
+      teslimEden = yapanAd
+    }
+
+    // Form alanlarını doldur
+    setForm((prev) => ({
+      ...prev,
+      proje_tipi: data.proje_tipi || prev.proje_tipi,
+      musteri_adi: data.proje_adi || data.musteri_adi || prev.musteri_adi,
+      mahalle: data.mahalle || prev.mahalle,
+      adres: data.adres || prev.adres,
+      oncelik: data.oncelik || prev.oncelik,
+      baslama_tarihi: data.baslama_tarihi || prev.baslama_tarihi,
+      bitis_tarihi: data.bitis_tarihi || prev.bitis_tarihi,
+      teslim_tarihi: data.teslim_tarihi || prev.teslim_tarihi,
+      notlar: [prev.notlar, data.notlar].filter(Boolean).join('\n') || '',
+      teslim_eden: teslimEden || prev.teslim_eden,
+      teslim_alan_id: teslimAlanId || prev.teslim_alan_id,
+    }))
   }
 
   const handleSubmit = async (e) => {
@@ -122,22 +207,82 @@ export default function ProjeForm() {
       baslama_tarihi: form.baslama_tarihi || null,
       bitis_tarihi: form.bitis_tarihi || null,
       teslim_tarihi: form.teslim_tarihi || null,
+      teslim_eden: form.teslim_eden || null,
+      teslim_alan_id: form.teslim_alan_id || null,
     }
 
-    const mutation = duzenleModu ? projeGuncelle : projeOlustur
-    const mutationData = duzenleModu ? { id, ...payload } : payload
+    try {
+      if (duzenleModu) {
+        await projeGuncelle.mutateAsync({ id, ...payload })
+        navigate(`/projeler/${id}`)
+      } else {
+        const res = await projeOlustur.mutateAsync(payload)
+        const yeniProjeId = res?.data?.id
 
-    mutation.mutate(mutationData, {
-      onSuccess: () => {
-        navigate(duzenleModu ? `/projeler/${id}` : '/projeler')
-      },
-      onError: (err) => {
-        setGenelHata(err.message || 'Kaydetme sırasında bir hata oluştu.')
-      },
-      onSettled: () => {
-        setGonderiliyor(false)
-      },
-    })
+        if (yeniProjeId) {
+          // Demontaj listesi varsa kaydet
+          if (demontajListesi.length > 0) {
+            try {
+              await api.post(`/proje-demontaj/${yeniProjeId}/toplu`, { kalemler: demontajListesi })
+            } catch (err) {
+              console.error('Demontaj kaydetme hatasi:', err)
+            }
+          }
+
+          // Yer teslim dosyasını kroki adımına kaydet
+          if (yerTeslimDosya) {
+            try {
+              // Projenin ilk adımını (kroki) bul
+              const fazRes = await api.get(`/dongu/proje/${yeniProjeId}/faz`)
+              const fazlar = fazRes?.data
+              const ilkAdim = fazlar?.[0]?.adimlar?.[0]
+              if (ilkAdim) {
+                const formData = new FormData()
+                formData.append('dosya', yerTeslimDosya)
+                formData.append('proje_adim_id', ilkAdim.id)
+                formData.append('alan', 'proje')
+                formData.append('alt_alan', 'kroki')
+                formData.append('iliskili_kaynak_tipi', 'proje')
+                formData.append('iliskili_kaynak_id', yeniProjeId)
+                await fetch('/api/dosya/yukle', {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                  body: formData
+                })
+              }
+            } catch (err) {
+              console.error('Dosya yukleme hatasi:', err)
+            }
+          }
+
+          // Yer teslim bilgilerini not olarak kaydet
+          if (yerTeslimEkBilgi) {
+            try {
+              const notParts = []
+              if (yerTeslimEkBilgi.yer_teslim_yapan?.ad_soyad)
+                notParts.push(`Yer Teslim Yapan: ${yerTeslimEkBilgi.yer_teslim_yapan.ad_soyad}${yerTeslimEkBilgi.yer_teslim_yapan.unvan ? ` (${yerTeslimEkBilgi.yer_teslim_yapan.unvan})` : ''}`)
+              if (yerTeslimEkBilgi.yer_teslim_alan?.ad_soyad)
+                notParts.push(`Yer Teslim Alan: ${yerTeslimEkBilgi.yer_teslim_alan.ad_soyad}${yerTeslimEkBilgi.yer_teslim_alan.unvan ? ` (${yerTeslimEkBilgi.yer_teslim_alan.unvan})` : ''}`)
+              if (yerTeslimEkBilgi.ek_bilgiler)
+                notParts.push(yerTeslimEkBilgi.ek_bilgiler)
+              if (notParts.length > 0) {
+                await api.post(`/projeler/${yeniProjeId}/notlar`, { icerik: notParts.join('\n') }).catch(() => {})
+              }
+            } catch (err) {
+              console.error('Not kaydetme hatasi:', err)
+            }
+          }
+
+          navigate(`/projeler/${yeniProjeId}`)
+        } else {
+          navigate('/projeler')
+        }
+      }
+    } catch (err) {
+      setGenelHata(err.message || 'Kaydetme sirasinda bir hata olustu.')
+    } finally {
+      setGonderiliyor(false)
+    }
   }
 
   if (duzenleModu && projeYukleniyor) {
@@ -170,7 +315,19 @@ export default function ProjeForm() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Temel Bilgiler */}
         <div className="rounded-lg border border-border bg-card p-6">
-          <h2 className="mb-4 text-lg font-semibold">Temel Bilgiler</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Temel Bilgiler</h2>
+            {!duzenleModu && (
+              <button
+                type="button"
+                onClick={() => setYerTeslimAcik(true)}
+                className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+              >
+                <Sparkles className="h-4 w-4" />
+                Yer Teslim Krokisi
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Proje No */}
             <div>
@@ -222,15 +379,15 @@ export default function ProjeForm() {
               )}
             </div>
 
-            {/* Musteri Adi */}
+            {/* Proje Adi */}
             <div>
-              <label className="mb-1 block text-sm font-medium">Musteri Adi</label>
+              <label className="mb-1 block text-sm font-medium">Proje Adi</label>
               <input
                 type="text"
                 value={form.musteri_adi}
                 onChange={(e) => handleChange('musteri_adi', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                placeholder="Musteri adi"
+                placeholder="Proje adi / Musteri adi"
               />
             </div>
 
@@ -317,6 +474,45 @@ export default function ProjeForm() {
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 placeholder="Orn: 30"
               />
+            </div>
+
+            {/* Teslim Eden & Alan - swap destekli */}
+            <div className="sm:col-span-2">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Teslim Eden</label>
+                  <input
+                    type="text"
+                    value={form.teslim_eden}
+                    onChange={(e) => handleChange('teslim_eden', e.target.value)}
+                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Kurum yetkilisi"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleTeslimSwap}
+                  className="mb-0.5 rounded-md border border-input p-2 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                  title="Teslim eden ve alan yer degistir"
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                </button>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Teslim Alan (Personel)</label>
+                  <select
+                    value={form.teslim_alan_id}
+                    onChange={(e) => handleChange('teslim_alan_id', e.target.value)}
+                    className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <option value="">Seciniz</option>
+                    {Array.isArray(personeller) && personeller.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.ad_soyad}{p.unvan ? ` - ${p.unvan}` : ''}{p.ekip_adi ? ` (${p.ekip_adi})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -434,6 +630,39 @@ export default function ProjeForm() {
           </div>
         </div>
 
+        {/* AI Demontaj Listesi Onizleme */}
+        {demontajListesi.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-6">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Demontaj Listesi (AI)</h2>
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{demontajListesi.length} kalem</span>
+            </div>
+            <p className="mb-3 text-xs text-muted-foreground">Yer teslim tutanagindan okunan demontaj kalemleri. Proje olusturuldugunda otomatik kaydedilecek.</p>
+            <div className="overflow-x-auto rounded-lg border border-input bg-card">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-input bg-muted/50">
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">#</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Malzeme</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Birim</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Miktar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {demontajListesi.map((d, i) => (
+                    <tr key={i} className="border-b border-input/50">
+                      <td className="px-2 py-1.5 text-muted-foreground">{i + 1}</td>
+                      <td className="px-2 py-1.5 font-medium">{d.malzeme_adi}</td>
+                      <td className="px-2 py-1.5 text-muted-foreground">{d.birim || 'Ad'}</td>
+                      <td className="px-2 py-1.5">{d.miktar || 1}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Hata Mesajı */}
         {genelHata && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -465,6 +694,10 @@ export default function ProjeForm() {
           </button>
         </div>
       </form>
+
+      {yerTeslimAcik && (
+        <YerTeslimModal onSonuc={handleYerTeslimSonuc} onKapat={() => setYerTeslimAcik(false)} />
+      )}
     </div>
   )
 }

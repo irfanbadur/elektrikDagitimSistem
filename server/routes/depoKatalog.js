@@ -112,4 +112,62 @@ router.get('/istatistikler', (req, res) => {
   }
 });
 
+// POST /eslestir - Malzeme adlarını katalogla eşleştir
+router.post('/eslestir', (req, res) => {
+  try {
+    const db = getDb();
+    const { kalemler } = req.body;
+    if (!kalemler?.length) return hata(res, 'Kalemler listesi boş');
+
+    const stmt = db.prepare(`
+      SELECT id, malzeme_kodu, poz_birlesik, malzeme_cinsi, malzeme_tanimi_sap, olcu
+      FROM depo_malzeme_katalogu
+      WHERE is_category = 0 AND (malzeme_cinsi LIKE ? OR malzeme_tanimi_sap LIKE ?)
+      LIMIT 1
+    `);
+
+    const sonuclar = kalemler.map(k => {
+      const adi = k.malzeme_adi || '';
+      // Kelimelere böl, en uzun eşleşmeyi bul
+      const kelimeler = adi.split(/\s+/).filter(w => w.length > 2);
+      let eslesme = null;
+
+      // Önce tam arama
+      eslesme = stmt.get(`%${adi}%`, `%${adi}%`);
+
+      // Bulunamazsa kelimeleri birleştirerek ara
+      if (!eslesme && kelimeler.length > 1) {
+        for (let len = kelimeler.length; len >= 2 && !eslesme; len--) {
+          const q = `%${kelimeler.slice(0, len).join('%')}%`;
+          eslesme = stmt.get(q, q);
+        }
+      }
+
+      // Hala bulunamazsa tek tek kelimelerle
+      if (!eslesme && kelimeler.length > 0) {
+        const enUzun = kelimeler.sort((a, b) => b.length - a.length)[0];
+        if (enUzun.length >= 4) {
+          eslesme = stmt.get(`%${enUzun}%`, `%${enUzun}%`);
+        }
+      }
+
+      return {
+        malzeme_adi: adi,
+        eslesme: eslesme ? {
+          id: eslesme.id,
+          malzeme_kodu: eslesme.malzeme_kodu,
+          poz_birlesik: eslesme.poz_birlesik,
+          malzeme_cinsi: eslesme.malzeme_cinsi,
+          malzeme_tanimi_sap: eslesme.malzeme_tanimi_sap,
+          olcu: eslesme.olcu,
+        } : null
+      };
+    });
+
+    basarili(res, sonuclar);
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
 module.exports = router;

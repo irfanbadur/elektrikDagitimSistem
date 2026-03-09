@@ -1412,3 +1412,23 @@ CREATE INDEX IF NOT EXISTS idx_dmk_poz_birlesik ON depo_malzeme_katalogu(poz_bir
 CREATE INDEX IF NOT EXISTS idx_dmk_kategori ON depo_malzeme_katalogu(kategori);
 CREATE INDEX IF NOT EXISTS idx_dmk_olcu ON depo_malzeme_katalogu(olcu);
 CREATE INDEX IF NOT EXISTS idx_dmk_termin ON depo_malzeme_katalogu(termin);
+
+-- ============================================
+-- PROJE DEMONTAJ LİSTESİ
+-- ============================================
+CREATE TABLE IF NOT EXISTS proje_demontaj (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    malzeme_kodu TEXT,
+    poz_no TEXT,
+    malzeme_adi TEXT NOT NULL,
+    birim TEXT DEFAULT 'Ad',
+    miktar REAL DEFAULT 0,
+    durum TEXT DEFAULT 'planli',
+    notlar TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_proje_demontaj_proje ON proje_demontaj(proje_id);
