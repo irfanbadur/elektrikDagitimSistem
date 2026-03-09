@@ -95,7 +95,7 @@ export default function ProjeListesi() {
       {
         accessorKey: 'aktif_sorumlu_adi',
         header: 'Sorumlu',
-        cell: ({ row }) => row.original.aktif_sorumlu_adi || <span className="text-muted-foreground">-</span>,
+        cell: ({ row }) => row.original.aktif_sorumlu_adi || row.original.aktif_sorumlu_rol_adi || <span className="text-muted-foreground">-</span>,
       },
       {
         accessorKey: 'durum',

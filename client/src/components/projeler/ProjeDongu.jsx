@@ -332,9 +332,9 @@ function FazGrubu({ faz, isLast, projeId, projeNo, onBaslat, onTamamla, onAtla }
                 <span className="text-base font-bold" style={{ color: faz.renk }}>
                   {faz.faz_adi}
                 </span>
-                {faz.sorumlu_rol_adi && (
+                {(faz.sorumlu_adi || faz.sorumlu_rol_adi) && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">
-                    {faz.sorumlu_rol_adi}
+                    {faz.sorumlu_adi || faz.sorumlu_rol_adi}
                   </span>
                 )}
               </div>

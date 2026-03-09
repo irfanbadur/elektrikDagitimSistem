@@ -29,20 +29,22 @@ export default function AyarlarPage() {
 
   return (
     <MainLayout title="Ayarlar">
-      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-border">
-        {gorunurSekmeler.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setAktifSekme(s.id)}
-            className={cn(
-              'whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors',
-              aktifSekme === s.id
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {s.label}
-          </button>
+      <div className="mb-6 flex gap-3 overflow-x-auto border-b border-border">
+        {gorunurSekmeler.map((s, i) => (
+          <div key={s.id} className="flex items-center">
+            {i > 0 && <div className="mr-3 h-4 w-px bg-border" />}
+            <button
+              onClick={() => setAktifSekme(s.id)}
+              className={cn(
+                'whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors',
+                aktifSekme === s.id
+                  ? 'border-b-2 border-primary text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {s.label}
+            </button>
+          </div>
         ))}
       </div>
       {aktifSekme === 'firma' && <FirmaBilgileri />}

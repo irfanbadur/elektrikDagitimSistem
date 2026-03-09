@@ -253,17 +253,6 @@ export default function PersonelForm() {
             Pozisyon & Organizasyon
           </h2>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            {/* Ünvan (Roller) */}
-            <div>
-              <label htmlFor="pozisyon_id" className="mb-1.5 block text-sm font-medium">Ünvan</label>
-              <select id="pozisyon_id" name="pozisyon_id" value={form.pozisyon_id} onChange={handleChange} className={inputCls}>
-                <option value="">Seçiniz...</option>
-                {unvanlar.map((r) => (
-                  <option key={r.id} value={r.id}>{r.rol_adi}</option>
-                ))}
-              </select>
-            </div>
-
             {/* Üst Yönetici */}
             <div>
               <label htmlFor="ust_kullanici_id" className="mb-1.5 block text-sm font-medium">Üst Yönetici (Raporlama)</label>

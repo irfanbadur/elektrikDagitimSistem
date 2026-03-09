@@ -284,9 +284,14 @@ class FazService {
     const db = getDb();
     const adimlar = db.prepare(`
       SELECT pa.*,
+        r.rol_adi as sorumlu_rol_adi,
+        (SELECT k.ad_soyad FROM kullanici_rolleri kr JOIN kullanicilar k ON kr.kullanici_id = k.id
+         WHERE kr.rol_id = pa.sorumlu_rol_id AND k.durum = 'aktif' ORDER BY k.ad_soyad LIMIT 1) as sorumlu_adi,
         (SELECT COUNT(*) FROM dosyalar d WHERE d.proje_adim_id = pa.id AND d.durum = 'aktif') as dosya_sayisi,
         (SELECT COUNT(*) FROM veri_paketleri vp WHERE vp.proje_adim_id = pa.id) as paket_sayisi
-      FROM proje_adimlari pa WHERE pa.proje_id = ? ORDER BY pa.sira_global
+      FROM proje_adimlari pa
+      LEFT JOIN roller r ON pa.sorumlu_rol_id = r.id
+      WHERE pa.proje_id = ? ORDER BY pa.sira_global
     `).all(projeId);
 
     const toplam = adimlar.length;
@@ -302,7 +307,7 @@ class FazService {
     for (const a of adimlar) {
       const key = a.faz_kodu;
       if (!fazIlerleme.has(key)) {
-        fazIlerleme.set(key, { faz_adi: a.faz_adi, faz_kodu: a.faz_kodu, renk: a.renk, ikon: a.ikon, toplam: 0, tamamlanan: 0 });
+        fazIlerleme.set(key, { faz_adi: a.faz_adi, faz_kodu: a.faz_kodu, renk: a.renk, ikon: a.ikon, sorumlu_rol_adi: a.sorumlu_rol_adi, sorumlu_adi: a.sorumlu_adi, toplam: 0, tamamlanan: 0 });
       }
       const f = fazIlerleme.get(key);
       f.toplam++;

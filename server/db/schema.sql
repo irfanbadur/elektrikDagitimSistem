@@ -1345,6 +1345,69 @@ CREATE TABLE IF NOT EXISTS depo_malzeme_katalogu (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dmk_malzeme_kodu ON depo_malzeme_katalogu(malzeme_kodu);
+
+-- ============================================
+-- PROJE KEŞİF LİSTESİ (Proje bazlı malzeme ihtiyacı)
+-- ============================================
+CREATE TABLE IF NOT EXISTS proje_kesif (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    malzeme_kodu TEXT,
+    poz_no TEXT,
+    malzeme_adi TEXT NOT NULL,
+    birim TEXT DEFAULT 'Ad',
+    miktar REAL DEFAULT 0,
+    birim_fiyat REAL DEFAULT 0,
+    durum TEXT DEFAULT 'planli',
+    notlar TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pk_proje ON proje_kesif(proje_id);
+CREATE INDEX IF NOT EXISTS idx_pk_durum ON proje_kesif(durum);
+
+-- ============================================
+-- BONOLAR (Kurumdan malzeme alım belgeleri)
+-- ============================================
+CREATE TABLE IF NOT EXISTS bonolar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bono_no TEXT NOT NULL,
+    bono_tarihi DATE NOT NULL,
+    kurum TEXT DEFAULT 'EDAS',
+    teslim_alan TEXT,
+    aciklama TEXT,
+    durum TEXT DEFAULT 'aktif',
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_bono_no ON bonolar(bono_no);
+CREATE INDEX IF NOT EXISTS idx_bono_tarih ON bonolar(bono_tarihi);
+
+-- ============================================
+-- BONO KALEMLERİ (Bono içindeki malzeme detayları)
+-- ============================================
+CREATE TABLE IF NOT EXISTS bono_kalemleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bono_id INTEGER NOT NULL,
+    malzeme_kodu TEXT,
+    poz_no TEXT,
+    malzeme_adi TEXT NOT NULL,
+    birim TEXT DEFAULT 'Ad',
+    miktar REAL DEFAULT 0,
+    proje_id INTEGER,
+    proje_kesif_id INTEGER,
+    notlar TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (bono_id) REFERENCES bonolar(id) ON DELETE CASCADE,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id),
+    FOREIGN KEY (proje_kesif_id) REFERENCES proje_kesif(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bk_bono ON bono_kalemleri(bono_id);
+CREATE INDEX IF NOT EXISTS idx_bk_proje ON bono_kalemleri(proje_id);
 CREATE INDEX IF NOT EXISTS idx_dmk_poz_birlesik ON depo_malzeme_katalogu(poz_birlesik);
 CREATE INDEX IF NOT EXISTS idx_dmk_kategori ON depo_malzeme_katalogu(kategori);
 CREATE INDEX IF NOT EXISTS idx_dmk_olcu ON depo_malzeme_katalogu(olcu);

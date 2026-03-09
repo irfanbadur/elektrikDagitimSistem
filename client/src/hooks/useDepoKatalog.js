@@ -6,10 +6,10 @@ export function useDepoKatalog(filters) {
     queryKey: ['depo-katalog', filters],
     queryFn: async () => {
       const res = await api.get('/depo-katalog', { params: filters })
-      console.log('[depo-katalog] API response:', typeof res, Array.isArray(res?.data), res?.data?.length)
       return res
     },
     select: (res) => res.data,
+    enabled: !!filters,
   })
 }
 

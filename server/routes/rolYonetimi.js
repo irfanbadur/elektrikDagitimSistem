@@ -99,7 +99,7 @@ router.post('/roller',
       }
 
       const cagiranSeviye = yetkilendirmeService.enYuksekSeviye(req.kullanici.id);
-      if ((seviye || 50) >= cagiranSeviye) {
+      if ((seviye || 50) > cagiranSeviye) {
         return res.status(403).json({ success: false, error: 'Kendinizden yüksek seviyeli rol oluşturulamaz' });
       }
 

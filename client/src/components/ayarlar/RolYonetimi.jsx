@@ -236,7 +236,7 @@ function RolFormModal({ rol, varsayilanDepartmanId, izinGruplari, departmanlar, 
           <button onClick={onKapat} className="rounded p-1 text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
         </div>
 
-        <div className="max-h-[60vh] overflow-y-auto px-6 py-4 space-y-4">
+        <div className="max-h-[60vh] overflow-y-auto space-y-4" style={{ padding: '20px 40px' }}>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Rol Adi</label>

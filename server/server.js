@@ -75,6 +75,10 @@ app.use('/api/organizasyon', require('./routes/organizasyon'));
 // Depo Malzeme Kataloğu routes
 app.use('/api/depo-katalog', require('./routes/depoKatalog'));
 
+// Proje Keşif ve Bono routes
+app.use('/api/proje-kesif', require('./routes/projeKesif'));
+app.use('/api/bonolar', require('./routes/bonolar'));
+
 // Error handler
 const { errorHandler } = require('./middleware/errorHandler');
 app.use(errorHandler);

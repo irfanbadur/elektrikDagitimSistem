@@ -49,8 +49,8 @@ export default function MainLayout({ children, title = 'Dashboard', noPadding = 
         </main>
       </div>
 
-      {/* Floating AI Sohbet Paneli */}
-      <AiSohbetPanel baglam={baglam} />
+      {/* Floating AI Sohbet Paneli - geçici olarak devre dışı */}
+      {/* <AiSohbetPanel baglam={baglam} /> */}
     </div>
   )
 }

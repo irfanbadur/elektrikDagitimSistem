@@ -25,6 +25,8 @@ import ProjeDurumTimeline from './ProjeDurumTimeline'
 import ProjeDetayBirlesikDokumanlar from './ProjeDetayBirlesikDokumanlar'
 import ProjeDetayNotlar from './ProjeDetayNotlar'
 import ProjeDongu from './ProjeDongu'
+import ProjeKesif from './ProjeKesif'
+import ProjeHakEdis from './ProjeHakEdis'
 import { PROJE_DURUMLARI } from '@/utils/constants'
 import { formatTarih, formatYuzde } from '@/utils/formatters'
 import { cn } from '@/lib/utils'
@@ -32,7 +34,9 @@ import { cn } from '@/lib/utils'
 const TABS = [
   { key: 'detay', label: 'Detay', icon: FileText },
   { key: 'dongu', label: 'Dongu', icon: GitBranch },
-  { key: 'dokumanlar', label: 'Dokumanlar', icon: Package },
+  { key: 'kesif', label: 'Kesif', icon: Package },
+  { key: 'hak_edis', label: 'Hak Edis', icon: BarChart3 },
+  { key: 'dokumanlar', label: 'Dokumanlar', icon: FileText },
   { key: 'raporlar', label: 'Raporlar', icon: BarChart3 },
   { key: 'gecmis', label: 'Gecmis', icon: Clock },
   { key: 'notlar', label: 'Notlar', icon: StickyNote },
@@ -404,6 +408,14 @@ export default function ProjeDetay() {
 
         {aktifTab === 'gecmis' && (
           <ProjeDurumTimeline gecmis={durumGecmisi} />
+        )}
+
+        {aktifTab === 'kesif' && (
+          <ProjeKesif projeId={id} />
+        )}
+
+        {aktifTab === 'hak_edis' && (
+          <ProjeHakEdis projeId={id} />
         )}
 
         {aktifTab === 'dokumanlar' && (
