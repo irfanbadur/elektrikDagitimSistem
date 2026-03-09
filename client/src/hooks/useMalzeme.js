@@ -22,7 +22,10 @@ export function useMalzemeOlustur() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data) => api.post('/malzemeler', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['malzemeler'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['malzemeler'] })
+      qc.invalidateQueries({ queryKey: ['depo-stok'] })
+    },
   })
 }
 
@@ -57,6 +60,8 @@ export function useMalzemeHareketOlustur() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['malzeme-hareketleri'] })
       qc.invalidateQueries({ queryKey: ['malzemeler'] })
+      qc.invalidateQueries({ queryKey: ['depo-stok'] })
+      qc.invalidateQueries({ queryKey: ['depolar'] })
     },
   })
 }

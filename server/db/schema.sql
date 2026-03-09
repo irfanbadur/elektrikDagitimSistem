@@ -114,12 +114,41 @@ CREATE TABLE IF NOT EXISTS malzemeler (
     guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- DEPOLAR (Ana Depo + Taşeronlar)
+CREATE TABLE IF NOT EXISTS depolar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    depo_adi TEXT NOT NULL,
+    depo_tipi TEXT NOT NULL DEFAULT 'ana_depo',
+    sorumlu TEXT,
+    telefon TEXT,
+    adres TEXT,
+    aktif BOOLEAN DEFAULT 1,
+    notlar TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Her depodaki malzeme stok durumu
+CREATE TABLE IF NOT EXISTS depo_stok (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    depo_id INTEGER NOT NULL,
+    malzeme_id INTEGER NOT NULL,
+    miktar REAL DEFAULT 0,
+    kritik_seviye REAL DEFAULT 0,
+    raf_konumu TEXT,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (depo_id) REFERENCES depolar(id),
+    FOREIGN KEY (malzeme_id) REFERENCES malzemeler(id),
+    UNIQUE(depo_id, malzeme_id)
+);
+
 -- MALZEME HAREKETLERİ
 CREATE TABLE IF NOT EXISTS malzeme_hareketleri (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     malzeme_id INTEGER NOT NULL,
     miktar REAL NOT NULL,
     hareket_tipi TEXT NOT NULL,
+    kaynak_depo_id INTEGER,
+    hedef_depo_id INTEGER,
     ekip_id INTEGER,
     proje_id INTEGER,
     teslim_alan TEXT,
@@ -129,6 +158,8 @@ CREATE TABLE IF NOT EXISTS malzeme_hareketleri (
     notlar TEXT,
     tarih DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (malzeme_id) REFERENCES malzemeler(id),
+    FOREIGN KEY (kaynak_depo_id) REFERENCES depolar(id),
+    FOREIGN KEY (hedef_depo_id) REFERENCES depolar(id),
     FOREIGN KEY (ekip_id) REFERENCES ekipler(id),
     FOREIGN KEY (proje_id) REFERENCES projeler(id)
 );
@@ -221,6 +252,8 @@ CREATE INDEX IF NOT EXISTS idx_projeler_bolge ON projeler(bolge_id);
 CREATE INDEX IF NOT EXISTS idx_projeler_ekip ON projeler(ekip_id);
 CREATE INDEX IF NOT EXISTS idx_malzeme_hareketleri_tarih ON malzeme_hareketleri(tarih);
 CREATE INDEX IF NOT EXISTS idx_malzeme_hareketleri_ekip ON malzeme_hareketleri(ekip_id);
+CREATE INDEX IF NOT EXISTS idx_depo_stok_depo ON depo_stok(depo_id);
+CREATE INDEX IF NOT EXISTS idx_depo_stok_malzeme ON depo_stok(malzeme_id);
 CREATE INDEX IF NOT EXISTS idx_gunluk_rapor_tarih ON gunluk_rapor(tarih);
 CREATE INDEX IF NOT EXISTS idx_gunluk_rapor_ekip ON gunluk_rapor(ekip_id);
 CREATE INDEX IF NOT EXISTS idx_talepler_durum ON talepler(durum);
@@ -1291,3 +1324,28 @@ CREATE TABLE IF NOT EXISTS kullanici_is_gorevleri (
 
 CREATE INDEX IF NOT EXISTS idx_kig_kullanici ON kullanici_is_gorevleri(kullanici_id);
 CREATE INDEX IF NOT EXISTS idx_kig_is_tipi ON kullanici_is_gorevleri(is_tipi);
+
+-- ============================================
+-- DEPO MALZEME KATALOĞU (Excel depo.xlsx verileri)
+-- ============================================
+CREATE TABLE IF NOT EXISTS depo_malzeme_katalogu (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    malzeme_kodu TEXT,
+    poz_birlesik TEXT,
+    malzeme_tanimi_sap TEXT,
+    malzeme_cinsi TEXT NOT NULL,
+    olcu TEXT,
+    termin TEXT,
+    ihale_kesfi REAL DEFAULT 0,
+    toplam_talep REAL DEFAULT 0,
+    kategori TEXT,
+    alt_kategori TEXT,
+    is_category INTEGER DEFAULT 0,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_dmk_malzeme_kodu ON depo_malzeme_katalogu(malzeme_kodu);
+CREATE INDEX IF NOT EXISTS idx_dmk_poz_birlesik ON depo_malzeme_katalogu(poz_birlesik);
+CREATE INDEX IF NOT EXISTS idx_dmk_kategori ON depo_malzeme_katalogu(kategori);
+CREATE INDEX IF NOT EXISTS idx_dmk_olcu ON depo_malzeme_katalogu(olcu);
+CREATE INDEX IF NOT EXISTS idx_dmk_termin ON depo_malzeme_katalogu(termin);

@@ -18,6 +18,7 @@ app.use('/api/ekipler', require('./routes/ekipler'));
 app.use('/api/projeler', require('./routes/projeler'));
 app.use('/api/malzemeler', require('./routes/malzeme'));
 app.use('/api/malzeme-hareketleri', require('./routes/malzemeHareketleri'));
+app.use('/api/depolar', require('./routes/depolar'));
 app.use('/api/personel', require('./routes/personel'));
 app.use('/api/puantaj', require('./routes/puantaj'));
 app.use('/api/talepler', require('./routes/talepler'));
@@ -70,6 +71,9 @@ app.use('/api/ai-sohbet', require('./routes/aiSohbet'));
 
 // Organizasyon (pozisyon, görev, belge, yetkinlik) routes
 app.use('/api/organizasyon', require('./routes/organizasyon'));
+
+// Depo Malzeme Kataloğu routes
+app.use('/api/depo-katalog', require('./routes/depoKatalog'));
 
 // Error handler
 const { errorHandler } = require('./middleware/errorHandler');

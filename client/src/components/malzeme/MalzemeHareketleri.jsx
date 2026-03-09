@@ -15,6 +15,7 @@ import {
   useMalzemeHareketleri,
   useMalzemeHareketOlustur,
 } from '@/hooks/useMalzeme'
+import { useDepolar } from '@/hooks/useDepolar'
 import { useEkipler } from '@/hooks/useEkipler'
 import { useProjeler } from '@/hooks/useProjeler'
 import DataTable from '@/components/shared/DataTable'
@@ -33,6 +34,8 @@ const bosForm = {
   malzeme_id: '',
   miktar: '',
   hareket_tipi: 'cikis',
+  kaynak_depo_id: '',
+  hedef_depo_id: '',
   ekip_id: '',
   proje_id: '',
   teslim_alan: '',
@@ -44,9 +47,11 @@ const bosForm = {
 export default function MalzemeHareketleri() {
   const [formAcik, setFormAcik] = useState(false)
   const [form, setForm] = useState(bosForm)
+  const [filtreler, setFiltreler] = useState({ depo_id: '', hareket_tipi: '' })
 
-  const { data: hareketler, isLoading } = useMalzemeHareketleri()
+  const { data: hareketler, isLoading } = useMalzemeHareketleri(filtreler)
   const { data: malzemeler } = useMalzemeler()
+  const { data: depolar } = useDepolar()
   const { data: ekipler } = useEkipler()
   const { data: projeler } = useProjeler()
   const hareketOlustur = useMalzemeHareketOlustur()
@@ -65,6 +70,8 @@ export default function MalzemeHareketleri() {
         ...form,
         miktar: Number(form.miktar),
         malzeme_id: Number(form.malzeme_id),
+        kaynak_depo_id: form.kaynak_depo_id ? Number(form.kaynak_depo_id) : null,
+        hedef_depo_id: form.hedef_depo_id ? Number(form.hedef_depo_id) : null,
         ekip_id: form.ekip_id ? Number(form.ekip_id) : null,
         proje_id: form.proje_id ? Number(form.proje_id) : null,
       })
@@ -74,6 +81,10 @@ export default function MalzemeHareketleri() {
       // Hata hook tarafindan yonetilir
     }
   }
+
+  // Hareket tipine gore kaynak/hedef depo alanlarini goster
+  const kaynakGerekli = ['cikis', 'transfer', 'fire'].includes(form.hareket_tipi)
+  const hedefGerekli = ['giris', 'transfer', 'iade'].includes(form.hareket_tipi)
 
   const columns = [
     {
@@ -100,10 +111,10 @@ export default function MalzemeHareketleri() {
           <span
             className={cn(
               'font-medium',
-              isNegative ? 'text-red-600' : 'text-green-600'
+              isNegative ? 'text-red-600' : tip === 'transfer' ? 'text-purple-600' : 'text-green-600'
             )}
           >
-            {isNegative ? '-' : '+'}
+            {isNegative ? '-' : tip === 'transfer' ? '' : '+'}
             {formatSayi(row.original.miktar)}
           </span>
         )
@@ -130,16 +141,30 @@ export default function MalzemeHareketleri() {
       },
     },
     {
+      id: 'depo_bilgi',
+      header: 'Depo',
+      cell: ({ row }) => {
+        const { kaynak_depo_adi, hedef_depo_adi, hareket_tipi } = row.original
+        if (hareket_tipi === 'transfer') {
+          return (
+            <span className="text-xs">
+              <span className="text-muted-foreground">{kaynak_depo_adi || '?'}</span>
+              <span className="mx-1 text-purple-500">&rarr;</span>
+              <span className="font-medium">{hedef_depo_adi || '?'}</span>
+            </span>
+          )
+        }
+        return (
+          <span className="text-sm text-muted-foreground">
+            {kaynak_depo_adi || hedef_depo_adi || '-'}
+          </span>
+        )
+      },
+    },
+    {
       accessorKey: 'ekip_adi',
       header: 'Ekip',
       cell: ({ getValue }) => getValue() || '-',
-    },
-    {
-      accessorKey: 'proje_no',
-      header: 'Proje',
-      cell: ({ getValue }) => (
-        <span className="font-mono text-sm">{getValue() || '-'}</span>
-      ),
     },
     {
       accessorKey: 'teslim_alan',
@@ -161,7 +186,7 @@ export default function MalzemeHareketleri() {
         <div>
           <h1 className="text-2xl font-bold">Malzeme Hareketleri</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Stok giris, cikis ve transfer islemlerini yonetin
+            Stok giris, cikis, transfer ve iade islemlerini yonetin
           </p>
         </div>
         <button
@@ -250,6 +275,54 @@ export default function MalzemeHareketleri() {
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
+
+              {/* Kaynak Depo */}
+              {kaynakGerekli && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Kaynak Depo <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="kaynak_depo_id"
+                    value={form.kaynak_depo_id}
+                    onChange={handleChange}
+                    required
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="">Kaynak depo secin</option>
+                    {depolar?.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.depo_adi}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Hedef Depo */}
+              {hedefGerekli && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Hedef Depo <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="hedef_depo_id"
+                    value={form.hedef_depo_id}
+                    onChange={handleChange}
+                    required
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="">Hedef depo secin</option>
+                    {depolar
+                      ?.filter((d) => d.id !== Number(form.kaynak_depo_id))
+                      .map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.depo_adi}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
               {/* Ekip */}
               <div>
@@ -371,6 +444,42 @@ export default function MalzemeHareketleri() {
           </form>
         </div>
       )}
+
+      {/* Filtreler */}
+      <div className="mb-4 flex items-center gap-3">
+        <select
+          value={filtreler.depo_id}
+          onChange={(e) => setFiltreler((p) => ({ ...p, depo_id: e.target.value }))}
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">Tum Depolar</option>
+          {depolar?.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.depo_adi}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filtreler.hareket_tipi}
+          onChange={(e) => setFiltreler((p) => ({ ...p, hareket_tipi: e.target.value }))}
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">Tum Hareketler</option>
+          {Object.entries(HAREKET_TIPLERI).map(([key, { label }]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+        {(filtreler.depo_id || filtreler.hareket_tipi) && (
+          <button
+            onClick={() => setFiltreler({ depo_id: '', hareket_tipi: '' })}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Filtreleri Temizle
+          </button>
+        )}
+      </div>
 
       {isLoading ? (
         <div className="space-y-3">

@@ -20,6 +20,7 @@ import DosyaYonetimiPage from '@/pages/DosyaYonetimiPage'
 import AiSohbetPage from '@/pages/AiSohbetPage'
 import OrganizasyonPage from '@/pages/OrganizasyonPage'
 import GorevlerPage from '@/pages/GorevlerPage'
+import DepoKatalogPage from '@/pages/DepoKatalogPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,6 +72,7 @@ function AppRoutes() {
         <Route path="/dosya-yonetimi" element={<DosyaYonetimiPage />} />
         <Route path="/ai-sohbet" element={<AiSohbetPage />} />
         <Route path="/organizasyon/*" element={<OrganizasyonPage />} />
+        <Route path="/depo-katalog" element={<DepoKatalogPage />} />
       </Route>
 
       {/* 404 */}

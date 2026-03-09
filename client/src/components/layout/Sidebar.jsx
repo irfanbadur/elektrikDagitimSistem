@@ -17,6 +17,7 @@ import {
   MessageCircle,
   Settings,
   Network,
+  Database,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -34,13 +35,13 @@ const navItems = [
   { label: 'Raporlar', icon: BarChart3, path: '/raporlar', modul: 'raporlar', aksiyon: 'genel' },
   { label: 'Veri Paketleri', icon: Camera, path: '/veri-paketleri', modul: 'veri_paketi', aksiyon: 'okuma' },
   { label: 'Saha', icon: MapPin, path: '/saha', modul: 'saha_harita', aksiyon: 'okuma' },
+  { label: 'Depo Katalog', icon: Database, path: '/depo-katalog', herZaman: true },
   { label: 'Ekipman Katalog', icon: Wrench, path: '/katalog', herZaman: true },
   { label: 'Saha Mesaj', icon: MessageSquare, path: '/saha-mesaj', modul: 'saha_mesaj', aksiyon: 'okuma' },
   { label: 'Dosya Yonetimi', icon: FolderOpen, path: '/dosya-yonetimi', modul: 'dosyalar', aksiyon: 'okuma' },
 ]
 
 const bottomItems = [
-  { label: 'AI Sohbet', icon: MessageCircle, path: '/ai-sohbet', herZaman: true },
   { label: 'Ayarlar', icon: Settings, path: '/ayarlar', modul: 'ayarlar', aksiyon: 'genel' },
 ]
 

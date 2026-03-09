@@ -121,6 +121,23 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'roller', 'departman_id', 'INTEGER REFERENCES departmanlar(id)');
   addColumnIfNotExists(database, 'roller', 'birim_id', 'INTEGER REFERENCES departman_birimleri(id)');
 
+  // Depo bazlı stok yönetimi: malzeme_hareketleri tablosuna depo alanları
+  addColumnIfNotExists(database, 'malzeme_hareketleri', 'kaynak_depo_id', 'INTEGER');
+  addColumnIfNotExists(database, 'malzeme_hareketleri', 'hedef_depo_id', 'INTEGER');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_malzeme_hareketleri_kaynak_depo ON malzeme_hareketleri(kaynak_depo_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_malzeme_hareketleri_hedef_depo ON malzeme_hareketleri(hedef_depo_id)');
+
+  // Varsayılan Ana Depo kaydı oluştur
+  try {
+    const depoSayi = database.prepare('SELECT COUNT(*) as c FROM depolar').get();
+    if (depoSayi.c === 0) {
+      database.prepare("INSERT INTO depolar (depo_adi, depo_tipi, sorumlu) VALUES ('Ana Depo', 'ana_depo', 'Depo Sorumlusu')").run();
+      console.log('✅ Varsayılan Ana Depo oluşturuldu');
+    }
+  } catch (err) {
+    // Tablo henüz yoksa sessizce atla
+  }
+
   // sorumlu_pozisyon_id → sorumlu_rol_id migration
   renameColumnIfNeeded(database, 'is_tipi_fazlari', 'sorumlu_pozisyon_id', 'sorumlu_rol_id');
   renameColumnIfNeeded(database, 'proje_adimlari', 'sorumlu_pozisyon_id', 'sorumlu_rol_id');
