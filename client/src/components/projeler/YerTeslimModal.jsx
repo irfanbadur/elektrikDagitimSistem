@@ -1,164 +1,196 @@
 import { useState, useRef, useEffect } from 'react'
-import { X, Sparkles, Loader2, CheckCircle, AlertCircle, Image, Plus, Trash2, Search, Link2, Unlink } from 'lucide-react'
+import { X, Sparkles, Loader2, CheckCircle, AlertCircle, Image, Plus, Trash2, Link2, Unlink } from 'lucide-react'
 import { useDepoKatalog } from '@/hooks/useDepoKatalog'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
 
+// Katalog adından Kg/Km oranını çıkar (ör: "ROSE AWG 4 (59.15Kg/Km)" → 59.15)
+function extractKgKmOran(text) {
+  if (!text) return null
+  const match = text.match(/(\d+[.,]?\d*)\s*kg\s*\/\s*km/i)
+  if (!match) return null
+  return parseFloat(match[1].replace(',', '.'))
+}
+
+const MT_BIRIMLER = ['mt', 'm', 'metre', 'meter']
+const KG_BIRIMLER = ['kg', 'kilogram']
+const isMtBirim = (b) => MT_BIRIMLER.includes((b || '').toLowerCase())
+const isKgBirim = (b) => KG_BIRIMLER.includes((b || '').toLowerCase())
+
 function DemontajSatirDuzenle({ kalem, index, onChange, onSil }) {
-  const [aramaAcik, setAramaAcik] = useState(false)
-  const [arama, setArama] = useState('')
+  const [focused, setFocused] = useState(false)
   const [aramaDebounced, setAramaDebounced] = useState('')
-  const [autoMatchYukleniyor, setAutoMatchYukleniyor] = useState(false)
   const inputRef = useRef(null)
   const dropdownRef = useRef(null)
-  const autoMatchTimer = useRef(null)
-  const kalemRef = useRef(kalem)
-  kalemRef.current = kalem
 
+  // Debounce malzeme_adi for catalog search
   useEffect(() => {
-    const t = setTimeout(() => setAramaDebounced(arama), 300)
+    const t = setTimeout(() => setAramaDebounced(kalem.malzeme_adi), 300)
     return () => clearTimeout(t)
-  }, [arama])
+  }, [kalem.malzeme_adi])
 
+  // Click outside to close dropdown
   useEffect(() => {
     const handleClick = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target) && inputRef.current && !inputRef.current.contains(e.target))
-        setAramaAcik(false)
+        setFocused(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Cleanup auto-match timer
-  useEffect(() => {
-    return () => { if (autoMatchTimer.current) clearTimeout(autoMatchTimer.current) }
-  }, [])
-
   const { data: sonuclar, isLoading: araniyor } = useDepoKatalog(
-    aramaDebounced.length >= 2 ? { arama: aramaDebounced } : null
+    focused && aramaDebounced.length >= 1 && !kalem.katalog_eslesme ? { arama: aramaDebounced } : null
   )
 
   const handleKatalogSec = (item) => {
+    const katalogBirim = item.olcu || ''
+    const orijinalBirim = kalem.birim || 'Ad'
+    const birimFarkli = katalogBirim && orijinalBirim &&
+      katalogBirim.toLowerCase().replace(/\./g, '') !== orijinalBirim.toLowerCase().replace(/\./g, '')
+    const katalogText = `${item.malzeme_cinsi || ''} ${item.malzeme_tanimi_sap || ''}`
+    const kgKmOran = birimFarkli ? extractKgKmOran(katalogText) : null
     onChange(index, {
       ...kalem,
       malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || kalem.malzeme_adi,
       malzeme_kodu: item.malzeme_kodu || '',
       poz_no: item.poz_birlesik || '',
-      birim: item.olcu || kalem.birim,
+      birim: birimFarkli ? orijinalBirim : (katalogBirim || kalem.birim),
       katalog_eslesme: item.malzeme_cinsi || item.malzeme_tanimi_sap,
+      _eslesmedi: false,
+      _birim_secenekleri: birimFarkli ? [orijinalBirim, katalogBirim] : null,
+      _kg_km_oran: kgKmOran,
     })
-    setAramaAcik(false)
-    setArama('')
-  }
-
-  const handleKatalogAraBaslat = () => {
-    setArama(kalem.malzeme_adi)
-    setAramaAcik(true)
-    setTimeout(() => inputRef.current?.focus(), 50)
+    setFocused(false)
   }
 
   const handleMalzemeAdiDegistir = (e) => {
-    const yeniAd = e.target.value
-    onChange(index, { ...kalem, malzeme_adi: yeniAd, katalog_eslesme: null, _eslesmedi: false })
-    if (autoMatchTimer.current) clearTimeout(autoMatchTimer.current)
-    if (yeniAd.length >= 3) {
-      autoMatchTimer.current = setTimeout(async () => {
-        setAutoMatchYukleniyor(true)
-        try {
-          const res = await api.post('/depo-katalog/eslestir', { kalemler: [{ malzeme_adi: yeniAd }] })
-          const eslesme = res?.data?.[0]?.eslesme
-          const guncel = kalemRef.current
-          if (eslesme && guncel.malzeme_adi === yeniAd) {
-            onChange(index, {
-              ...guncel,
-              malzeme_kodu: eslesme.malzeme_kodu || '',
-              poz_no: eslesme.poz_birlesik || guncel.poz_no,
-              birim: eslesme.olcu || guncel.birim,
-              katalog_eslesme: eslesme.malzeme_cinsi || eslesme.malzeme_tanimi_sap,
-              _eslesmedi: false,
-            })
-          } else if (guncel.malzeme_adi === yeniAd) {
-            onChange(index, { ...guncel, _eslesmedi: true })
-          }
-        } catch {}
-        setAutoMatchYukleniyor(false)
-      }, 600)
-    }
+    onChange(index, { ...kalem, malzeme_adi: e.target.value, katalog_eslesme: null, _eslesmedi: false, _birim_secenekleri: null, _kg_km_oran: null })
   }
 
+  const showDropdown = focused && aramaDebounced.length >= 1 && !kalem.katalog_eslesme
+
+  // Kg/Km dönüşüm hesapla
+  const donusum = (() => {
+    if (!kalem._kg_km_oran || !kalem._birim_secenekleri) return null
+    const [b1, b2] = kalem._birim_secenekleri
+    const mtBirim = isMtBirim(b1) ? b1 : isMtBirim(b2) ? b2 : null
+    const kgBirim = isKgBirim(b1) ? b1 : isKgBirim(b2) ? b2 : null
+    if (!mtBirim || !kgBirim) return null
+    const curIsMt = isMtBirim(kalem.birim)
+    const mtMiktar = curIsMt ? kalem.miktar : Math.round(kalem.miktar / kalem._kg_km_oran * 1000 * 100) / 100
+    const kgMiktar = curIsMt ? Math.round(kalem.miktar * kalem._kg_km_oran / 1000 * 100) / 100 : kalem.miktar
+    return { mtBirim, kgBirim, mtMiktar, kgMiktar }
+  })()
+
   return (
-    <tr className="border-b border-input/50 group">
+    <tr className="border-b border-input/50 group transition-colors hover:bg-muted/50">
       <td className="px-2 py-1.5 text-muted-foreground text-center">{index + 1}</td>
       <td className="px-2 py-1.5 relative">
-        {aramaAcik ? (
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-            <input
-              ref={inputRef}
-              value={arama}
-              onChange={(e) => setArama(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Escape') setAramaAcik(false) }}
-              placeholder="Katalogda ara..."
-              className="w-full rounded border border-primary bg-background py-1 pl-7 pr-2 text-xs focus:outline-none"
-              autoFocus
-            />
-            {arama.length >= 2 && (
-              <div ref={dropdownRef} className="absolute left-0 top-full z-50 mt-1 max-h-48 w-[450px] overflow-y-auto rounded-lg border border-input bg-card shadow-xl">
-                {araniyor ? (
-                  <div className="px-3 py-3 text-center text-xs text-muted-foreground">Araniyor...</div>
-                ) : !sonuclar?.length ? (
-                  <div className="px-3 py-3 text-center text-xs text-muted-foreground">Sonuc bulunamadi</div>
-                ) : (
-                  <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm">
-                      <tr className="border-b border-input">
-                        <th className="px-2 py-1 text-left font-medium text-muted-foreground">Poz</th>
-                        <th className="px-2 py-1 text-left font-medium text-muted-foreground">Malzeme</th>
-                        <th className="px-2 py-1 text-left font-medium text-muted-foreground">Birim</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sonuclar.slice(0, 30).map((item) => (
-                        <tr key={item.id} onClick={() => handleKatalogSec(item)} className="cursor-pointer border-b border-input/30 hover:bg-primary/5">
-                          <td className="px-2 py-1 font-mono text-blue-600 whitespace-nowrap">{item.poz_birlesik || '-'}</td>
-                          <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
-                          <td className="px-2 py-1 text-muted-foreground">{item.olcu || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+        <input
+          ref={inputRef}
+          value={kalem.malzeme_adi}
+          onChange={handleMalzemeAdiDegistir}
+          onFocus={() => setFocused(true)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setFocused(false) }}
+          className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium hover:border-input focus:border-primary focus:outline-none"
+          placeholder="Malzeme adi yazin..."
+        />
+        {showDropdown && (
+          <div ref={dropdownRef} className="absolute left-0 top-full z-50 mt-1 max-h-48 w-[450px] overflow-y-auto rounded-lg border border-input bg-card shadow-xl">
+            {araniyor ? (
+              <div className="px-3 py-3 text-center text-xs text-muted-foreground">
+                <Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...
               </div>
+            ) : !sonuclar?.length ? (
+              <div className="px-3 py-3 text-center text-xs text-muted-foreground">Sonuc bulunamadi</div>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm">
+                  <tr className="border-b border-input">
+                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">Poz</th>
+                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">Malzeme</th>
+                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">Birim</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sonuclar.slice(0, 20).map((item) => (
+                    <tr key={item.id} onMouseDown={() => handleKatalogSec(item)} className="cursor-pointer border-b border-input/30 hover:bg-primary/5">
+                      <td className="px-2 py-1 font-mono text-blue-600 whitespace-nowrap">{item.poz_birlesik || '-'}</td>
+                      <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
+                      <td className="px-2 py-1 text-muted-foreground">{item.olcu || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <input
-              value={kalem.malzeme_adi}
-              onChange={handleMalzemeAdiDegistir}
-              className="flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium hover:border-input focus:border-primary focus:outline-none"
-            />
-            <button onClick={handleKatalogAraBaslat} className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-primary/10 hover:text-primary" title="Katalogda ara">
-              <Search className="h-3 w-3" />
-            </button>
           </div>
         )}
         {kalem.katalog_eslesme && (
-          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-emerald-600">
-            <Link2 className="h-2.5 w-2.5" />
-            <span>Katalog: {kalem.katalog_eslesme}</span>
+          <div className="mt-0.5 space-y-0.5 text-[10px]">
+            <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 text-emerald-600">
+                <Link2 className="h-2.5 w-2.5" />
+                <span>Katalog: {kalem.katalog_eslesme}</span>
+              </div>
+              {kalem._birim_secenekleri && !donusum && (
+                <div className="ml-auto flex items-center gap-1">
+                  <span className="text-muted-foreground">Birim:</span>
+                  {kalem._birim_secenekleri.map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => onChange(index, { ...kalem, birim: b })}
+                      className={cn(
+                        'rounded px-1.5 py-0.5 font-semibold transition-colors',
+                        kalem.birim === b
+                          ? 'bg-primary text-white'
+                          : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                      )}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {donusum && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Dönüşüm:</span>
+                <button
+                  type="button"
+                  onClick={() => onChange(index, { ...kalem, birim: donusum.mtBirim, miktar: donusum.mtMiktar })}
+                  className={cn(
+                    'rounded px-1.5 py-0.5 font-semibold transition-colors',
+                    isMtBirim(kalem.birim)
+                      ? 'bg-primary text-white'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  )}
+                >
+                  {donusum.mtMiktar} {donusum.mtBirim}
+                </button>
+                <span className="text-muted-foreground">≈</span>
+                <button
+                  type="button"
+                  onClick={() => onChange(index, { ...kalem, birim: donusum.kgBirim, miktar: donusum.kgMiktar })}
+                  className={cn(
+                    'rounded px-1.5 py-0.5 font-semibold transition-colors',
+                    isKgBirim(kalem.birim)
+                      ? 'bg-primary text-white'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  )}
+                >
+                  {donusum.kgMiktar} {donusum.kgBirim}
+                </button>
+                <span className="text-muted-foreground/60">({kalem._kg_km_oran} Kg/Km)</span>
+              </div>
+            )}
           </div>
         )}
-        {!kalem.katalog_eslesme && kalem._eslesmedi && !autoMatchYukleniyor && (
+        {!kalem.katalog_eslesme && kalem._eslesmedi && (
           <div className="mt-0.5 flex items-center gap-1 text-[10px] text-amber-600">
             <Unlink className="h-2.5 w-2.5" />
             <span>Katalogda bulunamadi</span>
-          </div>
-        )}
-        {autoMatchYukleniyor && (
-          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-primary">
-            <Loader2 className="h-2.5 w-2.5 animate-spin" />
-            <span>Eslestiriliyor...</span>
           </div>
         )}
       </td>
@@ -242,12 +274,19 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
           setDemontajListesi(prev => prev.map((k, i) => {
             const e = eslesmeler[i]?.eslesme
             if (e) {
+              const katalogBirim = e.olcu || ''
+              const orijinalBirim = k.birim || 'Ad'
+              const birimFarkli = katalogBirim && orijinalBirim &&
+                katalogBirim.toLowerCase().replace(/\./g, '') !== orijinalBirim.toLowerCase().replace(/\./g, '')
+              const kgKmOran = birimFarkli ? extractKgKmOran(`${e.malzeme_cinsi || ''} ${e.malzeme_tanimi_sap || ''}`) : null
               return {
                 ...k,
                 malzeme_kodu: e.malzeme_kodu || '',
                 poz_no: e.poz_birlesik || k.poz_no,
-                birim: e.olcu || k.birim,
+                birim: birimFarkli ? orijinalBirim : (katalogBirim || k.birim),
                 katalog_eslesme: e.malzeme_cinsi || e.malzeme_tanimi_sap,
+                _birim_secenekleri: birimFarkli ? [orijinalBirim, katalogBirim] : null,
+                _kg_km_oran: kgKmOran,
               }
             }
             return { ...k, _eslesmedi: true }
@@ -404,7 +443,7 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-2 text-[10px] text-muted-foreground">Malzeme adinin yanindaki arama ikonuna tiklayarak depo katalogdan eslestirme yapabilirsiniz.</p>
+                <p className="mt-2 text-[10px] text-muted-foreground">Malzeme adini yazmaya baslayin, depo katalogdan otomatik eslestirme yapilacaktir.</p>
               </div>
 
               {/* Notlar */}
