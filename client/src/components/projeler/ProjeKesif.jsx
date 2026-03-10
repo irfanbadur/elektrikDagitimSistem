@@ -378,7 +378,7 @@ export default function ProjeKesif({ projeId }) {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Kesif Listesi</h3>
+        <h3 className="text-lg font-semibold">Proje-Kesif Listesi</h3>
         <div className="flex gap-2">
           <button onClick={() => setKatalogAcik(true)} className="flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-muted">
             <Search className="h-4 w-4" />

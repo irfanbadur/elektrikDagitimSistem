@@ -6,6 +6,203 @@ const yerTeslimPrompt = require('../services/ai-engine/prompts/yerTeslimPrompt')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
+// AI'ın Türkçe karakterli key döndürme sorununu düzelt (ilçe→ilce, başvuru_no→basvuru_no vb.)
+function normalizeKeys(result) {
+  const keyMap = {
+    'ilçe': 'ilce',
+    'başvuru_no': 'basvuru_no',
+    'basvuru_no': 'basvuru_no',
+    'öncelik': 'oncelik',
+    'başlama_tarihi': 'baslama_tarihi',
+    'bitiş_tarihi': 'bitis_tarihi',
+    'bitış_tarihi': 'bitis_tarihi',
+    'bitis_tarihi': 'bitis_tarihi',
+    'tamamlanma_yüzdesi': 'tamamlanma_yuzdesi',
+    'enerji_alınan_direk_no': 'enerji_alinan_direk_no',
+    'enerji_alinan_direk_no': 'enerji_alinan_direk_no',
+    'kesinti_ihtiyacı': 'kesinti_ihtiyaci',
+    'kesinti_ihtiyaci': 'kesinti_ihtiyaci',
+    'abone_kablosu_metre': 'abone_kablosu_metre',
+    'İzinler': 'izinler',
+    'İl': 'il',
+    'İlçe': 'ilce',
+    'proje_adı': 'proje_adi',
+    'proje_adi': 'proje_adi',
+    'proje_tipı': 'proje_tipi',
+    'müşteri_adı': 'musteri_adi',
+    'musteri_adi': 'musteri_adi',
+    'ek_bilgiler': 'ek_bilgiler',
+    'öncelık': 'oncelik',
+    'kazı_izni': 'kazi_izni',
+    'karayolları': 'karayollari',
+    'diğer': 'diger',
+    'müvafakatname': 'muvafakatname',
+  };
+
+  const normalized = {};
+  for (const [key, val] of Object.entries(result)) {
+    const ascii = key.toLowerCase()
+      .replace(/İ/gi, 'i').replace(/ı/g, 'i')
+      .replace(/ş/g, 's').replace(/Ş/g, 's')
+      .replace(/ğ/g, 'g').replace(/Ğ/g, 'g')
+      .replace(/ü/g, 'u').replace(/Ü/g, 'u')
+      .replace(/ö/g, 'o').replace(/Ö/g, 'o')
+      .replace(/ç/g, 'c').replace(/Ç/g, 'c');
+    const mappedKey = keyMap[key] || keyMap[ascii] || ascii;
+    // İzinler objesi içindeki key'leri de normalize et
+    if (mappedKey === 'izinler' && val && typeof val === 'object' && !Array.isArray(val)) {
+      const normIzinler = {};
+      for (const [ik, iv] of Object.entries(val)) {
+        const ikAscii = ik.toLowerCase()
+          .replace(/İ/gi, 'i').replace(/ı/g, 'i')
+          .replace(/ş/g, 's').replace(/Ş/g, 's')
+          .replace(/ğ/g, 'g').replace(/Ğ/g, 'g')
+          .replace(/ü/g, 'u').replace(/Ü/g, 'u')
+          .replace(/ö/g, 'o').replace(/Ö/g, 'o')
+          .replace(/ç/g, 'c').replace(/Ç/g, 'c');
+        const mappedIk = keyMap[ik] || keyMap[ikAscii] || ikAscii;
+        normIzinler[mappedIk] = iv;
+      }
+      normalized[mappedKey] = normIzinler;
+    } else {
+      normalized[mappedKey] = val;
+    }
+  }
+  return normalized;
+}
+
+// AI sonucundaki adres alanından il/ilçe/mahalle/ada_parsel alanlarını ayrıştır
+function postProcessResult(result) {
+  if (!result || result.parse_error) return result;
+
+  // Türkçe key normalizasyonu
+  result = normalizeKeys(result);
+
+  const adres = result.adres || '';
+  if (!adres) return result;
+
+  // Ada/Parsel pattern: "Ada/Parsel: 984/4" veya "984/4" gibi
+  if (!result.ada_parsel) {
+    const adaMatch = adres.match(/(?:ada\s*[\/\\]\s*parsel\s*[:=]?\s*)([\d]+\s*[\/\\]\s*[\d]+)/i);
+    if (adaMatch) {
+      result.ada_parsel = adaMatch[1].replace(/\s/g, '');
+    }
+  }
+
+  // Adres'i virgül veya boşlukla ayrılmış parçalara böl
+  const parcalar = adres.split(/[,،]\s*/).map(p => p.trim()).filter(Boolean);
+  if (parcalar.length < 2) return result;
+
+  // Türkiye il listesi (yaygın olanlar)
+  const iller = [
+    'ADANA','ADIYAMAN','AFYON','AFYONKARAHISAR','AGRI','AĞRI','AKSARAY','AMASYA','ANKARA','ANTALYA',
+    'ARDAHAN','ARTVIN','AYDIN','BALIKESIR','BARTIN','BATMAN','BAYBURT','BILECIK','BINGOL','BİNGÖL',
+    'BITLIS','BİTLİS','BOLU','BURDUR','BURSA','CANAKKALE','ÇANAKKALE','CANKIRI','ÇANKIRI','CORUM',
+    'ÇORUM','DENIZLI','DENİZLİ','DIYARBAKIR','DİYARBAKIR','DUZCE','DÜZCE','EDIRNE','ELAZIG','ELÂZIĞ',
+    'ERZINCAN','ERZİNCAN','ERZURUM','ESKISEHIR','ESKİŞEHİR','GAZIANTEP','GAZİANTEP','GIRESUN','GİRESUN',
+    'GUMUSHANE','GÜMÜŞHANE','HAKKARI','HAKKARİ','HATAY','IGDIR','IĞDIR','ISPARTA','ISTANBUL','İSTANBUL',
+    'IZMIR','İZMİR','KAHRAMANMARAS','KAHRAMANMARAŞ','KARABUK','KARABÜK','KARAMAN','KARS','KASTAMONU',
+    'KAYSERI','KAYSERİ','KIRIKKALE','KIRKLARELI','KIRŞEHIR','KIRSEHIR','KILIS','KİLİS','KOCAELI','KOCAELİ',
+    'KONYA','KUTAHYA','KÜTAHYA','MALATYA','MANISA','MANİSA','MARDIN','MARDİN','MERSIN','MERSİN',
+    'MUGLA','MUĞLA','MUS','MUŞ','NEVSEHIR','NEVŞEHİR','NIGDE','NİĞDE','ORDU','OSMANIYE','OSMANİYE',
+    'RIZE','RİZE','SAKARYA','SAMSUN','SANLIURFA','ŞANLIURFA','SIIRT','SİİRT','SINOP','SİNOP','SIRNAK',
+    'ŞIRNAK','SIVAS','SİVAS','TEKIRDAG','TEKİRDAĞ','TOKAT','TRABZON','TUNCELI','TUNCELİ','USAK',
+    'UŞAK','VAN','YALOVA','YOZGAT','ZONGULDAK'
+  ];
+
+  const temizle = (s) => s.toUpperCase().replace(/İ/g,'I').replace(/Ş/g,'S').replace(/Ğ/g,'G').replace(/Ü/g,'U').replace(/Ö/g,'O').replace(/Ç/g,'C');
+
+  const eslenenParcalar = new Set();
+
+  // İl tespiti
+  if (!result.il) {
+    for (let i = 0; i < parcalar.length; i++) {
+      const p = parcalar[i].replace(/^il\s*[:=]?\s*/i, '').trim();
+      const pNorm = temizle(p);
+      if (iller.some(il => temizle(il) === pNorm)) {
+        result.il = p;
+        eslenenParcalar.add(i);
+        break;
+      }
+    }
+  }
+
+  // İlçe tespiti - il'den sonraki parça veya "İlçe:" etiketi
+  if (!result.ilce) {
+    for (let i = 0; i < parcalar.length; i++) {
+      if (eslenenParcalar.has(i)) continue;
+      const ilceMatch = parcalar[i].match(/^(?:ilce|ilçe)\s*[:=]?\s*(.+)/i);
+      if (ilceMatch) {
+        result.ilce = ilceMatch[1].trim();
+        eslenenParcalar.add(i);
+        break;
+      }
+    }
+    // İl bulunduysa ve ilçe hala boşsa, il'den hemen sonraki parçayı ilçe olarak al
+    if (!result.ilce && result.il) {
+      for (let i = 0; i < parcalar.length; i++) {
+        if (eslenenParcalar.has(i)) continue;
+        const p = parcalar[i].trim();
+        // Ada/Parsel veya mahalle etiketli değilse ve il değilse
+        if (!p.match(/ada|parsel|mah|köy|sok|cad|no\s*[:=]/i) && temizle(p) !== temizle(result.il)) {
+          result.ilce = p;
+          eslenenParcalar.add(i);
+          break;
+        }
+      }
+    }
+  }
+
+  // Mahalle tespiti
+  if (!result.mahalle) {
+    for (let i = 0; i < parcalar.length; i++) {
+      if (eslenenParcalar.has(i)) continue;
+      const mahMatch = parcalar[i].match(/^(?:mah(?:alle)?|mh|köy)\s*[.\/:]?\s*(.+)/i);
+      if (mahMatch) {
+        result.mahalle = mahMatch[1].trim();
+        eslenenParcalar.add(i);
+        break;
+      }
+    }
+  }
+
+  // Ada/Parsel tespiti (adres içinden)
+  if (!result.ada_parsel) {
+    for (let i = 0; i < parcalar.length; i++) {
+      if (eslenenParcalar.has(i)) continue;
+      const apMatch = parcalar[i].match(/(?:ada\s*[\/\\]\s*(?:parsel|pafta))\s*[:=]?\s*([\d]+\s*[\/\\]\s*[\d]+)/i);
+      if (apMatch) {
+        result.ada_parsel = apMatch[1].replace(/\s/g, '');
+        eslenenParcalar.add(i);
+        break;
+      }
+    }
+  }
+
+  // Adres alanını olduğu gibi bırak - sadece boş alanları doldur
+
+  // Enerji alınan direk no: notlardan veya direk_listesinden çıkar
+  if (!result.enerji_alinan_direk_no) {
+    const notlar = result.notlar || '';
+    // "DR5568387 (enerji alınan direk)" gibi pattern
+    const direkMatch = notlar.match(/([A-Z0-9-]+)\s*\(?\s*enerji\s+al[ıi]nan\s+dire[kğ]/i);
+    if (direkMatch) {
+      result.enerji_alinan_direk_no = direkMatch[1].trim();
+    }
+    // direk_listesinde "enerji alınan" notu olan direği bul
+    if (!result.enerji_alinan_direk_no && Array.isArray(result.direk_listesi)) {
+      const enerjiDirek = result.direk_listesi.find(d =>
+        (d.notlar || '').toLowerCase().includes('enerji') || (d.notlar || '').toLowerCase().includes('besleme')
+      );
+      if (enerjiDirek) {
+        result.enerji_alinan_direk_no = enerjiDirek.kisa_adi;
+      }
+    }
+  }
+
+  return result;
+}
+
 // POST /api/yer-teslim/parse - Yer teslim tutanağı görselini AI ile parse et
 router.post('/parse', upload.single('dosya'), async (req, res) => {
   try {
@@ -51,22 +248,37 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
 
       const model = 'gemini-2.5-flash';
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: prompt }] },
-          contents: [{ role: 'user', parts: [
-            { text: 'Bu yer teslim tutanagi gorselini analiz et ve JSON olarak don.' },
-            { inline_data: { mime_type: mimeType, data: imageBase64 } }
-          ]}],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 4096 }
-        }),
-        signal: AbortSignal.timeout(60000)
+      const body = JSON.stringify({
+        system_instruction: { parts: [{ text: prompt }] },
+        contents: [{ role: 'user', parts: [
+          { text: 'Bu yer teslim tutanagi gorselini analiz et ve JSON olarak don.' },
+          { inline_data: { mime_type: mimeType, data: imageBase64 } }
+        ]}],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 }
       });
 
-      const data = await response.json();
+      // Rate limit retry mekanizması (maks 3 deneme)
+      let response, data;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          signal: AbortSignal.timeout(60000)
+        });
+        data = await response.json();
+
+        if (response.status === 429 && attempt < 3) {
+          // Retry-After header veya hata mesajından bekleme süresini al
+          const retryMatch = (data.error?.message || '').match(/retry in ([\d.]+)s/i);
+          const beklemeSn = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) + 1 : 30;
+          console.log(`Gemini rate limit - ${beklemeSn}sn bekleniyor (deneme ${attempt}/3)...`);
+          await new Promise(r => setTimeout(r, beklemeSn * 1000));
+          continue;
+        }
+        break;
+      }
+
       if (!response.ok) {
         const errMsg = data.error?.message || `HTTP ${response.status}`;
         return hata(res, `Gemini API hata: ${errMsg}`, 500);
@@ -102,6 +314,11 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
       result = JSON.parse(data.choices[0].message.content);
     } else {
       return hata(res, 'AI provider yapılandırılmamış', 400);
+    }
+
+    // AI alanları doğru ayırmamışsa adres'ten il/ilçe/ada_parsel çıkar
+    if (result && !result.parse_error) {
+      result = postProcessResult(result);
     }
 
     basarili(res, result);

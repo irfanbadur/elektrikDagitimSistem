@@ -26,6 +26,7 @@ export function useProjeKesifEkle(projeId) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['proje-kesif', projeId] })
       qc.invalidateQueries({ queryKey: ['proje-kesif-ozet', projeId] })
+      qc.invalidateQueries({ queryKey: ['kesif-karsilastir', projeId] })
     },
   })
 }
@@ -37,6 +38,7 @@ export function useProjeKesifTopluEkle(projeId) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['proje-kesif', projeId] })
       qc.invalidateQueries({ queryKey: ['proje-kesif-ozet', projeId] })
+      qc.invalidateQueries({ queryKey: ['kesif-karsilastir', projeId] })
     },
   })
 }
@@ -48,6 +50,7 @@ export function useProjeKesifGuncelle(projeId) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['proje-kesif', projeId] })
       qc.invalidateQueries({ queryKey: ['proje-kesif-ozet', projeId] })
+      qc.invalidateQueries({ queryKey: ['kesif-karsilastir', projeId] })
     },
   })
 }
@@ -59,6 +62,7 @@ export function useProjeKesifSil(projeId) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['proje-kesif', projeId] })
       qc.invalidateQueries({ queryKey: ['proje-kesif-ozet', projeId] })
+      qc.invalidateQueries({ queryKey: ['kesif-karsilastir', projeId] })
     },
   })
 }

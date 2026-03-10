@@ -1,213 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
-import { X, Sparkles, Loader2, CheckCircle, AlertCircle, Image, Plus, Trash2, Link2, Unlink } from 'lucide-react'
-import { useDepoKatalog } from '@/hooks/useDepoKatalog'
+import { useState, useRef } from 'react'
+import { X, Sparkles, Loader2, CheckCircle, AlertCircle, Image, ArrowLeftRight } from 'lucide-react'
 import api from '@/api/client'
-import { cn } from '@/lib/utils'
-
-// Katalog adından Kg/Km oranını çıkar (ör: "ROSE AWG 4 (59.15Kg/Km)" → 59.15)
-function extractKgKmOran(text) {
-  if (!text) return null
-  const match = text.match(/(\d+[.,]?\d*)\s*kg\s*\/\s*km/i)
-  if (!match) return null
-  return parseFloat(match[1].replace(',', '.'))
-}
-
-const MT_BIRIMLER = ['mt', 'm', 'metre', 'meter']
-const KG_BIRIMLER = ['kg', 'kilogram']
-const isMtBirim = (b) => MT_BIRIMLER.includes((b || '').toLowerCase())
-const isKgBirim = (b) => KG_BIRIMLER.includes((b || '').toLowerCase())
-
-function DemontajSatirDuzenle({ kalem, index, onChange, onSil }) {
-  const [focused, setFocused] = useState(false)
-  const [aramaDebounced, setAramaDebounced] = useState('')
-  const inputRef = useRef(null)
-  const dropdownRef = useRef(null)
-
-  // Debounce malzeme_adi for catalog search
-  useEffect(() => {
-    const t = setTimeout(() => setAramaDebounced(kalem.malzeme_adi), 300)
-    return () => clearTimeout(t)
-  }, [kalem.malzeme_adi])
-
-  // Click outside to close dropdown
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target) && inputRef.current && !inputRef.current.contains(e.target))
-        setFocused(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  const { data: sonuclar, isLoading: araniyor } = useDepoKatalog(
-    focused && aramaDebounced.length >= 1 && !kalem.katalog_eslesme ? { arama: aramaDebounced } : null
-  )
-
-  const handleKatalogSec = (item) => {
-    const katalogBirim = item.olcu || ''
-    const orijinalBirim = kalem.birim || 'Ad'
-    const birimFarkli = katalogBirim && orijinalBirim &&
-      katalogBirim.toLowerCase().replace(/\./g, '') !== orijinalBirim.toLowerCase().replace(/\./g, '')
-    const katalogText = `${item.malzeme_cinsi || ''} ${item.malzeme_tanimi_sap || ''}`
-    const kgKmOran = birimFarkli ? extractKgKmOran(katalogText) : null
-    onChange(index, {
-      ...kalem,
-      malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || kalem.malzeme_adi,
-      malzeme_kodu: item.malzeme_kodu || '',
-      poz_no: item.poz_birlesik || '',
-      birim: birimFarkli ? orijinalBirim : (katalogBirim || kalem.birim),
-      katalog_eslesme: item.malzeme_cinsi || item.malzeme_tanimi_sap,
-      _eslesmedi: false,
-      _birim_secenekleri: birimFarkli ? [orijinalBirim, katalogBirim] : null,
-      _kg_km_oran: kgKmOran,
-    })
-    setFocused(false)
-  }
-
-  const handleMalzemeAdiDegistir = (e) => {
-    onChange(index, { ...kalem, malzeme_adi: e.target.value, katalog_eslesme: null, _eslesmedi: false, _birim_secenekleri: null, _kg_km_oran: null })
-  }
-
-  const showDropdown = focused && aramaDebounced.length >= 1 && !kalem.katalog_eslesme
-
-  // Kg/Km dönüşüm hesapla
-  const donusum = (() => {
-    if (!kalem._kg_km_oran || !kalem._birim_secenekleri) return null
-    const [b1, b2] = kalem._birim_secenekleri
-    const mtBirim = isMtBirim(b1) ? b1 : isMtBirim(b2) ? b2 : null
-    const kgBirim = isKgBirim(b1) ? b1 : isKgBirim(b2) ? b2 : null
-    if (!mtBirim || !kgBirim) return null
-    const curIsMt = isMtBirim(kalem.birim)
-    const mtMiktar = curIsMt ? kalem.miktar : Math.round(kalem.miktar / kalem._kg_km_oran * 1000 * 100) / 100
-    const kgMiktar = curIsMt ? Math.round(kalem.miktar * kalem._kg_km_oran / 1000 * 100) / 100 : kalem.miktar
-    return { mtBirim, kgBirim, mtMiktar, kgMiktar }
-  })()
-
-  return (
-    <tr className="border-b border-input/50 group transition-colors hover:bg-muted/50">
-      <td className="px-2 py-1.5 text-muted-foreground text-center">{index + 1}</td>
-      <td className="px-2 py-1.5 relative">
-        <input
-          ref={inputRef}
-          value={kalem.malzeme_adi}
-          onChange={handleMalzemeAdiDegistir}
-          onFocus={() => setFocused(true)}
-          onKeyDown={(e) => { if (e.key === 'Escape') setFocused(false) }}
-          className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium hover:border-input focus:border-primary focus:outline-none"
-          placeholder="Malzeme adi yazin..."
-        />
-        {showDropdown && (
-          <div ref={dropdownRef} className="absolute left-0 top-full z-50 mt-1 max-h-48 w-[450px] overflow-y-auto rounded-lg border border-input bg-card shadow-xl">
-            {araniyor ? (
-              <div className="px-3 py-3 text-center text-xs text-muted-foreground">
-                <Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...
-              </div>
-            ) : !sonuclar?.length ? (
-              <div className="px-3 py-3 text-center text-xs text-muted-foreground">Sonuc bulunamadi</div>
-            ) : (
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm">
-                  <tr className="border-b border-input">
-                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">Poz</th>
-                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">Malzeme</th>
-                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">Birim</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sonuclar.slice(0, 20).map((item) => (
-                    <tr key={item.id} onMouseDown={() => handleKatalogSec(item)} className="cursor-pointer border-b border-input/30 hover:bg-primary/5">
-                      <td className="px-2 py-1 font-mono text-blue-600 whitespace-nowrap">{item.poz_birlesik || '-'}</td>
-                      <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
-                      <td className="px-2 py-1 text-muted-foreground">{item.olcu || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-        {kalem.katalog_eslesme && (
-          <div className="mt-0.5 space-y-0.5 text-[10px]">
-            <div className="flex items-center gap-1">
-              <div className="flex items-center gap-1 text-emerald-600">
-                <Link2 className="h-2.5 w-2.5" />
-                <span>Katalog: {kalem.katalog_eslesme}</span>
-              </div>
-              {kalem._birim_secenekleri && !donusum && (
-                <div className="ml-auto flex items-center gap-1">
-                  <span className="text-muted-foreground">Birim:</span>
-                  {kalem._birim_secenekleri.map((b) => (
-                    <button
-                      key={b}
-                      type="button"
-                      onClick={() => onChange(index, { ...kalem, birim: b })}
-                      className={cn(
-                        'rounded px-1.5 py-0.5 font-semibold transition-colors',
-                        kalem.birim === b
-                          ? 'bg-primary text-white'
-                          : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
-                      )}
-                    >
-                      {b}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {donusum && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground">Dönüşüm:</span>
-                <button
-                  type="button"
-                  onClick={() => onChange(index, { ...kalem, birim: donusum.mtBirim, miktar: donusum.mtMiktar })}
-                  className={cn(
-                    'rounded px-1.5 py-0.5 font-semibold transition-colors',
-                    isMtBirim(kalem.birim)
-                      ? 'bg-primary text-white'
-                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
-                  )}
-                >
-                  {donusum.mtMiktar} {donusum.mtBirim}
-                </button>
-                <span className="text-muted-foreground">≈</span>
-                <button
-                  type="button"
-                  onClick={() => onChange(index, { ...kalem, birim: donusum.kgBirim, miktar: donusum.kgMiktar })}
-                  className={cn(
-                    'rounded px-1.5 py-0.5 font-semibold transition-colors',
-                    isKgBirim(kalem.birim)
-                      ? 'bg-primary text-white'
-                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
-                  )}
-                >
-                  {donusum.kgMiktar} {donusum.kgBirim}
-                </button>
-                <span className="text-muted-foreground/60">({kalem._kg_km_oran} Kg/Km)</span>
-              </div>
-            )}
-          </div>
-        )}
-        {!kalem.katalog_eslesme && kalem._eslesmedi && (
-          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-amber-600">
-            <Unlink className="h-2.5 w-2.5" />
-            <span>Katalogda bulunamadi</span>
-          </div>
-        )}
-      </td>
-      <td className="px-2 py-1.5">
-        <input value={kalem.birim || 'Ad'} onChange={(e) => onChange(index, { ...kalem, birim: e.target.value })} className="w-12 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-center hover:border-input focus:border-primary focus:outline-none" />
-      </td>
-      <td className="px-2 py-1.5">
-        <input type="number" value={kalem.miktar || ''} onChange={(e) => onChange(index, { ...kalem, miktar: Number(e.target.value) || 0 })} className="w-14 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-center hover:border-input focus:border-primary focus:outline-none" />
-      </td>
-      <td className="px-2 py-1.5 text-right">
-        <button onClick={() => onSil(index)} className="rounded p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-600">
-          <Trash2 className="h-3 w-3" />
-        </button>
-      </td>
-    </tr>
-  )
-}
+import DemontajListesiDuzenle, { createSatir, extractKgKmOran, isMtBirim, isKgBirim } from './DemontajListesiDuzenle'
+import DirekListesiDuzenle, { createDirekSatir } from './DirekListesiDuzenle'
+import KatalogAramaInput from './KatalogAramaInput'
 
 export default function YerTeslimModal({ onSonuc, onKapat }) {
   const [dosya, setDosya] = useState(null)
@@ -216,7 +12,9 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
   const [hata, setHata] = useState('')
   const [sonuc, setSonuc] = useState(null)
   const [demontajListesi, setDemontajListesi] = useState([])
+  const [direkListesi, setDirekListesi] = useState([])
   const [eslestiriliyor, setEslestiriliyor] = useState(false)
+  const [direkEslestiriliyor, setDirekEslestiriliyor] = useState(false)
   const fileInputRef = useRef(null)
 
   const handleDosyaSec = (e) => {
@@ -253,47 +51,14 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
       setSonuc(json.data)
 
       // Demontaj listesini state'e al ve katalog eşleştirmesi yap
-      const liste = (json.data.demontaj_listesi || []).map(d => ({
-        malzeme_adi: d.malzeme_adi || '',
-        birim: d.birim || 'Ad',
-        miktar: d.miktar || 1,
-        poz_no: d.poz_no || '',
-        malzeme_kodu: '',
-        notlar: d.notlar || '',
-        katalog_eslesme: null,
-        _eslesmedi: false,
-      }))
+      const liste = (json.data.demontaj_listesi || []).map((d) => createSatir(d))
       setDemontajListesi(liste)
+      katalogEslestir(liste)
 
-      // Katalog eşleştirme
-      if (liste.length > 0) {
-        setEslestiriliyor(true)
-        try {
-          const eslesmeRes = await api.post('/depo-katalog/eslestir', { kalemler: liste })
-          const eslesmeler = eslesmeRes?.data || []
-          setDemontajListesi(prev => prev.map((k, i) => {
-            const e = eslesmeler[i]?.eslesme
-            if (e) {
-              const katalogBirim = e.olcu || ''
-              const orijinalBirim = k.birim || 'Ad'
-              const birimFarkli = katalogBirim && orijinalBirim &&
-                katalogBirim.toLowerCase().replace(/\./g, '') !== orijinalBirim.toLowerCase().replace(/\./g, '')
-              const kgKmOran = birimFarkli ? extractKgKmOran(`${e.malzeme_cinsi || ''} ${e.malzeme_tanimi_sap || ''}`) : null
-              return {
-                ...k,
-                malzeme_kodu: e.malzeme_kodu || '',
-                poz_no: e.poz_birlesik || k.poz_no,
-                birim: birimFarkli ? orijinalBirim : (katalogBirim || k.birim),
-                katalog_eslesme: e.malzeme_cinsi || e.malzeme_tanimi_sap,
-                _birim_secenekleri: birimFarkli ? [orijinalBirim, katalogBirim] : null,
-                _kg_km_oran: kgKmOran,
-              }
-            }
-            return { ...k, _eslesmedi: true }
-          }))
-        } catch { /* eşleşme opsiyonel */ }
-        setEslestiriliyor(false)
-      }
+      // Direk listesini state'e al ve katalog eşleştirmesi yap
+      const direkler = (json.data.direk_listesi || []).map((d) => createDirekSatir(d))
+      setDirekListesi(direkler)
+      direkKatalogEslestir(direkler)
     } catch (err) {
       setHata(err.message || 'Analiz sirasinda hata olustu')
     } finally {
@@ -301,25 +66,75 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
     }
   }
 
-  const handleDemontajDegistir = (index, yeni) => {
-    setDemontajListesi(prev => prev.map((k, i) => i === index ? yeni : k))
+  // Toplu katalog eşleştirme
+  const katalogEslestir = async (liste) => {
+    if (!liste || liste.length === 0) return
+    setEslestiriliyor(true)
+    try {
+      const eslesmeRes = await api.post('/depo-katalog/eslestir', { kalemler: liste })
+      const eslesmeler = eslesmeRes?.data || []
+      setDemontajListesi(prev => prev.map((k, i) => {
+        const e = eslesmeler[i]?.eslesme
+        if (e) {
+          const katalogBirim = e.olcu || ''
+          const orijinalBirim = k.birim || 'Ad'
+          const birimFarkli = katalogBirim && orijinalBirim &&
+            katalogBirim.toLowerCase().replace(/\./g, '') !== orijinalBirim.toLowerCase().replace(/\./g, '')
+          const kgKmOran = birimFarkli ? extractKgKmOran(`${e.malzeme_cinsi || ''} ${e.malzeme_tanimi_sap || ''}`) : null
+          let yeniMiktar = k.miktar
+          if (kgKmOran && birimFarkli) {
+            if (isMtBirim(orijinalBirim) && isKgBirim(katalogBirim)) {
+              yeniMiktar = Math.round(k.miktar * kgKmOran / 1000 * 100) / 100
+            } else if (isKgBirim(orijinalBirim) && isMtBirim(katalogBirim)) {
+              yeniMiktar = Math.round(k.miktar / kgKmOran * 1000 * 100) / 100
+            }
+          }
+          return {
+            ...k,
+            malzeme_adi: e.malzeme_cinsi || e.malzeme_tanimi_sap || k.malzeme_adi,
+            malzeme_kodu: e.malzeme_kodu || '',
+            poz_no: e.poz_birlesik || k.poz_no,
+            birim: katalogBirim || k.birim,
+            miktar: yeniMiktar,
+            katalog_eslesme: e.malzeme_cinsi || e.malzeme_tanimi_sap,
+            _birim_secenekleri: birimFarkli ? [orijinalBirim, katalogBirim] : null,
+            _kg_km_oran: kgKmOran,
+          }
+        }
+        return { ...k, _eslesmedi: true }
+      }))
+    } catch { /* eşleşme opsiyonel */ }
+    setEslestiriliyor(false)
   }
 
-  const handleDemontajSil = (index) => {
-    setDemontajListesi(prev => prev.filter((_, i) => i !== index))
-  }
-
-  const handleDemontajEkle = () => {
-    setDemontajListesi(prev => [...prev, { malzeme_adi: '', birim: 'Ad', miktar: 1, poz_no: '', malzeme_kodu: '', notlar: '', katalog_eslesme: null, _eslesmedi: false }])
+  // Direk listesi katalog eşleştirme
+  const direkKatalogEslestir = async (liste) => {
+    if (!liste || liste.length === 0) return
+    setDirekEslestiriliyor(true)
+    try {
+      const kalemler = liste.map(d => ({ malzeme_adi: d.kisa_adi }))
+      const eslesmeRes = await api.post('/depo-katalog/eslestir', { kalemler })
+      const eslesmeler = eslesmeRes?.data || []
+      setDirekListesi(prev => prev.map((k, i) => {
+        const e = eslesmeler[i]?.eslesme
+        if (e) {
+          return {
+            ...k,
+            katalog_adi: e.malzeme_cinsi || e.malzeme_tanimi_sap || '',
+            malzeme_kodu: e.malzeme_kodu || '',
+          }
+        }
+        return { ...k, _eslesmedi: true }
+      }))
+    } catch { /* opsiyonel */ }
+    setDirekEslestiriliyor(false)
   }
 
   const handleOnayla = () => {
-    onSonuc({ ...sonuc, demontaj_listesi: demontajListesi, _dosya: dosya })
+    const gecerliListe = demontajListesi.filter(d => d.malzeme_adi && d.malzeme_adi.trim() !== '')
+    const gecerliDirekler = direkListesi.filter(d => d.kisa_adi && d.kisa_adi.trim() !== '')
+    onSonuc({ ...sonuc, demontaj_listesi: gecerliListe, direk_listesi: gecerliDirekler, _dosya: dosya })
   }
-
-  const eslesmeOrani = demontajListesi.length > 0
-    ? Math.round(demontajListesi.filter(d => d.katalog_eslesme).length / demontajListesi.length * 100)
-    : 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -375,15 +190,119 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
                 Tutanak analiz edildi. Demontaj listesini duzenleyip onaylayin.
               </div>
 
-              {/* Temel Bilgiler (kisa ozet) */}
+              {/* Temel Bilgiler (düzenlenebilir) */}
               <div className="rounded-lg border border-input p-4">
                 <h4 className="mb-3 text-sm font-semibold">Temel Bilgiler</h4>
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div><span className="text-muted-foreground">Proje Tipi:</span> <strong>{sonuc.proje_tipi || '-'}</strong></div>
-                  <div><span className="text-muted-foreground">Proje Adi:</span> <strong>{sonuc.proje_adi || sonuc.musteri_adi || '-'}</strong></div>
-                  <div><span className="text-muted-foreground">Mahalle:</span> <strong>{sonuc.mahalle || '-'}</strong></div>
-                  <div><span className="text-muted-foreground">Oncelik:</span> <strong>{sonuc.oncelik || 'normal'}</strong></div>
-                  <div className="col-span-2"><span className="text-muted-foreground">Adres:</span> <strong>{sonuc.adres || '-'}</strong></div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Proje Tipi</label>
+                    <input value={sonuc.proje_tipi || ''} onChange={e => setSonuc(p => ({ ...p, proje_tipi: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Proje Adi</label>
+                    <input value={sonuc.proje_adi || ''} onChange={e => setSonuc(p => ({ ...p, proje_adi: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Il</label>
+                    <input value={sonuc.il || ''} onChange={e => setSonuc(p => ({ ...p, il: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Ilce</label>
+                    <input value={sonuc.ilce || ''} onChange={e => setSonuc(p => ({ ...p, ilce: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Mahalle</label>
+                    <input value={sonuc.mahalle || ''} onChange={e => setSonuc(p => ({ ...p, mahalle: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Basvuru No</label>
+                    <input value={sonuc.basvuru_no || ''} onChange={e => setSonuc(p => ({ ...p, basvuru_no: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Oncelik</label>
+                    <select value={sonuc.oncelik || 'normal'} onChange={e => setSonuc(p => ({ ...p, oncelik: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30">
+                      <option value="dusuk">Dusuk</option>
+                      <option value="normal">Normal</option>
+                      <option value="yuksek">Yuksek</option>
+                      <option value="acil">Acil</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Telefon</label>
+                    <input value={sonuc.telefon || ''} onChange={e => setSonuc(p => ({ ...p, telefon: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs text-muted-foreground">Adres</label>
+                    <input value={sonuc.adres || ''} onChange={e => setSonuc(p => ({ ...p, adres: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Baglanti / Tesis Bilgileri (düzenlenebilir) */}
+              <div className="rounded-lg border border-input p-4">
+                <h4 className="mb-3 text-sm font-semibold">Baglanti / Tesis Bilgileri</h4>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Ada / Parsel</label>
+                    <input value={sonuc.ada_parsel || ''} onChange={e => setSonuc(p => ({ ...p, ada_parsel: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Tesis</label>
+                    <input value={sonuc.tesis || ''} onChange={e => setSonuc(p => ({ ...p, tesis: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Enerji Alinan Direk No</label>
+                    <input value={sonuc.enerji_alinan_direk_no || ''} onChange={e => setSonuc(p => ({ ...p, enerji_alinan_direk_no: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Abone Kablosu</label>
+                    <KatalogAramaInput
+                      value={sonuc.abone_kablosu || ''}
+                      onChange={val => setSonuc(p => ({ ...p, abone_kablosu: val }))}
+                      placeholder="Orn: 2x10 NYY"
+                      className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Abone Kablosu (metre)</label>
+                    <input type="number" min="0" step="0.1" value={sonuc.abone_kablosu_metre || ''} onChange={e => setSonuc(p => ({ ...p, abone_kablosu_metre: e.target.value ? Number(e.target.value) : null }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Kesinti Ihtiyaci</label>
+                    <select value={sonuc.kesinti_ihtiyaci == null ? '' : sonuc.kesinti_ihtiyaci ? '1' : '0'} onChange={e => setSonuc(p => ({ ...p, kesinti_ihtiyaci: e.target.value === '' ? null : e.target.value === '1' }))} className="mt-0.5 w-full rounded border border-input bg-white px-2 py-1 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary/30">
+                      <option value="">Belirtilmedi</option>
+                      <option value="1">Evet</option>
+                      <option value="0">Hayir</option>
+                    </select>
+                  </div>
+                </div>
+                {/* Izinler */}
+                <div className="mt-3">
+                  <label className="text-xs text-muted-foreground">Izinler</label>
+                  <div className="mt-1 flex flex-wrap gap-3">
+                    {[
+                      { key: 'karayollari', label: 'Karayollari' },
+                      { key: 'kazi_izni', label: 'Kazi Izni' },
+                      { key: 'orman', label: 'Orman' },
+                      { key: 'muvafakatname', label: 'Muvafakatname' },
+                    ].map(({ key, label }) => (
+                      <label key={key} className="flex items-center gap-1.5 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={sonuc.izinler?.[key] || false}
+                          onChange={e => setSonuc(p => ({ ...p, izinler: { ...(p.izinler || {}), [key]: e.target.checked } }))}
+                          className="rounded border-input accent-primary"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <input
+                    value={sonuc.izinler?.diger || ''}
+                    onChange={e => setSonuc(p => ({ ...p, izinler: { ...(p.izinler || {}), diger: e.target.value || null } }))}
+                    className="mt-1.5 w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30"
+                    placeholder="Diger izinler..."
+                  />
                 </div>
               </div>
 
@@ -391,68 +310,65 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
               {(sonuc.yer_teslim_yapan || sonuc.yer_teslim_alan) && (
                 <div className="rounded-lg border border-input p-4">
                   <h4 className="mb-3 text-sm font-semibold">Yer Teslim Bilgileri</h4>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    {sonuc.yer_teslim_yapan && (
-                      <div><span className="text-muted-foreground">Teslim Yapan:</span> <strong>{sonuc.yer_teslim_yapan.ad_soyad || '-'}</strong>{sonuc.yer_teslim_yapan.unvan && <span className="text-xs text-muted-foreground"> ({sonuc.yer_teslim_yapan.unvan})</span>}</div>
-                    )}
-                    {sonuc.yer_teslim_alan && (
-                      <div><span className="text-muted-foreground">Teslim Alan:</span> <strong>{sonuc.yer_teslim_alan.ad_soyad || '-'}</strong>{sonuc.yer_teslim_alan.unvan && <span className="text-xs text-muted-foreground"> ({sonuc.yer_teslim_alan.unvan})</span>}</div>
-                    )}
+                  <div className="flex items-center gap-3 text-sm">
+                    <div className="flex-1 rounded-lg border border-input bg-muted/30 px-3 py-2">
+                      <span className="text-xs text-muted-foreground">Teslim Yapan</span>
+                      <div className="mt-0.5 font-semibold">{sonuc.yer_teslim_yapan?.ad_soyad || '-'}</div>
+                      {sonuc.yer_teslim_yapan?.unvan && <span className="text-xs text-muted-foreground">{sonuc.yer_teslim_yapan.unvan}</span>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSonuc(prev => ({
+                        ...prev,
+                        yer_teslim_yapan: { ...prev.yer_teslim_yapan, ad_soyad: prev.yer_teslim_alan?.ad_soyad || '', unvan: prev.yer_teslim_alan?.unvan || '' },
+                        yer_teslim_alan: { ...prev.yer_teslim_alan, ad_soyad: prev.yer_teslim_yapan?.ad_soyad || '', unvan: prev.yer_teslim_yapan?.unvan || '' },
+                      }))}
+                      className="shrink-0 rounded-full border border-input p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary hover:border-primary"
+                      title="Teslim yapan ve alanı değiştir"
+                    >
+                      <ArrowLeftRight className="h-4 w-4" />
+                    </button>
+                    <div className="flex-1 rounded-lg border border-input bg-muted/30 px-3 py-2">
+                      <span className="text-xs text-muted-foreground">Teslim Alan</span>
+                      <div className="mt-0.5 font-semibold">{sonuc.yer_teslim_alan?.ad_soyad || '-'}</div>
+                      {sonuc.yer_teslim_alan?.unvan && <span className="text-xs text-muted-foreground">{sonuc.yer_teslim_alan.unvan}</span>}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Demontaj Listesi - Düzenlenebilir */}
-              <div className="rounded-lg border border-input p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <h4 className="text-sm font-semibold">Demontaj Listesi</h4>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{demontajListesi.length} kalem</span>
-                    {eslestiriliyor ? (
-                      <span className="flex items-center gap-1 text-xs text-primary"><Loader2 className="h-3 w-3 animate-spin" />Katalog eslestiriliyor...</span>
-                    ) : demontajListesi.length > 0 && (
-                      <span className={cn('text-xs font-medium', eslesmeOrani >= 80 ? 'text-emerald-600' : eslesmeOrani >= 50 ? 'text-amber-600' : 'text-red-600')}>
-                        %{eslesmeOrani} katalog eslesmesi
-                      </span>
-                    )}
-                  </div>
-                  <button onClick={handleDemontajEkle} className="flex items-center gap-1 rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20">
-                    <Plus className="h-3 w-3" />Ekle
-                  </button>
+              {/* Direk Listesi */}
+              {direkListesi.length > 0 && (
+                <div className="rounded-lg border border-input p-4">
+                  <DirekListesiDuzenle
+                    liste={direkListesi}
+                    onChange={setDirekListesi}
+                    eslestiriliyor={direkEslestiriliyor}
+                  />
                 </div>
+              )}
 
-                <div className="overflow-x-auto rounded-lg border border-input bg-card">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-input bg-muted/50">
-                        <th className="w-8 px-2 py-2 text-center font-medium text-muted-foreground">#</th>
-                        <th className="px-2 py-2 text-left font-medium text-muted-foreground">Malzeme</th>
-                        <th className="w-16 px-2 py-2 text-center font-medium text-muted-foreground">Birim</th>
-                        <th className="w-16 px-2 py-2 text-center font-medium text-muted-foreground">Miktar</th>
-                        <th className="w-8 px-2 py-2"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {demontajListesi.length === 0 ? (
-                        <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Demontaj kalemi yok</td></tr>
-                      ) : (
-                        demontajListesi.map((k, i) => (
-                          <DemontajSatirDuzenle key={i} kalem={k} index={i} onChange={handleDemontajDegistir} onSil={handleDemontajSil} />
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="mt-2 text-[10px] text-muted-foreground">Malzeme adini yazmaya baslayin, depo katalogdan otomatik eslestirme yapilacaktir.</p>
+              {/* Demontaj Listesi - Ortak bileşen */}
+              <div className="rounded-lg border border-input p-4">
+                <DemontajListesiDuzenle
+                  liste={demontajListesi}
+                  onChange={setDemontajListesi}
+                  eslestiriliyor={eslestiriliyor}
+                  aciklama="Malzeme adini yazmaya baslayin, depo katalogdan otomatik eslestirme yapilacaktir."
+                />
               </div>
 
               {/* Notlar */}
-              {sonuc.notlar && (
-                <div className="rounded-lg border border-input p-4">
-                  <h4 className="mb-2 text-sm font-semibold">Ek Notlar</h4>
-                  <p className="text-sm text-muted-foreground">{sonuc.notlar}</p>
-                </div>
-              )}
+              <div className="rounded-lg border border-input p-4">
+                <h4 className="mb-2 text-sm font-semibold">Ek Notlar</h4>
+                <textarea
+                  value={sonuc.notlar || ''}
+                  onChange={e => setSonuc(p => ({ ...p, notlar: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded border border-input bg-white px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  placeholder="Ek notlar..."
+                />
+              </div>
             </div>
           )}
         </div>
@@ -461,17 +377,19 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
         <div className="flex items-center justify-end gap-2 border-t border-input px-5 py-4">
           <button onClick={onKapat} className="rounded-lg border border-input px-4 py-2 text-sm hover:bg-muted">Iptal</button>
           {!sonuc ? (
-            <button
-              onClick={handleAnaliz}
-              disabled={!dosya || yukleniyor}
-              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
-            >
-              {yukleniyor ? (
-                <><Loader2 className="h-4 w-4 animate-spin" />AI Analiz Ediyor...</>
-              ) : (
-                <><Sparkles className="h-4 w-4" />Analiz Et</>
-              )}
-            </button>
+            <>
+              <button
+                onClick={handleAnaliz}
+                disabled={!dosya || yukleniyor}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+              >
+                {yukleniyor ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" />AI Analiz Ediyor...</>
+                ) : (
+                  <><Sparkles className="h-4 w-4" />Analiz Et</>
+                )}
+              </button>
+            </>
           ) : (
             <>
               <button onClick={() => { setSonuc(null); setDemontajListesi([]) }} className="rounded-lg border border-input px-4 py-2 text-sm hover:bg-muted">Tekrar Dene</button>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowLeftRight, Save, X, Sparkles } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, Save, X, Sparkles, AlertCircle } from 'lucide-react'
 import { useProje, useProjeOlustur, useProjeGuncelle } from '@/hooks/useProjeler'
 import api from '@/api/client'
 import { useBolgeler } from '@/hooks/useBolgeler'
@@ -10,6 +10,9 @@ import { usePersonelListesi } from '@/hooks/usePersonel'
 import { PROJE_DURUMLARI, ONCELIK_LABELS } from '@/utils/constants'
 import { CardSkeleton } from '@/components/shared/LoadingSkeleton'
 import YerTeslimModal from './YerTeslimModal'
+import DemontajListesiDuzenle from './DemontajListesiDuzenle'
+import DirekListesiDuzenle from './DirekListesiDuzenle'
+import KatalogAramaInput from './KatalogAramaInput'
 import { cn } from '@/lib/utils'
 
 const BOS_FORM = {
@@ -30,6 +33,18 @@ const BOS_FORM = {
   notlar: '',
   teslim_eden: '',
   teslim_alan_id: '',
+  // YB ve genel yer teslim alanları
+  basvuru_no: '',
+  il: '',
+  ilce: '',
+  ada_parsel: '',
+  telefon: '',
+  tesis: '',
+  abone_kablosu: '',
+  abone_kablosu_metre: '',
+  enerji_alinan_direk_no: '',
+  kesinti_ihtiyaci: null,
+  izinler: null,
 }
 
 export default function ProjeForm() {
@@ -52,6 +67,7 @@ export default function ProjeForm() {
   const [genelHata, setGenelHata] = useState('')
   const [yerTeslimAcik, setYerTeslimAcik] = useState(false)
   const [demontajListesi, setDemontajListesi] = useState([])
+  const [direkListesi, setDirekListesi] = useState([])
   const [yerTeslimDosya, setYerTeslimDosya] = useState(null)
   const [yerTeslimEkBilgi, setYerTeslimEkBilgi] = useState(null)
 
@@ -69,6 +85,20 @@ export default function ProjeForm() {
       setForm((prev) => ({ ...prev, durum: eslesmisIsTipi.fazlar[0].faz_kodu }))
     }
   }, [eslesmisIsTipi, duzenleModu])
+
+  // Load direk/demontaj lists for edit mode
+  useEffect(() => {
+    if (duzenleModu && id) {
+      api.get(`/proje-direkler/${id}`).then(r => {
+        const data = r?.data || r || []
+        if (Array.isArray(data) && data.length > 0) setDirekListesi(data)
+      }).catch(() => {})
+      api.get(`/proje-demontaj/${id}`).then(r => {
+        const data = r?.data || r || []
+        if (Array.isArray(data) && data.length > 0) setDemontajListesi(data)
+      }).catch(() => {})
+    }
+  }, [duzenleModu, id])
 
   // Load existing project data for edit mode
   useEffect(() => {
@@ -91,6 +121,17 @@ export default function ProjeForm() {
         notlar: proje.notlar || '',
         teslim_eden: proje.teslim_eden || '',
         teslim_alan_id: proje.teslim_alan_id || '',
+        basvuru_no: proje.basvuru_no || '',
+        il: proje.il || '',
+        ilce: proje.ilce || '',
+        ada_parsel: proje.ada_parsel || '',
+        telefon: proje.telefon || '',
+        tesis: proje.tesis || '',
+        abone_kablosu: proje.abone_kablosu || '',
+        abone_kablosu_metre: proje.abone_kablosu_metre || '',
+        enerji_alinan_direk_no: proje.enerji_alinan_direk_no || '',
+        kesinti_ihtiyaci: proje.kesinti_ihtiyaci != null ? Boolean(proje.kesinti_ihtiyaci) : null,
+        izinler: proje.izinler ? (typeof proje.izinler === 'string' ? JSON.parse(proje.izinler) : proje.izinler) : null,
       })
     }
   }, [duzenleModu, proje])
@@ -145,11 +186,12 @@ export default function ProjeForm() {
     return Object.keys(yeniHatalar).length === 0
   }
 
-  const handleYerTeslimSonuc = (sonuc) => {
+  const handleYerTeslimSonuc = async (sonuc) => {
     setYerTeslimAcik(false)
     const { _dosya, ...data } = sonuc
     setYerTeslimDosya(_dosya || null)
     setDemontajListesi(data.demontaj_listesi || [])
+    setDirekListesi(data.direk_listesi || [])
     setYerTeslimEkBilgi({
       yer_teslim_yapan: data.yer_teslim_yapan,
       yer_teslim_alan: data.yer_teslim_alan,
@@ -167,29 +209,80 @@ export default function ProjeForm() {
       teslimAlanId = alanPersonel.id
       teslimEden = yapanAd
     } else if (yapanPersonel) {
-      // Form ters doldurulmuş: yapan aslında bizim personelimiz
       teslimAlanId = yapanPersonel.id
       teslimEden = alanAd
     } else {
       teslimEden = yapanAd
     }
 
+    // Bölge eşleştirme: ilçe adını bölge listesinden bul
+    const ilce = data.ilce || ''
+    let bolgeId = ''
+    if (ilce && Array.isArray(bolgeler) && bolgeler.length > 0) {
+      const norm = (s) => (s || '').toUpperCase().replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '')
+      const ilceNorm = norm(ilce)
+      const eslesme = bolgeler.find(b => norm(b.bolge_adi) === ilceNorm)
+      if (eslesme) bolgeId = eslesme.id
+    }
+
+    // Tahmini süre: başlama ve bitiş tarihleri arasındaki gün farkı
+    let tahminiSure = ''
+    const baslama = data.baslama_tarihi || ''
+    const bitis = data.bitis_tarihi || ''
+    if (baslama && bitis) {
+      const fark = Math.round((new Date(bitis) - new Date(baslama)) / (1000 * 60 * 60 * 24))
+      if (fark > 0) tahminiSure = fark
+    }
+
+    // Otomatik proje no: İşTipi-Yıl-SıraNo
+    const projeTipi = data.proje_tipi || ''
+    let projeNo = ''
+    if (projeTipi) {
+      try {
+        const noRes = await api.get('/projeler/sonraki-no', { params: { tip: projeTipi } })
+        projeNo = noRes?.data?.proje_no || noRes?.proje_no || ''
+      } catch { /* manuel girilir */ }
+    }
+
     // Form alanlarını doldur
     setForm((prev) => ({
       ...prev,
-      proje_tipi: data.proje_tipi || prev.proje_tipi,
+      proje_no: projeNo || prev.proje_no,
+      proje_tipi: projeTipi || prev.proje_tipi,
       musteri_adi: data.proje_adi || data.musteri_adi || prev.musteri_adi,
+      bolge_id: bolgeId || prev.bolge_id,
       mahalle: data.mahalle || prev.mahalle,
       adres: data.adres || prev.adres,
       oncelik: data.oncelik || prev.oncelik,
-      baslama_tarihi: data.baslama_tarihi || prev.baslama_tarihi,
-      bitis_tarihi: data.bitis_tarihi || prev.bitis_tarihi,
+      baslama_tarihi: baslama || prev.baslama_tarihi,
+      bitis_tarihi: bitis || prev.bitis_tarihi,
       teslim_tarihi: data.teslim_tarihi || prev.teslim_tarihi,
+      tahmini_sure_gun: tahminiSure || prev.tahmini_sure_gun,
       notlar: [prev.notlar, data.notlar].filter(Boolean).join('\n') || '',
       teslim_eden: teslimEden || prev.teslim_eden,
       teslim_alan_id: teslimAlanId || prev.teslim_alan_id,
+      // YB alanları
+      basvuru_no: data.basvuru_no || prev.basvuru_no,
+      il: data.il || prev.il,
+      ilce: ilce || prev.ilce,
+      ada_parsel: data.ada_parsel || prev.ada_parsel,
+      telefon: data.telefon || prev.telefon,
+      tesis: data.tesis || prev.tesis,
+      abone_kablosu: data.abone_kablosu || prev.abone_kablosu,
+      abone_kablosu_metre: data.abone_kablosu_metre || prev.abone_kablosu_metre,
+      enerji_alinan_direk_no: data.enerji_alinan_direk_no || prev.enerji_alinan_direk_no,
+      kesinti_ihtiyaci: data.kesinti_ihtiyaci != null ? data.kesinti_ihtiyaci : prev.kesinti_ihtiyaci,
+      izinler: data.izinler || prev.izinler,
     }))
   }
+
+  // Eksik zorunlu alanlar (tooltip için)
+  const eksikAlanlar = useMemo(() => {
+    const alanlar = []
+    if (!form.proje_no.trim()) alanlar.push('Proje Numarasi')
+    if (!form.proje_tipi) alanlar.push('Proje Tipi')
+    return alanlar
+  }, [form.proje_no, form.proje_tipi])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -209,11 +302,26 @@ export default function ProjeForm() {
       teslim_tarihi: form.teslim_tarihi || null,
       teslim_eden: form.teslim_eden || null,
       teslim_alan_id: form.teslim_alan_id || null,
+      basvuru_no: form.basvuru_no || null,
+      il: form.il || null,
+      ilce: form.ilce || null,
+      ada_parsel: form.ada_parsel || null,
+      telefon: form.telefon || null,
+      tesis: form.tesis || null,
+      abone_kablosu: form.abone_kablosu || null,
+      abone_kablosu_metre: form.abone_kablosu_metre ? Number(form.abone_kablosu_metre) : null,
+      enerji_alinan_direk_no: form.enerji_alinan_direk_no || null,
+      kesinti_ihtiyaci: form.kesinti_ihtiyaci,
+      izinler: form.izinler,
     }
 
     try {
       if (duzenleModu) {
         await projeGuncelle.mutateAsync({ id, ...payload })
+        // Direk listesi kaydet (replace all)
+        if (direkListesi.length > 0) {
+          await api.post(`/proje-direkler/${id}/toplu`, { kalemler: direkListesi }).catch(() => {})
+        }
         navigate(`/projeler/${id}`)
       } else {
         const res = await projeOlustur.mutateAsync(payload)
@@ -226,6 +334,52 @@ export default function ProjeForm() {
               await api.post(`/proje-demontaj/${yeniProjeId}/toplu`, { kalemler: demontajListesi })
             } catch (err) {
               console.error('Demontaj kaydetme hatasi:', err)
+            }
+          }
+
+          // Direk listesi varsa kaydet
+          if (direkListesi.length > 0) {
+            try {
+              await api.post(`/proje-direkler/${yeniProjeId}/toplu`, { kalemler: direkListesi })
+            } catch (err) {
+              console.error('Direk listesi kaydetme hatasi:', err)
+            }
+          }
+
+          // Kroki keşif oluştur: direk + demontaj malzemeleri
+          const krokiKesifKalemler = []
+          // Direklerden
+          for (const d of direkListesi) {
+            if (d.katalog_adi || d.kisa_adi) {
+              krokiKesifKalemler.push({
+                malzeme_kodu: d.malzeme_kodu || null,
+                malzeme_adi: d.katalog_adi || d.kisa_adi,
+                birim: 'Ad',
+                miktar: 1,
+                notlar: d.notlar || null,
+                kaynak: 'kroki',
+              })
+            }
+          }
+          // Demontajlardan
+          for (const d of demontajListesi) {
+            if (d.malzeme_adi) {
+              krokiKesifKalemler.push({
+                malzeme_kodu: d.malzeme_kodu || null,
+                poz_no: d.poz_no || null,
+                malzeme_adi: d.malzeme_adi,
+                birim: d.birim || 'Ad',
+                miktar: d.miktar || 1,
+                notlar: d.notlar || null,
+                kaynak: 'demontaj',
+              })
+            }
+          }
+          if (krokiKesifKalemler.length > 0) {
+            try {
+              await api.post(`/proje-kroki-kesif/${yeniProjeId}/toplu`, { kalemler: krokiKesifKalemler })
+            } catch (err) {
+              console.error('Kroki kesif kaydetme hatasi:', err)
             }
           }
 
@@ -522,6 +676,26 @@ export default function ProjeForm() {
           <h2 className="mb-4 text-lg font-semibold">Adres Bilgileri</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
+              <label className="mb-1 block text-sm font-medium">Il</label>
+              <input
+                type="text"
+                value={form.il}
+                onChange={(e) => handleChange('il', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Il"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Ilce</label>
+              <input
+                type="text"
+                value={form.ilce}
+                onChange={(e) => handleChange('ilce', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Ilce"
+              />
+            </div>
+            <div>
               <label className="mb-1 block text-sm font-medium">Mahalle</label>
               <input
                 type="text"
@@ -529,6 +703,16 @@ export default function ProjeForm() {
                 onChange={(e) => handleChange('mahalle', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 placeholder="Mahalle adi"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Ada / Parsel</label>
+              <input
+                type="text"
+                value={form.ada_parsel}
+                onChange={(e) => handleChange('ada_parsel', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Orn: 986/6"
               />
             </div>
             <div className="sm:col-span-2">
@@ -539,6 +723,124 @@ export default function ProjeForm() {
                 rows={3}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 placeholder="Acik adres"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Baglanti / Tesis Bilgileri */}
+        <div className="rounded-lg border border-border bg-card p-6">
+          <h2 className="mb-4 text-lg font-semibold">Baglanti / Tesis Bilgileri</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Basvuru No</label>
+              <input
+                type="text"
+                value={form.basvuru_no}
+                onChange={(e) => handleChange('basvuru_no', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Basvuru numarasi"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Telefon</label>
+              <input
+                type="text"
+                value={form.telefon}
+                onChange={(e) => handleChange('telefon', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Telefon numarasi"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Tesis</label>
+              <input
+                type="text"
+                value={form.tesis}
+                onChange={(e) => handleChange('tesis', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="EDAS / YEDAS / Musteri"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Enerji Alinan Direk No</label>
+              <input
+                type="text"
+                value={form.enerji_alinan_direk_no}
+                onChange={(e) => handleChange('enerji_alinan_direk_no', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Direk numarasi"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Abone Kablosu</label>
+              <KatalogAramaInput
+                value={form.abone_kablosu}
+                onChange={(val) => handleChange('abone_kablosu', val)}
+                placeholder="Orn: 2x10 NYY"
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Abone Kablosu (metre)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={form.abone_kablosu_metre}
+                onChange={(e) => handleChange('abone_kablosu_metre', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Metre cinsinden"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Kesinti Ihtiyaci</label>
+              <select
+                value={form.kesinti_ihtiyaci == null ? '' : form.kesinti_ihtiyaci ? '1' : '0'}
+                onChange={(e) => handleChange('kesinti_ihtiyaci', e.target.value === '' ? null : e.target.value === '1')}
+                className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">Belirtilmedi</option>
+                <option value="1">Evet</option>
+                <option value="0">Hayir</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Izinler */}
+          <div className="mt-4">
+            <label className="mb-2 block text-sm font-medium">Izinler</label>
+            <div className="flex flex-wrap gap-4">
+              {[
+                { key: 'karayollari', label: 'Karayollari' },
+                { key: 'kazi_izni', label: 'Kazi Izni' },
+                { key: 'orman', label: 'Orman' },
+                { key: 'muvafakatname', label: 'Muvafakatname' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.izinler?.[key] || false}
+                    onChange={(e) => {
+                      const yeniIzinler = { ...(form.izinler || {}), [key]: e.target.checked }
+                      handleChange('izinler', yeniIzinler)
+                    }}
+                    className="rounded border-input accent-primary"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <div className="mt-2">
+              <input
+                type="text"
+                value={form.izinler?.diger || ''}
+                onChange={(e) => {
+                  const yeniIzinler = { ...(form.izinler || {}), diger: e.target.value || null }
+                  handleChange('izinler', yeniIzinler)
+                }}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Diger izinler..."
               />
             </div>
           </div>
@@ -630,36 +932,25 @@ export default function ProjeForm() {
           </div>
         </div>
 
-        {/* AI Demontaj Listesi Onizleme */}
+        {/* Direk Listesi */}
+        {direkListesi.length > 0 && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-6">
+            <DirekListesiDuzenle
+              liste={direkListesi}
+              onChange={setDirekListesi}
+            />
+          </div>
+        )}
+
+        {/* Demontaj Listesi - Ortak bileşen */}
         {demontajListesi.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-6">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Demontaj Listesi (AI)</h2>
-              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{demontajListesi.length} kalem</span>
-            </div>
-            <p className="mb-3 text-xs text-muted-foreground">Yer teslim tutanagindan okunan demontaj kalemleri. Proje olusturuldugunda otomatik kaydedilecek.</p>
-            <div className="overflow-x-auto rounded-lg border border-input bg-card">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-input bg-muted/50">
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">#</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Malzeme</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Birim</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Miktar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {demontajListesi.map((d, i) => (
-                    <tr key={i} className="border-b border-input/50">
-                      <td className="px-2 py-1.5 text-muted-foreground">{i + 1}</td>
-                      <td className="px-2 py-1.5 font-medium">{d.malzeme_adi}</td>
-                      <td className="px-2 py-1.5 text-muted-foreground">{d.birim || 'Ad'}</td>
-                      <td className="px-2 py-1.5">{d.miktar || 1}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DemontajListesiDuzenle
+              liste={demontajListesi}
+              onChange={setDemontajListesi}
+              baslik="Demontaj Listesi"
+              aciklama="Malzeme adini yazmaya baslayin, depo katalogdan otomatik eslestirme yapilacaktir."
+            />
           </div>
         )}
 
@@ -680,18 +971,39 @@ export default function ProjeForm() {
             <X className="h-4 w-4" />
             Iptal
           </button>
-          <button
-            type="submit"
-            disabled={gonderiliyor}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
-          >
-            <Save className="h-4 w-4" />
-            {gonderiliyor
-              ? 'Kaydediliyor...'
-              : duzenleModu
-                ? 'Guncelle'
-                : 'Kaydet'}
-          </button>
+          <div className="relative group/save">
+            <button
+              type="submit"
+              disabled={gonderiliyor}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              {gonderiliyor
+                ? 'Kaydediliyor...'
+                : duzenleModu
+                  ? 'Guncelle'
+                  : 'Kaydet'}
+            </button>
+            {eksikAlanlar.length > 0 && (
+              <div className="pointer-events-none absolute bottom-full right-0 mb-3 hidden w-72 group-hover/save:block">
+                <div className="rounded-lg border border-red-300 bg-red-50 p-4 shadow-xl">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-red-700">
+                    <AlertCircle className="h-4 w-4" />
+                    Zorunlu alanlar eksik
+                  </div>
+                  <ul className="space-y-1 text-sm text-red-600">
+                    {eksikAlanlar.map(a => (
+                      <li key={a} className="flex items-center gap-1.5">
+                        <span className="h-1 w-1 rounded-full bg-red-400" />
+                        {a}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="absolute -bottom-1.5 right-6 h-3 w-3 rotate-45 border-b border-r border-red-300 bg-red-50" />
+              </div>
+            )}
+          </div>
         </div>
       </form>
 

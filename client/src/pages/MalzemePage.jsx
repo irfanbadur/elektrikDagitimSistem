@@ -6,6 +6,7 @@ import {
   ArrowRightLeft,
   Plus,
   Package,
+  Sparkles,
 } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import DepoStok from '@/components/malzeme/DepoStok'
@@ -14,6 +15,7 @@ import TransferModal from '@/components/malzeme/TransferModal'
 import MalzemeHareketleri from '@/components/malzeme/MalzemeHareketleri'
 import MalzemeForm from '@/components/malzeme/MalzemeForm'
 import StokListesi from '@/components/malzeme/StokListesi'
+import BonoParseModal from '@/components/malzeme/BonoParseModal'
 import { useDepolar } from '@/hooks/useDepolar'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +30,7 @@ function MalzemeTabView() {
   const [aktifTab, setAktifTab] = useState(null)
   const [depoFormAcik, setDepoFormAcik] = useState(false)
   const [transferBilgi, setTransferBilgi] = useState(null)
+  const [bonoModalAcik, setBonoModalAcik] = useState(false)
   const navigate = useNavigate()
 
   // ilk yüklemede ilk depoyu seç
@@ -63,6 +66,13 @@ function MalzemeTabView() {
           >
             <Plus className="h-4 w-4" />
             Taseron/Depo Ekle
+          </button>
+          <button
+            onClick={() => setBonoModalAcik(true)}
+            className="flex items-center gap-2 rounded-md border border-primary bg-primary/10 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+          >
+            <Sparkles className="h-4 w-4" />
+            Bono Ekle
           </button>
           <button
             onClick={() => navigate('/malzeme/yeni')}
@@ -145,6 +155,14 @@ function MalzemeTabView() {
           kaynakDepoId={transferBilgi.kaynakDepoId}
           malzeme={transferBilgi}
           onKapat={() => setTransferBilgi(null)}
+        />
+      )}
+
+      {/* Bono Parse Modal */}
+      {bonoModalAcik && (
+        <BonoParseModal
+          onKapat={() => setBonoModalAcik(false)}
+          onBasarili={() => setBonoModalAcik(false)}
         />
       )}
     </div>

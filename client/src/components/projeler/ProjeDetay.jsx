@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Component } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -16,6 +16,7 @@ import {
   StickyNote,
   GitBranch,
   Wrench,
+  Compass,
 } from 'lucide-react'
 import { useProje, useProjeSil, useProjeDurumDegistir, useProjeDurumGecmisi } from '@/hooks/useProjeler'
 import { useProjeAsamalari, useProjeFazlar } from '@/hooks/useDongu'
@@ -29,14 +30,38 @@ import ProjeDongu from './ProjeDongu'
 import ProjeKesif from './ProjeKesif'
 import ProjeHakEdis from './ProjeHakEdis'
 import ProjeDemontaj from './ProjeDemontaj'
+import ProjeDirekler from './ProjeDirekler'
+import ProjeKrokiKesif from './ProjeKrokiKesif'
 import { PROJE_DURUMLARI } from '@/utils/constants'
 import { formatTarih, formatYuzde } from '@/utils/formatters'
 import { cn } from '@/lib/utils'
 
+class TabErrorBoundary extends Component {
+  state = { hasError: false, error: null }
+  static getDerivedStateFromError(error) { return { hasError: true, error } }
+  componentDidUpdate(prevProps) {
+    if (prevProps.tabKey !== this.props.tabKey) this.setState({ hasError: false, error: null })
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-8 text-center">
+          <p className="text-sm font-medium text-red-700">Bu sekme yuklenirken bir hata olustu.</p>
+          <p className="mt-1 text-xs text-red-500">{this.state.error?.message}</p>
+          <button onClick={() => this.setState({ hasError: false })} className="mt-3 rounded bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-700">Tekrar Dene</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 const TABS = [
   { key: 'detay', label: 'Detay', icon: FileText },
+  { key: 'kroki_kesif', label: 'Kroki-Kesif', icon: Compass },
   { key: 'dongu', label: 'Dongu', icon: GitBranch },
-  { key: 'kesif', label: 'Kesif', icon: Package },
+  { key: 'kesif', label: 'Proje-Kesif', icon: Package },
+  { key: 'direkler', label: 'Direkler', icon: MapPin },
   { key: 'demontaj', label: 'Demontaj', icon: Wrench },
   { key: 'hak_edis', label: 'Hak Edis', icon: BarChart3 },
   { key: 'dokumanlar', label: 'Dokumanlar', icon: FileText },
@@ -334,6 +359,7 @@ export default function ProjeDetay() {
       </div>
 
       {/* Tab Content */}
+      <TabErrorBoundary tabKey={aktifTab}>
       <div>
         {aktifTab === 'detay' && (
           <div className="space-y-6">
@@ -341,16 +367,94 @@ export default function ProjeDetay() {
             <div className="rounded-lg border border-border bg-card p-6">
               <h3 className="mb-4 font-semibold">Adres Bilgileri</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {(proje.il || proje.ilce) && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Il / Ilce</p>
+                    <p className="mt-0.5 font-medium">{[proje.il, proje.ilce].filter(Boolean).join(' / ') || '-'}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm text-muted-foreground">Mahalle</p>
                   <p className="mt-0.5 font-medium">{proje.mahalle || '-'}</p>
                 </div>
+                {proje.ada_parsel && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Ada / Parsel</p>
+                    <p className="mt-0.5 font-medium">{proje.ada_parsel}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm text-muted-foreground">Adres</p>
                   <p className="mt-0.5 font-medium">{proje.adres || '-'}</p>
                 </div>
               </div>
             </div>
+
+            {/* Baglanti / Tesis Bilgileri */}
+            {(proje.basvuru_no || proje.telefon || proje.tesis || proje.abone_kablosu || proje.enerji_alinan_direk_no || proje.kesinti_ihtiyaci != null || proje.izinler) && (
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="mb-4 font-semibold">Baglanti / Tesis Bilgileri</h3>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {proje.basvuru_no && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Basvuru No</p>
+                      <p className="mt-0.5 font-medium">{proje.basvuru_no}</p>
+                    </div>
+                  )}
+                  {proje.telefon && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Telefon</p>
+                      <p className="mt-0.5 font-medium">{proje.telefon}</p>
+                    </div>
+                  )}
+                  {proje.tesis && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Tesis</p>
+                      <p className="mt-0.5 font-medium">{proje.tesis}</p>
+                    </div>
+                  )}
+                  {proje.enerji_alinan_direk_no && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Enerji Alinan Direk No</p>
+                      <p className="mt-0.5 font-medium">{proje.enerji_alinan_direk_no}</p>
+                    </div>
+                  )}
+                  {proje.abone_kablosu && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Abone Kablosu</p>
+                      <p className="mt-0.5 font-medium">{proje.abone_kablosu}{proje.abone_kablosu_metre ? ` - ${proje.abone_kablosu_metre} m` : ''}</p>
+                    </div>
+                  )}
+                  {proje.kesinti_ihtiyaci != null && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Kesinti Ihtiyaci</p>
+                      <p className="mt-0.5 font-medium">{proje.kesinti_ihtiyaci ? 'Evet' : 'Hayir'}</p>
+                    </div>
+                  )}
+                </div>
+                {(() => {
+                  const izinler = proje.izinler ? (typeof proje.izinler === 'string' ? JSON.parse(proje.izinler) : proje.izinler) : null
+                  if (!izinler) return null
+                  const aktifIzinler = []
+                  if (izinler.karayollari) aktifIzinler.push('Karayollari')
+                  if (izinler.kazi_izni) aktifIzinler.push('Kazi Izni')
+                  if (izinler.orman) aktifIzinler.push('Orman')
+                  if (izinler.muvafakatname) aktifIzinler.push('Muvafakatname')
+                  if (izinler.diger) aktifIzinler.push(izinler.diger)
+                  if (aktifIzinler.length === 0) return null
+                  return (
+                    <div className="mt-4">
+                      <p className="mb-2 text-sm text-muted-foreground">Izinler</p>
+                      <div className="flex flex-wrap gap-2">
+                        {aktifIzinler.map((izin, i) => (
+                          <span key={i} className="rounded bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">{izin}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
 
             {/* Notes */}
             <div className="rounded-lg border border-border bg-card p-6">
@@ -366,6 +470,10 @@ export default function ProjeDetay() {
               )}
             </div>
           </div>
+        )}
+
+        {aktifTab === 'kroki_kesif' && (
+          <ProjeKrokiKesif projeId={id} />
         )}
 
         {aktifTab === 'dongu' && (
@@ -417,6 +525,10 @@ export default function ProjeDetay() {
           <ProjeKesif projeId={id} />
         )}
 
+        {aktifTab === 'direkler' && (
+          <ProjeDirekler projeId={id} />
+        )}
+
         {aktifTab === 'demontaj' && (
           <ProjeDemontaj projeId={id} />
         )}
@@ -433,6 +545,7 @@ export default function ProjeDetay() {
           <ProjeDetayNotlar projeId={id} />
         )}
       </div>
+      </TabErrorBoundary>
 
       {/* Delete Confirmation */}
       <ConfirmDialog

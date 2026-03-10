@@ -45,6 +45,29 @@ router.get('/', (req, res) => {
   }
 });
 
+// GET /api/projeler/sonraki-no?tip=KET - Otomatik proje no üret
+router.get('/sonraki-no', (req, res) => {
+  try {
+    const db = getDb();
+    const tip = (req.query.tip || 'PRJ').toUpperCase();
+    const yil = new Date().getFullYear();
+    const prefix = `${tip}-${yil}-`;
+    // Aynı prefix ile başlayan en büyük numarayı bul
+    const son = db.prepare(
+      `SELECT proje_no FROM projeler WHERE proje_no LIKE ? ORDER BY proje_no DESC LIMIT 1`
+    ).get(`${prefix}%`);
+    let sira = 1;
+    if (son) {
+      const sonSira = parseInt(son.proje_no.replace(prefix, ''), 10);
+      if (!isNaN(sonSira)) sira = sonSira + 1;
+    }
+    const projeNo = `${prefix}${String(sira).padStart(2, '0')}`;
+    basarili(res, { proje_no: projeNo });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
 // GET /api/projeler/istatistikler - MUST be before /:id
 router.get('/istatistikler', (req, res) => {
   try {
@@ -74,9 +97,9 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   try {
     const db = getDb();
-    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id } = req.body;
+    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler } = req.body;
     if (!proje_no || !proje_tipi) return hata(res, 'Proje no ve tipi zorunludur');
-    const result = db.prepare('INSERT INTO projeler (proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum||'teslim_alindi', oncelik||'normal', ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi||0, notlar, teslim_eden||null, teslim_alan_id||null);
+    const result = db.prepare('INSERT INTO projeler (proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum||'teslim_alindi', oncelik||'normal', ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi||0, notlar, teslim_eden||null, teslim_alan_id||null, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, izinler?JSON.stringify(izinler):null);
     const projeId = result.lastInsertRowid;
 
     // Yeni faz sistemi: İş tipine uygun faz/adım şablonu ata
@@ -116,8 +139,8 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const db = getDb();
-    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id } = req.body;
-    db.prepare('UPDATE projeler SET proje_no=?, proje_tipi=?, musteri_adi=?, bolge_id=?, mahalle=?, adres=?, durum=?, oncelik=?, ekip_id=?, tahmini_sure_gun=?, baslama_tarihi=?, bitis_tarihi=?, teslim_tarihi=?, gerceklesen_bitis=?, tamamlanma_yuzdesi=?, notlar=?, teslim_eden=?, teslim_alan_id=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum, oncelik, ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden||null, teslim_alan_id||null, req.params.id);
+    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler } = req.body;
+    db.prepare('UPDATE projeler SET proje_no=?, proje_tipi=?, musteri_adi=?, bolge_id=?, mahalle=?, adres=?, durum=?, oncelik=?, ekip_id=?, tahmini_sure_gun=?, baslama_tarihi=?, bitis_tarihi=?, teslim_tarihi=?, gerceklesen_bitis=?, tamamlanma_yuzdesi=?, notlar=?, teslim_eden=?, teslim_alan_id=?, basvuru_no=?, il=?, ilce=?, ada_parsel=?, telefon=?, tesis=?, abone_kablosu=?, abone_kablosu_metre=?, enerji_alinan_direk_no=?, kesinti_ihtiyaci=?, izinler=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum, oncelik, ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden||null, teslim_alan_id||null, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, izinler?JSON.stringify(izinler):null, req.params.id);
     const guncellenen = db.prepare('SELECT * FROM projeler WHERE id = ?').get(req.params.id);
     aktiviteLogla('proje', 'guncelleme', guncellenen.id, `Proje güncellendi: ${proje_no}`);
     basarili(res, guncellenen);

@@ -121,6 +121,19 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'projeler', 'teslim_eden', 'TEXT');
   addColumnIfNotExists(database, 'projeler', 'teslim_alan_id', 'INTEGER');
 
+  // Projeler: YB (Yeni Bağlantı) ve genel yer teslim alanları
+  addColumnIfNotExists(database, 'projeler', 'basvuru_no', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'il', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'ilce', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'ada_parsel', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'telefon', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'tesis', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'abone_kablosu', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'abone_kablosu_metre', 'REAL');
+  addColumnIfNotExists(database, 'projeler', 'enerji_alinan_direk_no', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'kesinti_ihtiyaci', 'INTEGER');
+  addColumnIfNotExists(database, 'projeler', 'izinler', 'TEXT');
+
   // Departman sistemi: roller tablosuna departman_id ve birim_id
   addColumnIfNotExists(database, 'roller', 'departman_id', 'INTEGER REFERENCES departmanlar(id)');
   addColumnIfNotExists(database, 'roller', 'birim_id', 'INTEGER REFERENCES departman_birimleri(id)');

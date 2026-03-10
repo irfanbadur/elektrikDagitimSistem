@@ -1432,3 +1432,46 @@ CREATE TABLE IF NOT EXISTS proje_demontaj (
 );
 
 CREATE INDEX IF NOT EXISTS idx_proje_demontaj_proje ON proje_demontaj(proje_id);
+
+-- ============================================
+-- PROJE DİREK LİSTESİ (Kroki Direkleri)
+-- ============================================
+CREATE TABLE IF NOT EXISTS proje_direkler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    kisa_adi TEXT NOT NULL,
+    tipi TEXT DEFAULT 'direk',
+    arasi_kablo TEXT,
+    notlar TEXT,
+    katalog_adi TEXT,
+    malzeme_kodu TEXT,
+    sira INTEGER DEFAULT 0,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_proje_direkler_proje ON proje_direkler(proje_id);
+
+-- ============================================
+-- PROJE KROKİ KEŞİF LİSTESİ
+-- (Proje oluşturulurken krokiden çıkan malzemeler)
+-- ============================================
+CREATE TABLE IF NOT EXISTS proje_kroki_kesif (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    malzeme_kodu TEXT,
+    poz_no TEXT,
+    malzeme_adi TEXT NOT NULL,
+    birim TEXT DEFAULT 'Ad',
+    miktar REAL DEFAULT 0,
+    birim_fiyat REAL DEFAULT 0,
+    durum TEXT DEFAULT 'planli',
+    notlar TEXT,
+    kaynak TEXT DEFAULT 'kroki',
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_proje_kroki_kesif_proje ON proje_kroki_kesif(proje_id);
