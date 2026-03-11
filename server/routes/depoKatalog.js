@@ -119,7 +119,24 @@ router.post('/eslestir', (req, res) => {
     const { kalemler } = req.body;
     if (!kalemler?.length) return hata(res, 'Kalemler listesi boş');
 
-    const stmt = db.prepare(`
+    // Malzeme kodu ile direkt eşleştir (en güvenilir)
+    const kodStmt = db.prepare(`
+      SELECT id, malzeme_kodu, poz_birlesik, malzeme_cinsi, malzeme_tanimi_sap, olcu
+      FROM depo_malzeme_katalogu
+      WHERE is_category = 0 AND malzeme_kodu = ?
+      LIMIT 1
+    `);
+
+    // Poz no ile eşleştir
+    const pozStmt = db.prepare(`
+      SELECT id, malzeme_kodu, poz_birlesik, malzeme_cinsi, malzeme_tanimi_sap, olcu
+      FROM depo_malzeme_katalogu
+      WHERE is_category = 0 AND poz_birlesik = ?
+      LIMIT 1
+    `);
+
+    // İsim ile eşleştir
+    const adStmt = db.prepare(`
       SELECT id, malzeme_kodu, poz_birlesik, malzeme_cinsi, malzeme_tanimi_sap, olcu
       FROM depo_malzeme_katalogu
       WHERE is_category = 0 AND (malzeme_cinsi LIKE ? OR malzeme_tanimi_sap LIKE ?)
@@ -127,27 +144,41 @@ router.post('/eslestir', (req, res) => {
     `);
 
     const sonuclar = kalemler.map(k => {
-      const adi = k.malzeme_adi || '';
-      // Kelimelere böl, en uzun eşleşmeyi bul
-      const kelimeler = adi.split(/\s+/).filter(w => w.length > 2);
+      const adi = k.malzeme_adi || k.malzeme_adi_belge || '';
       let eslesme = null;
 
-      // Önce tam arama
-      eslesme = stmt.get(`%${adi}%`, `%${adi}%`);
-
-      // Bulunamazsa kelimeleri birleştirerek ara
-      if (!eslesme && kelimeler.length > 1) {
-        for (let len = kelimeler.length; len >= 2 && !eslesme; len--) {
-          const q = `%${kelimeler.slice(0, len).join('%')}%`;
-          eslesme = stmt.get(q, q);
-        }
+      // 1) Malzeme kodu ile direkt eşleştir
+      if (k.malzeme_kodu) {
+        eslesme = kodStmt.get(k.malzeme_kodu);
       }
 
-      // Hala bulunamazsa tek tek kelimelerle
-      if (!eslesme && kelimeler.length > 0) {
-        const enUzun = kelimeler.sort((a, b) => b.length - a.length)[0];
-        if (enUzun.length >= 4) {
-          eslesme = stmt.get(`%${enUzun}%`, `%${enUzun}%`);
+      // 2) Poz no ile eşleştir
+      if (!eslesme && k.poz_no) {
+        eslesme = pozStmt.get(k.poz_no);
+      }
+
+      // 3) İsim ile eşleştir
+      if (!eslesme && adi) {
+        // Önce tam arama
+        eslesme = adStmt.get(`%${adi}%`, `%${adi}%`);
+
+        // Kelimelere böl
+        if (!eslesme) {
+          const kelimeler = adi.split(/\s+/).filter(w => w.length > 2);
+          // Kelimeleri birleştirerek ara
+          if (kelimeler.length > 1) {
+            for (let len = kelimeler.length; len >= 2 && !eslesme; len--) {
+              const q = `%${kelimeler.slice(0, len).join('%')}%`;
+              eslesme = adStmt.get(q, q);
+            }
+          }
+          // Tek tek kelimelerle
+          if (!eslesme && kelimeler.length > 0) {
+            const enUzun = [...kelimeler].sort((a, b) => b.length - a.length)[0];
+            if (enUzun.length >= 4) {
+              eslesme = adStmt.get(`%${enUzun}%`, `%${enUzun}%`);
+            }
+          }
         }
       }
 

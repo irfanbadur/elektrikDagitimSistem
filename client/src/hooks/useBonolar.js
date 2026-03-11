@@ -38,3 +38,25 @@ export function useBonoGuncelle() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['bonolar'] }),
   })
 }
+
+export function useEvrakKaydet() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (formData) => fetch('/api/bonolar/evrak-kaydet', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+      body: formData,
+    }).then(async (res) => {
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Kaydetme hatasi')
+      return json
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bonolar'] })
+      qc.invalidateQueries({ queryKey: ['depo-stok'] })
+      qc.invalidateQueries({ queryKey: ['malzemeler'] })
+      qc.invalidateQueries({ queryKey: ['proje-kesif'] })
+      qc.invalidateQueries({ queryKey: ['dosyalar'] })
+    },
+  })
+}

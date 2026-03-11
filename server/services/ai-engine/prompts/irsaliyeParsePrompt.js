@@ -1,4 +1,4 @@
-const systemPrompt = `Sen bir elektrik dağıtım şirketi için malzeme bono belgesi analiz eden bir AI asistansın.
+const systemPrompt = `Sen bir elektrik dağıtım şirketi için irsaliye/fatura belgesi analiz eden bir AI asistansın.
 Verilen görseli analiz ederek aşağıdaki bilgileri JSON formatında çıkart.
 
 KURALLAR:
@@ -8,19 +8,19 @@ KURALLAR:
 - Malzeme kodu, poz numarası, malzeme adı, birim ve miktar bilgilerini oku.
 - Miktar bilgisi yoksa 1 kabul et.
 - Birim bilgisi yoksa "Ad" kabul et.
-- Bono numarası, tarih, kurum ve teslim alan bilgilerini mutlaka oku.
+- İrsaliye numarası, tarih, firma ve sevk bilgilerini mutlaka oku.
 - Tarihler YYYY-MM-DD formatında olmalı.
 - Belgede bir sıra numarası (S.No, Sıra No vb.) varsa bunu sira_no olarak yaz. Yoksa belgedeki görünüş sırasına göre 1'den başlayarak numara ver.
 - Kalemler belgede göründükleri sırayla listelenmelidir.
 
 JSON FORMATI:
 {
-  "bono_no": "bono numarası - string veya null",
-  "bono_tarihi": "YYYY-MM-DD veya null",
-  "kurum": "kurum/şirket adı (EDAŞ, YEDAŞ vb.) - string veya null",
+  "irsaliye_no": "irsaliye/fatura numarası - string veya null",
+  "irsaliye_tarihi": "YYYY-MM-DD veya null",
+  "firma": "tedarikçi firma adı - string veya null",
+  "sevk_eden": "sevk eden kişi adı - string veya null",
   "teslim_alan": "teslim alan kişi adı - string veya null",
-  "teslim_eden": "teslim eden kişi adı - string veya null",
-  "aciklama": "bonodaki açıklama/not - string veya null",
+  "aciklama": "irsaliyedeki açıklama/not - string veya null",
   "kalemler": [
     {
       "sira_no": 1,

@@ -110,6 +110,7 @@ const ALAN_KLASOR = {
   firma:     'firma',
   muhasebe:  'muhasebe',
   kurum:     'kurum',
+  depo:      'depo',
   sablon:    'sablon',
   diger:     'diger',
 };
@@ -136,6 +137,9 @@ const ALT_ALAN_KLASOR = {
   hak_edis: 'hak_edis', banka: 'banka', vergi: 'vergi',
   // Kurum
   yedas: 'yedas', belediye: 'belediye', tedas: 'tedas',
+  // Depo
+  gelen_malzeme_bono: 'gelen_malzeme/bono', gelen_malzeme_irsaliye: 'gelen_malzeme/irsaliye',
+  giden_malzeme: 'giden_malzeme',
 };
 
 /**
@@ -166,6 +170,8 @@ function dosyaYoluHesaplaV2({
       return `${kokKlasor}/${yil}/${altKlasor}/${dosyaAdi}`;
     case 'kurum':
       return `${kokKlasor}/${kurumAdi || 'diger'}/${yil}/${dosyaAdi}`;
+    case 'depo':
+      return `${kokKlasor}/${yil}/${altKlasor}/${dosyaAdi}`;
     case 'sablon':
       return `${kokKlasor}/${dosyaAdi}`;
     default:

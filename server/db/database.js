@@ -138,6 +138,16 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'roller', 'departman_id', 'INTEGER REFERENCES departmanlar(id)');
   addColumnIfNotExists(database, 'roller', 'birim_id', 'INTEGER REFERENCES departman_birimleri(id)');
 
+  // Bonolar tablosuna irsaliye alanları
+  addColumnIfNotExists(database, 'bonolar', 'irsaliye_no', 'TEXT');
+  addColumnIfNotExists(database, 'bonolar', 'irsaliye_tarihi', 'DATE');
+  addColumnIfNotExists(database, 'bonolar', 'tedarikci_firma', 'TEXT');
+
+  // Bono kalemleri tablosuna irsaliye miktar ve kaynak alanları
+  addColumnIfNotExists(database, 'bono_kalemleri', 'miktar_bono', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'bono_kalemleri', 'miktar_irsaliye', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'bono_kalemleri', 'kaynak', "TEXT DEFAULT 'bono'");
+
   // Depo bazlı stok yönetimi: malzeme_hareketleri tablosuna depo alanları
   addColumnIfNotExists(database, 'malzeme_hareketleri', 'kaynak_depo_id', 'INTEGER');
   addColumnIfNotExists(database, 'malzeme_hareketleri', 'hedef_depo_id', 'INTEGER');

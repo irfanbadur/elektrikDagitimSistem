@@ -12,6 +12,7 @@ const ALANLAR = [
   { kod: 'firma',    etiket: 'Firma Belgeleri',   ikon: '🏢', renk: '#6366f1', aciklama: 'Yetki belgeleri, sigorta, resmi belgeler' },
   { kod: 'muhasebe', etiket: 'Muhasebe',          ikon: '💰', renk: '#84cc16', aciklama: 'Fatura, hak edis, banka, vergi' },
   { kod: 'kurum',    etiket: 'Kurum Yazisma',     ikon: '📨', renk: '#0ea5e9', aciklama: 'YEDAS, belediye, TEDAS yazismalari' },
+  { kod: 'depo',     etiket: 'Depo',              ikon: '📦', renk: '#ea580c', aciklama: 'Gelen malzeme bono/irsaliye, giden malzeme' },
 ]
 
 function boyutFormatla(byte) {
