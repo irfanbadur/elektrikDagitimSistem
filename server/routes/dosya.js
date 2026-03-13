@@ -357,10 +357,47 @@ router.put('/:id', (req, res) => {
   }
 });
 
-// DELETE /api/dosya/:id — Yumuşak silme
+// POST /api/dosya/toplu-sil — Toplu dosya silme
+router.post('/toplu-sil', (req, res) => {
+  try {
+    const { ids, fiziksel } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'ids dizisi zorunludur' });
+    }
+    let silinen = 0;
+    for (const id of ids) {
+      try {
+        dosyaService.dosyaSil(parseInt(id), fiziksel === true);
+        silinen++;
+      } catch (e) {
+        console.error(`Dosya ${id} silme hatası:`, e);
+      }
+    }
+    res.json({ success: true, data: { silinen } });
+  } catch (error) {
+    console.error('Toplu silme hatası:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/dosya/klasor-sil — Klasör silme (alan + alt_alan prefix)
+router.post('/klasor-sil', (req, res) => {
+  try {
+    const { alan, alt_alan, fiziksel } = req.body;
+    if (!alan || !alt_alan) return res.status(400).json({ success: false, error: 'alan ve alt_alan zorunludur' });
+    const silinen = dosyaService.klasorSil(alan, alt_alan, fiziksel === true);
+    res.json({ success: true, data: { silinen } });
+  } catch (error) {
+    console.error('Klasör silme hatası:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/dosya/:id — Dosya silme
 router.delete('/:id', (req, res) => {
   try {
-    dosyaService.dosyaSil(parseInt(req.params.id));
+    const fiziksel = req.body?.fiziksel === true || req.query.fiziksel === 'true';
+    dosyaService.dosyaSil(parseInt(req.params.id), fiziksel);
     res.json({ success: true });
   } catch (error) {
     console.error('Dosya silme hatası:', error);

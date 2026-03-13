@@ -56,6 +56,10 @@ const ALT_ALAN_SECENEKLERI = {
     { value: 'belediye', label: 'Belediye' },
     { value: 'tedas', label: 'TEDAS' },
   ],
+  depo: [
+    { value: 'gelen', label: 'Gelen' },
+    { value: 'giden', label: 'Giden' },
+  ],
 }
 
 export default function DosyaYukleModal({ yuklemeBilgi = {}, onKapat, onBasarili }) {

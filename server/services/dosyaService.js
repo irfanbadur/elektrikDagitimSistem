@@ -200,7 +200,13 @@ class DosyaService {
 
     // v2 alan filtreleri
     if (alan) { where.push('d.alan = ?'); params.push(alan); }
-    if (altAlan) { where.push('d.alt_alan = ?'); params.push(altAlan); }
+    if (altAlan) {
+      if (altAlan.endsWith('*')) {
+        where.push('d.alt_alan LIKE ?'); params.push(altAlan.replace('*', '%'));
+      } else {
+        where.push('d.alt_alan = ?'); params.push(altAlan);
+      }
+    }
     if (iliskiliKaynakTipi && iliskiliKaynakId) {
       where.push('d.iliskili_kaynak_tipi = ? AND d.iliskili_kaynak_id = ?');
       params.push(iliskiliKaynakTipi, iliskiliKaynakId);
@@ -299,9 +305,59 @@ class DosyaService {
     db.prepare(`UPDATE dosyalar SET ${updates.join(', ')} WHERE id = ?`).run(...params);
   }
 
-  dosyaSil(dosyaId) {
+  dosyaSil(dosyaId, fizikselSil = false) {
     const db = getDb();
-    db.prepare("UPDATE dosyalar SET durum = 'silindi', guncelleme_tarihi = datetime('now') WHERE id = ?").run(dosyaId);
+    if (fizikselSil) {
+      const dosya = db.prepare('SELECT dosya_yolu, thumbnail_yolu FROM dosyalar WHERE id = ?').get(dosyaId);
+      if (dosya) {
+        try { fs.unlinkSync(path.join(UPLOADS_ROOT, dosya.dosya_yolu)); } catch {}
+        if (dosya.thumbnail_yolu) {
+          try { fs.unlinkSync(path.join(UPLOADS_ROOT, dosya.thumbnail_yolu)); } catch {}
+        }
+      }
+      db.prepare('DELETE FROM dosyalar WHERE id = ?').run(dosyaId);
+    } else {
+      db.prepare("UPDATE dosyalar SET durum = 'silindi', guncelleme_tarihi = datetime('now') WHERE id = ?").run(dosyaId);
+    }
+  }
+
+  /**
+   * Belirli alan + alt_alan prefix'ine uyan tüm dosyaları sil (klasör silme)
+   */
+  klasorSil(alan, altAlanPrefix, fizikselSil = false) {
+    const db = getDb();
+    const dosyalar = db.prepare(
+      "SELECT id, dosya_yolu, thumbnail_yolu FROM dosyalar WHERE alan = ? AND alt_alan LIKE ? AND durum = 'aktif'"
+    ).all(alan, altAlanPrefix + '%');
+
+    if (fizikselSil) {
+      for (const d of dosyalar) {
+        try { fs.unlinkSync(path.join(UPLOADS_ROOT, d.dosya_yolu)); } catch {}
+        if (d.thumbnail_yolu) {
+          try { fs.unlinkSync(path.join(UPLOADS_ROOT, d.thumbnail_yolu)); } catch {}
+        }
+      }
+      if (dosyalar.length > 0) {
+        db.prepare("DELETE FROM dosyalar WHERE alan = ? AND alt_alan LIKE ? AND durum = 'aktif'").run(alan, altAlanPrefix + '%');
+      }
+      // Boş klasörleri temizle
+      try {
+        const ornekYol = dosyalar[0]?.dosya_yolu;
+        if (ornekYol) {
+          const klasor = path.join(UPLOADS_ROOT, path.dirname(ornekYol));
+          if (fs.existsSync(klasor) && fs.readdirSync(klasor).length === 0) {
+            fs.rmdirSync(klasor, { recursive: true });
+          }
+        }
+      } catch {}
+    } else {
+      if (dosyalar.length > 0) {
+        db.prepare(
+          "UPDATE dosyalar SET durum = 'silindi', guncelleme_tarihi = datetime('now') WHERE alan = ? AND alt_alan LIKE ? AND durum = 'aktif'"
+        ).run(alan, altAlanPrefix + '%');
+      }
+    }
+    return dosyalar.length;
   }
 
   // ═══════════════════════════════════════════════

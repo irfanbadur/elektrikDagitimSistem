@@ -1,21 +1,20 @@
 import { useState } from 'react'
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, useNavigate } from 'react-router-dom'
 import {
   Warehouse,
   HardHat,
   ArrowRightLeft,
   Plus,
   Package,
-  Sparkles,
 } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import DepoStok from '@/components/malzeme/DepoStok'
 import DepoForm from '@/components/malzeme/DepoForm'
 import TransferModal from '@/components/malzeme/TransferModal'
 import MalzemeHareketleri from '@/components/malzeme/MalzemeHareketleri'
+import HareketListesi from '@/components/malzeme/HareketListesi'
 import MalzemeForm from '@/components/malzeme/MalzemeForm'
 import StokListesi from '@/components/malzeme/StokListesi'
-import BonoParseModal from '@/components/malzeme/BonoParseModal'
 import { useDepolar } from '@/hooks/useDepolar'
 import { cn } from '@/lib/utils'
 
@@ -30,10 +29,9 @@ function MalzemeTabView() {
   const [aktifTab, setAktifTab] = useState(null)
   const [depoFormAcik, setDepoFormAcik] = useState(false)
   const [transferBilgi, setTransferBilgi] = useState(null)
-  const [bonoModalAcik, setBonoModalAcik] = useState(false)
   const navigate = useNavigate()
 
-  // ilk yüklemede ilk depoyu seç
+  // ilk yuklemede ilk depoyu sec
   const aktifDepoId = aktifTab === 'hareketler'
     ? null
     : aktifTab ?? depolar?.[0]?.id ?? null
@@ -54,7 +52,7 @@ function MalzemeTabView() {
       {/* Baslik */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Malzeme Yonetimi</h1>
+          <h1 className="text-2xl font-bold">Depo Yonetimi</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Depo ve taseron bazli stok takibi
           </p>
@@ -68,18 +66,11 @@ function MalzemeTabView() {
             Taseron/Depo Ekle
           </button>
           <button
-            onClick={() => setBonoModalAcik(true)}
-            className="flex items-center gap-2 rounded-md border border-primary bg-primary/10 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/20"
-          >
-            <Sparkles className="h-4 w-4" />
-            Bono Ekle
-          </button>
-          <button
-            onClick={() => navigate('/malzeme/yeni')}
+            onClick={() => navigate('/depo/yeni')}
             className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
-            Yeni Malzeme
+            Yeni Hareket
           </button>
         </div>
       </div>
@@ -128,7 +119,7 @@ function MalzemeTabView() {
 
       {/* Tab Icerik */}
       {aktifTab === 'hareketler' ? (
-        <MalzemeHareketleri />
+        <HareketListesi />
       ) : aktifDepo ? (
         <DepoStok
           key={aktifDepo.id}
@@ -157,21 +148,13 @@ function MalzemeTabView() {
           onKapat={() => setTransferBilgi(null)}
         />
       )}
-
-      {/* Bono Parse Modal */}
-      {bonoModalAcik && (
-        <BonoParseModal
-          onKapat={() => setBonoModalAcik(false)}
-          onBasarili={() => setBonoModalAcik(false)}
-        />
-      )}
     </div>
   )
 }
 
 export default function MalzemePage() {
   return (
-    <MainLayout title="Malzeme">
+    <MainLayout title="Depo">
       <Routes>
         <Route index element={<MalzemeTabView />} />
         <Route path="yeni" element={<MalzemeForm />} />

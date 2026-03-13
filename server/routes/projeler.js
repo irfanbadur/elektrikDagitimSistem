@@ -194,9 +194,39 @@ router.patch('/:id/durum', (req, res) => {
 router.delete('/:id', (req, res) => {
   try {
     const db = getDb();
-    const proje = db.prepare('SELECT * FROM projeler WHERE id = ?').get(req.params.id);
+    const projeId = parseInt(req.params.id);
+    const proje = db.prepare('SELECT * FROM projeler WHERE id = ?').get(projeId);
     if (!proje) return hata(res, 'Proje bulunamadı', 404);
-    db.prepare('DELETE FROM projeler WHERE id = ?').run(req.params.id);
+
+    // Transaction ile iliskili kayitlari temizle, sonra projeyi sil
+    const silTransaction = db.transaction(() => {
+      // Proje-spesifik tablolar (DELETE)
+      const projeTablolari = [
+        'proje_durum_gecmisi', 'proje_notlari', 'proje_kesifler',
+        'proje_dokumanlari', 'proje_kesif', 'proje_demontaj',
+        'proje_direkler', 'proje_kroki_kesif', 'proje_asamalari',
+        'proje_adimlari', 'gunluk_ilerleme', 'direk_kayitlar',
+        'saha_tespitler',
+      ];
+      for (const tablo of projeTablolari) {
+        try { db.prepare(`DELETE FROM ${tablo} WHERE proje_id = ?`).run(projeId); } catch {}
+      }
+
+      // Paylasimli tablolar (SET NULL)
+      const paylasimliTablolar = [
+        'hareketler', 'puantajlar', 'talepler', 'gorevler',
+        'sahadan_fotograflar', 'dosyalar', 'ai_analizler',
+        'kullanici_gorevler', 'bono_kalemleri', 'veri_paketleri',
+      ];
+      for (const tablo of paylasimliTablolar) {
+        try { db.prepare(`UPDATE ${tablo} SET proje_id = NULL WHERE proje_id = ?`).run(projeId); } catch {}
+      }
+
+      // Projeyi sil
+      db.prepare('DELETE FROM projeler WHERE id = ?').run(projeId);
+    });
+
+    silTransaction();
     aktiviteLogla('proje', 'silme', proje.id, `Proje silindi: ${proje.proje_no}`);
     basarili(res, { message: 'Proje silindi' });
   } catch (err) {

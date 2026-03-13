@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Save, ArrowLeft, Loader2, FileText, PenLine } from 'lucide-react'
+import { Save, ArrowLeft, Loader2, FileText, PenLine, ArrowRight } from 'lucide-react'
 import {
   useMalzeme,
   useMalzemeOlustur,
   useMalzemeGuncelle,
 } from '@/hooks/useMalzeme'
+import { useDepolar } from '@/hooks/useDepolar'
 import { MALZEME_KATEGORILERI } from '@/utils/constants'
 import { cn } from '@/lib/utils'
 import EvrakGiris from './EvrakGiris'
@@ -302,6 +303,113 @@ function MalzemeDuzenleForm() {
   )
 }
 
+// Sabit taraflar (DB dışı)
+const SABIT_TARAFLAR = [
+  { key: 'ambar', label: 'Ambar (Kurum)' },
+  { key: 'piyasa', label: 'Piyasa' },
+]
+
+function tarafListesiOlustur(depolar) {
+  const depoSecenekleri = (depolar || []).map(d => ({
+    key: `depo_${d.id}`,
+    label: d.depo_adi,
+    depoId: d.id,
+    depoTipi: d.depo_tipi,
+  }))
+  const sabitSecenekler = SABIT_TARAFLAR.map(s => ({
+    ...s,
+    depoId: null,
+    depoTipi: null,
+  }))
+  return [...depoSecenekleri, ...sabitSecenekler]
+}
+
+function tarafLabel(secenekler, key, firmaAdi) {
+  if (!key) return ''
+  if (key === 'piyasa') return firmaAdi || 'Piyasa'
+  return secenekler.find(s => s.key === key)?.label || key
+}
+
+function HareketYonSecici({ veren, setVeren, alan, setAlan, firmaAdi, setFirmaAdi, depolar }) {
+  const secenekler = tarafListesiOlustur(depolar)
+  const piyasaSecili = veren === 'piyasa' || alan === 'piyasa'
+  const verenLabel = tarafLabel(secenekler, veren, firmaAdi)
+  const alanLabel = tarafLabel(secenekler, alan, firmaAdi)
+  const secimTamam = veren && alan && veren !== alan
+
+  return (
+    <div className="space-y-4 rounded-lg border border-input bg-card p-4 shadow-sm">
+      <div className="flex items-end gap-3">
+        {/* Veren */}
+        <div className="flex-1">
+          <label className="mb-1.5 block text-sm font-medium">Veren</label>
+          <select
+            value={veren}
+            onChange={e => {
+              setVeren(e.target.value)
+              if (e.target.value === alan) setAlan('')
+            }}
+            className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
+          >
+            <option value="">Secin...</option>
+            {secenekler.map(s => (
+              <option key={s.key} value={s.key} disabled={s.key === alan}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Ok */}
+        <div className="flex h-[42px] items-center">
+          <ArrowRight className={cn(
+            'h-5 w-5 transition-colors',
+            secimTamam ? 'text-primary' : 'text-muted-foreground/40'
+          )} />
+        </div>
+
+        {/* Alan */}
+        <div className="flex-1">
+          <label className="mb-1.5 block text-sm font-medium">Alan</label>
+          <select
+            value={alan}
+            onChange={e => {
+              setAlan(e.target.value)
+              if (e.target.value === veren) setVeren('')
+            }}
+            className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
+          >
+            <option value="">Secin...</option>
+            {secenekler.map(s => (
+              <option key={s.key} value={s.key} disabled={s.key === veren}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Piyasa seçiliyse firma adı */}
+      {piyasaSecili && (
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">Firma Adi</label>
+          <input
+            value={firmaAdi}
+            onChange={e => setFirmaAdi(e.target.value)}
+            placeholder="Tedarikci / alici firma adi"
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+          />
+        </div>
+      )}
+
+      {/* Ozet */}
+      {secimTamam && (
+        <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
+          <span className="font-semibold">{verenLabel}</span>
+          <ArrowRight className="h-4 w-4 text-primary" />
+          <span className="font-semibold">{alanLabel}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function MalzemeForm() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -311,11 +419,40 @@ export default function MalzemeForm() {
   // Duzenleme modunda direkt form goster
   if (duzenlemeModu) return <MalzemeDuzenleForm />
 
+  const { data: depolar } = useDepolar()
   const aktifTab = searchParams.get('tab') || 'evrak'
+  const [veren, setVeren] = useState('')
+  const [alan, setAlan] = useState('')
+  const [firmaAdi, setFirmaAdi] = useState('')
 
   const handleTabDegistir = (key) => {
     setSearchParams({ tab: key })
   }
+
+  const secimTamam = veren && alan && veren !== alan
+  const secenekler = tarafListesiOlustur(depolar)
+
+  // Hareket yonunu otomatik belirle
+  // Ana depo alan ise giris, veren ise cikis, ikisi de depo ise transfer
+  const verenSecenek = secenekler.find(s => s.key === veren)
+  const alanSecenek = secenekler.find(s => s.key === alan)
+  let hareketYon = 'giris'
+  if (verenSecenek?.depoTipi === 'ana_depo') hareketYon = 'cikis'
+  else if (alanSecenek?.depoTipi === 'ana_depo') hareketYon = 'giris'
+  else if (verenSecenek?.depoId && alanSecenek?.depoId) hareketYon = 'transfer'
+
+  // Taraf etiketleri
+  const verenAdi = tarafLabel(secenekler, veren, firmaAdi)
+  const alanAdi = tarafLabel(secenekler, alan, firmaAdi)
+
+  // Karsi taraf: ana depo olmayan taraf
+  const karsiTarafKey = hareketYon === 'cikis' ? alan : veren
+  const karsiTarafAdi = tarafLabel(secenekler, karsiTarafKey, firmaAdi)
+  const karsiTarafTipi = karsiTarafKey?.startsWith('depo_') ? 'depo' : karsiTarafKey || ''
+
+  // Depo ID'leri (server'a gonderilecek)
+  const verenDepoId = verenSecenek?.depoId || null
+  const alanDepoId = alanSecenek?.depoId || null
 
   return (
     <div>
@@ -324,42 +461,64 @@ export default function MalzemeForm() {
           className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />Depoya Don
         </button>
-        <h1 className="text-2xl font-bold">Yeni Malzeme Girisi</h1>
+        <h1 className="text-2xl font-bold">Yeni Hareket</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Evrak (bono/irsaliye) veya manuel olarak malzeme ekleyin
+          Mal girisi veya cikisi icin hareket olusturun
         </p>
       </div>
 
-      {/* Tab Bar */}
-      <div className="mb-6 flex gap-1 border-b border-border">
-        {TABS.map((tab) => {
-          const Icon = tab.icon
-          const aktif = aktifTab === tab.key
-          return (
-            <button
-              key={tab.key}
-              onClick={() => handleTabDegistir(tab.key)}
-              className={cn(
-                'flex items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors',
-                aktif
-                  ? 'border-b-2 border-primary text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
+      {/* Veren → Alan Secimi */}
+      <HareketYonSecici
+        veren={veren} setVeren={setVeren}
+        alan={alan} setAlan={setAlan}
+        firmaAdi={firmaAdi} setFirmaAdi={setFirmaAdi}
+        depolar={depolar}
+      />
 
-      {/* Tab Icerik */}
-      {aktifTab === 'evrak' && (
-        <div className="rounded-lg border border-input bg-card p-6 shadow-sm">
-          <EvrakGiris onBasarili={() => navigate('/depo')} />
-        </div>
+      {/* Secim tamam ise malzeme giris yontemi */}
+      {secimTamam && (
+        <>
+          {/* Tab Bar */}
+          <div className="mt-6 mb-4 flex gap-1 border-b border-border">
+            {TABS.map((tab) => {
+              const Icon = tab.icon
+              const aktif = aktifTab === tab.key
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => handleTabDegistir(tab.key)}
+                  className={cn(
+                    'flex items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors',
+                    aktif
+                      ? 'border-b-2 border-primary text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Tab Icerik */}
+          {aktifTab === 'evrak' && (
+            <div className="rounded-lg border border-input bg-card p-6 shadow-sm">
+              <EvrakGiris
+                onBasarili={() => navigate('/depo')}
+                hareketYon={hareketYon}
+                karsiTarafAdi={karsiTarafAdi}
+                karsiTarafTipi={karsiTarafTipi}
+                kaynakDepoId={verenDepoId}
+                hedefDepoId={alanDepoId}
+                verenAdi={verenAdi}
+                alanAdi={alanAdi}
+              />
+            </div>
+          )}
+          {aktifTab === 'manuel' && <ManuelGiris />}
+        </>
       )}
-      {aktifTab === 'manuel' && <ManuelGiris />}
     </div>
   )
 }

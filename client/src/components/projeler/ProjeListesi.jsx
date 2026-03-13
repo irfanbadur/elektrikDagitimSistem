@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Eye, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Eye, Pencil, Trash2, X } from 'lucide-react'
 import { useProjeler, useProjeSil } from '@/hooks/useProjeler'
 import { useIsTipleri } from '@/hooks/useIsTipleri'
 import { useBolgeler } from '@/hooks/useBolgeler'
@@ -23,6 +23,7 @@ export default function ProjeListesi() {
 
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [silinecekProje, setSilinecekProje] = useState(null)
+  const [silmeHatasi, setSilmeHatasi] = useState(null)
 
   // Tüm şablonlardaki tekrarsız aşamalar (filtre için)
   const tumAsamalar = useMemo(() => {
@@ -40,10 +41,14 @@ export default function ProjeListesi() {
 
   const handleSil = () => {
     if (!silinecekProje) return
+    setSilmeHatasi(null)
     projeSil.mutate(silinecekProje.id, {
-      onSettled: () => {
+      onSuccess: () => {
         setSilinecekProje(null)
         setSilmeDialogAcik(false)
+      },
+      onError: (err) => {
+        setSilmeHatasi(err.message || 'Proje silinirken bir hata olustu')
       },
     })
   }
@@ -269,18 +274,36 @@ export default function ProjeListesi() {
         searchPlaceholder="Proje ara..."
       />
 
+      {silmeHatasi && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-lg border border-red-200 bg-red-50 p-4 shadow-lg">
+          <div className="flex items-start gap-2">
+            <span className="text-sm font-medium text-red-800">{silmeHatasi}</span>
+            <button onClick={() => setSilmeHatasi(null)} className="ml-auto text-red-400 hover:text-red-600">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         open={silmeDialogAcik}
         onClose={() => {
-          setSilmeDialogAcik(false)
-          setSilinecekProje(null)
+          if (!projeSil.isPending) {
+            setSilmeDialogAcik(false)
+            setSilinecekProje(null)
+            setSilmeHatasi(null)
+          }
         }}
         onConfirm={handleSil}
         title="Projeyi Sil"
-        message={`"${silinecekProje?.proje_no}" numarali projeyi silmek istediginize emin misiniz? Bu islem geri alinamaz.`}
-        confirmText="Sil"
+        message={silmeHatasi
+          ? `${silmeHatasi}`
+          : `"${silinecekProje?.proje_no}" numarali projeyi silmek istediginize emin misiniz? Bu islem geri alinamaz.`
+        }
+        confirmText={projeSil.isPending ? 'Siliniyor...' : 'Sil'}
         cancelText="Iptal"
         variant="destructive"
+        loading={projeSil.isPending}
       />
     </div>
   )

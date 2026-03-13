@@ -14,31 +14,55 @@ import {
   Wrench,
   MapPin,
   FolderOpen,
-  MessageCircle,
   Settings,
   Network,
   Database,
+  ChevronRight,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 
-const navItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/', herZaman: true },
-  { label: 'Ekipler', icon: Users, path: '/ekipler', modul: 'ekipler', aksiyon: 'okuma' },
-  { label: 'Projeler', icon: FolderKanban, path: '/projeler', modul: 'projeler', aksiyon: 'okuma' },
-  { label: 'Malzeme', icon: Package, path: '/malzeme', modul: 'malzeme', aksiyon: 'okuma' },
-  { label: 'Personel', icon: UserCircle, path: '/personel', modul: 'personel', aksiyon: 'okuma' },
-  { label: 'Organizasyon', icon: Network, path: '/organizasyon', herZaman: true },
-  { label: 'Puantaj', icon: ClipboardList, path: '/puantaj', herZaman: true },
-  { label: 'Talepler', icon: MessageSquare, path: '/talepler', herZaman: true },
-  { label: 'Görevler', icon: CheckSquare, path: '/gorevler', herZaman: true },
-  { label: 'Raporlar', icon: BarChart3, path: '/raporlar', modul: 'raporlar', aksiyon: 'genel' },
-  { label: 'Veri Paketleri', icon: Camera, path: '/veri-paketleri', modul: 'veri_paketi', aksiyon: 'okuma' },
-  { label: 'Saha', icon: MapPin, path: '/saha', modul: 'saha_harita', aksiyon: 'okuma' },
-  { label: 'Depo Katalog', icon: Database, path: '/depo-katalog', herZaman: true },
-  { label: 'Ekipman Katalog', icon: Wrench, path: '/katalog', herZaman: true },
-  { label: 'Saha Mesaj', icon: MessageSquare, path: '/saha-mesaj', modul: 'saha_mesaj', aksiyon: 'okuma' },
-  { label: 'Dosya Yonetimi', icon: FolderOpen, path: '/dosya-yonetimi', modul: 'dosyalar', aksiyon: 'okuma' },
+const navGroups = [
+  {
+    label: null,
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/', herZaman: true },
+    ],
+  },
+  {
+    label: 'Yonetim',
+    items: [
+      { label: 'Projeler', icon: FolderKanban, path: '/projeler', modul: 'projeler', aksiyon: 'okuma' },
+      { label: 'Ekipler', icon: Users, path: '/ekipler', modul: 'ekipler', aksiyon: 'okuma' },
+      { label: 'Personel', icon: UserCircle, path: '/personel', modul: 'personel', aksiyon: 'okuma' },
+      { label: 'Organizasyon', icon: Network, path: '/organizasyon', herZaman: true },
+    ],
+  },
+  {
+    label: 'Operasyon',
+    items: [
+      { label: 'Depo', icon: Package, path: '/depo', modul: 'malzeme', aksiyon: 'okuma' },
+      { label: 'Puantaj', icon: ClipboardList, path: '/puantaj', herZaman: true },
+      { label: 'Gorevler', icon: CheckSquare, path: '/gorevler', herZaman: true },
+      { label: 'Talepler', icon: MessageSquare, path: '/talepler', herZaman: true },
+      { label: 'Saha', icon: MapPin, path: '/saha', modul: 'saha_harita', aksiyon: 'okuma' },
+    ],
+  },
+  {
+    label: 'Veriler',
+    items: [
+      { label: 'Dosya Yonetimi', icon: FolderOpen, path: '/dosya-yonetimi', modul: 'dosyalar', aksiyon: 'okuma' },
+      { label: 'Raporlar', icon: BarChart3, path: '/raporlar', modul: 'raporlar', aksiyon: 'genel' },
+      { label: 'Veri Paketleri', icon: Camera, path: '/veri-paketleri', modul: 'veri_paketi', aksiyon: 'okuma' },
+    ],
+  },
+  {
+    label: 'Katalog',
+    items: [
+      { label: 'Malzeme Katalog', icon: Database, path: '/malzeme-katalog', herZaman: true },
+      { label: 'Ekipman Katalog', icon: Wrench, path: '/katalog', herZaman: true },
+      { label: 'Saha Mesaj', icon: MessageSquare, path: '/saha-mesaj', modul: 'saha_mesaj', aksiyon: 'okuma' },
+    ],
+  },
 ]
 
 const bottomItems = [
@@ -60,59 +84,124 @@ export default function Sidebar({ firmaAdi = 'Firma Adı' }) {
     return true
   }
 
-  const renderNavItem = (item) => {
-    const Icon = item.icon
-    const active = isActive(item.path)
-
-    return (
-      <Link
-        key={item.path}
-        to={item.path}
-        className={cn(
-          'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
-          active
-            ? 'bg-sidebar-accent text-white'
-            : 'text-sidebar-muted hover:text-white hover:bg-sidebar-accent/50'
-        )}
-      >
-        <Icon className="h-5 w-5 shrink-0" />
-        <span>{item.label}</span>
-        {item.placeholder && (
-          <span className="ml-auto rounded bg-sidebar-accent/30 px-1.5 py-0.5 text-[10px] leading-none text-sidebar-muted">
-            Yakında
-          </span>
-        )}
-      </Link>
-    )
-  }
-
-  const filteredNavItems = navItems.filter(gorunurMu)
-  const filteredBottomItems = bottomItems.filter(gorunurMu)
-
   return (
-    <aside className="flex h-full w-64 flex-col bg-sidebar text-sidebar-foreground">
+    <aside style={S.aside}>
       {/* Brand */}
-      <div className="flex items-center gap-3 px-5 py-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-          <Zap className="h-5 w-5 text-white" />
+      <div style={S.brand}>
+        <div style={S.brandIcon}>
+          <Zap size={20} color="white" />
         </div>
         <div>
-          <h1 className="text-lg font-bold leading-tight text-white">ElektraTrack</h1>
-          <p className="text-xs text-sidebar-muted">{firmaAdi}</p>
+          <div style={S.brandTitle}>ElektraTrack</div>
+          <div style={S.brandSub}>{firmaAdi}</div>
         </div>
       </div>
 
-      {/* Main navigation */}
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        {filteredNavItems.map(renderNavItem)}
-
-        {filteredBottomItems.length > 0 && (
-          <>
-            <div className="my-3 border-t border-sidebar-accent/40" />
-            {filteredBottomItems.map(renderNavItem)}
-          </>
-        )}
+      {/* Navigation */}
+      <nav style={S.nav}>
+        {navGroups.map((group, gi) => {
+          const visibleItems = group.items.filter(gorunurMu)
+          if (visibleItems.length === 0) return null
+          return (
+            <div key={gi} style={{ marginBottom: '4px' }}>
+              {group.label && (
+                <div style={S.groupLabel}>{group.label}</div>
+              )}
+              {visibleItems.map(item => {
+                const Icon = item.icon
+                const active = isActive(item.path)
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    style={{
+                      ...S.navItem,
+                      background: active ? '#eff6ff' : 'transparent',
+                      color: active ? '#1e40af' : '#4b5563',
+                      fontWeight: active ? 600 : 500,
+                    }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#f3f4f6' }}
+                    onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <Icon size={18} style={{ flexShrink: 0, color: active ? '#3b82f6' : '#9ca3af' }} />
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    <ChevronRight size={14} style={{ color: active ? '#93c5fd' : '#e5e7eb' }} />
+                  </Link>
+                )
+              })}
+            </div>
+          )
+        })}
       </nav>
+
+      {/* Bottom */}
+      <div style={S.bottom}>
+        {bottomItems.filter(gorunurMu).map(item => {
+          const Icon = item.icon
+          const active = isActive(item.path)
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              style={{
+                ...S.navItem,
+                background: active ? '#eff6ff' : 'transparent',
+                color: active ? '#1e40af' : '#4b5563',
+                fontWeight: active ? 600 : 500,
+              }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#f3f4f6' }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+            >
+              <Icon size={18} style={{ flexShrink: 0, color: active ? '#3b82f6' : '#9ca3af' }} />
+              <span style={{ flex: 1 }}>{item.label}</span>
+              <ChevronRight size={14} style={{ color: active ? '#93c5fd' : '#e5e7eb' }} />
+            </Link>
+          )
+        })}
+      </div>
     </aside>
   )
+}
+
+const S = {
+  aside: {
+    display: 'flex', flexDirection: 'column', width: '256px', height: '100%',
+    background: '#ffffff', borderRight: '1px solid #e5e7eb',
+    fontFamily: 'Inter, system-ui, sans-serif',
+  },
+  brand: {
+    display: 'flex', alignItems: 'center', gap: '12px',
+    padding: '20px 20px 16px',
+    borderBottom: '1px solid #f3f4f6',
+  },
+  brandIcon: {
+    width: '36px', height: '36px', borderRadius: '10px',
+    background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  brandTitle: {
+    fontSize: '16px', fontWeight: 800, color: '#1f2937', lineHeight: 1.2,
+  },
+  brandSub: {
+    fontSize: '11px', color: '#9ca3af', marginTop: '1px',
+  },
+  nav: {
+    flex: 1, overflowY: 'auto', padding: '12px 10px 8px',
+  },
+  groupLabel: {
+    fontSize: '10px', fontWeight: 700, color: '#9ca3af',
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+    padding: '8px 10px 4px', marginTop: '4px',
+  },
+  navItem: {
+    display: 'flex', alignItems: 'center', gap: '10px',
+    padding: '8px 10px', borderRadius: '8px',
+    fontSize: '13px', textDecoration: 'none',
+    transition: 'background 0.15s',
+    cursor: 'pointer', marginBottom: '1px',
+  },
+  bottom: {
+    padding: '8px 10px', borderTop: '1px solid #f3f4f6',
+  },
 }

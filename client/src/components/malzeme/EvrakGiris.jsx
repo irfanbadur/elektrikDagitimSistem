@@ -4,7 +4,7 @@ import {
   Upload, FileText, X, AlertTriangle, Camera, Columns3, ChevronUp, ChevronDown, Check,
 } from 'lucide-react'
 import api from '@/api/client'
-import { useEvrakKaydet } from '@/hooks/useBonolar'
+import { useHareketKaydet } from '@/hooks/useHareketler'
 import { cn } from '@/lib/utils'
 
 const KABUL_EDILEN = 'image/jpeg,image/png,image/webp,application/pdf'
@@ -206,7 +206,7 @@ function DosyaYuklemeAlani({ etiket, dosyalar, onChange, onCameraCapture, onSil,
   )
 }
 
-export default function EvrakGiris({ onBasarili }) {
+export default function EvrakGiris({ onBasarili, hareketYon = 'giris', karsiTarafAdi = '', karsiTarafTipi = '', kaynakDepoId = null, hedefDepoId = null, verenAdi = '', alanAdi = '' }) {
   const [bonoDosyalar, setBonoDosyalar] = useState([])
   const [irsaliyeDosyalar, setIrsaliyeDosyalar] = useState([])
   const [yukleniyor, setYukleniyor] = useState(false)
@@ -226,7 +226,7 @@ export default function EvrakGiris({ onBasarili }) {
   const bonoCameraRef = useRef(null)
   const irsaliyeInputRef = useRef(null)
   const irsaliyeCameraRef = useRef(null)
-  const evrakKaydet = useEvrakKaydet()
+  const hareketKaydet = useHareketKaydet()
 
   const handleDosyaEkle = (e, setter) => {
     const files = Array.from(e.target.files || [])
@@ -266,7 +266,7 @@ export default function EvrakGiris({ onBasarili }) {
 
       // Her sayfa icin ~20sn + biraz tampon = min 5dk timeout
       const timeoutMs = Math.max(toplamSayfa * 30000, 120000)
-      const res = await fetch('/api/bonolar/parse-evrak', {
+      const res = await fetch('/api/hareketler/parse', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
         body: formData,
@@ -394,13 +394,23 @@ export default function EvrakGiris({ onBasarili }) {
     try {
       const formData = new FormData()
 
-      // Evrak verilerini JSON olarak ekle
-      formData.append('evrak_data', JSON.stringify({
+      // Hareket verilerini JSON olarak ekle
+      formData.append('hareket_data', JSON.stringify({
+        hareket_tipi: hareketYon,
+        karsi_taraf_adi: karsiTarafAdi,
+        karsi_taraf_tipi: karsiTarafTipi,
+        veren_adi: verenAdi,
+        alan_adi: alanAdi,
+        kaynak_depo_id: kaynakDepoId,
+        hedef_depo_id: hedefDepoId,
         bono_bilgi: hasBono ? bonoInfo : null,
         irsaliye_bilgi: hasIrsaliye ? irsaliyeInfo : null,
-        kalemler: seciliKalemler.map(({ _id, _sira, _secili, _katalog_eslesme, uyumsuzluk, malzeme_adi_belge, malzeme_tanimi_sap, malzeme_cinsi, ...rest }) => ({
+        teslim_alan: bonoInfo.teslim_alan || irsaliyeInfo.teslim_alan || null,
+        teslim_eden: bonoInfo.teslim_eden || irsaliyeInfo.sevk_eden || null,
+        kalemler: seciliKalemler.map(({ _id, _sira, _secili, _katalog_eslesme, uyumsuzluk, malzeme_adi_belge, ...rest }) => ({
           ...rest,
-          malzeme_adi: rest.malzeme_adi || malzeme_cinsi || malzeme_tanimi_sap || malzeme_adi_belge || '',
+          sira_no: _sira,
+          malzeme_adi: rest.malzeme_adi || rest.malzeme_cinsi || rest.malzeme_tanimi_sap || malzeme_adi_belge || '',
         })),
       }))
 
@@ -408,7 +418,7 @@ export default function EvrakGiris({ onBasarili }) {
       bonoDosyalar.forEach(f => formData.append('bono_dosyalari', f))
       irsaliyeDosyalar.forEach(f => formData.append('irsaliye_dosyalari', f))
 
-      await evrakKaydet.mutateAsync(formData)
+      await hareketKaydet.mutateAsync(formData)
       onBasarili?.()
     } catch (err) {
       setHataMsg(err.message || 'Kaydetme sirasinda hata olustu')
