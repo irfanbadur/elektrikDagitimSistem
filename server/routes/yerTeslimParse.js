@@ -212,8 +212,11 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
     const mimeType = req.file.mimetype || 'image/jpeg';
     const prompt = yerTeslimPrompt.buildPrompt();
 
+    console.log(`[YerTeslim] Dosya: ${req.file.originalname}, MIME: ${mimeType}, Boyut: ${(req.file.size / 1024).toFixed(0)}KB, Base64: ${(imageBase64.length / 1024).toFixed(0)}KB`);
+
     // Önce katman3 (cloud) dene - görsel analiz için en iyi
     const provider = config.ai.katman3.provider();
+    console.log(`[YerTeslim] Provider: ${provider}`);
     let result = null;
 
     if (provider === 'claude') {
@@ -222,6 +225,7 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
 
       const Anthropic = require('@anthropic-ai/sdk');
       const client = new Anthropic({ apiKey });
+      console.log(`[YerTeslim] Claude model: ${config.ai.katman3.claude.model}`);
       const response = await client.messages.create({
         model: config.ai.katman3.claude.model,
         max_tokens: 4000,
@@ -234,10 +238,14 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
         }]
       });
       const text = response.content[0].text;
+      console.log(`[YerTeslim] Claude yanıt uzunluğu: ${text.length} karakter`);
       const cleaned = text.replace(/```json|```/g, '').trim();
       try {
         result = JSON.parse(cleaned);
-      } catch {
+        console.log(`[YerTeslim] JSON parse başarılı`);
+      } catch (parseErr) {
+        console.error(`[YerTeslim] JSON parse hatası:`, parseErr.message);
+        console.error(`[YerTeslim] Ham yanıt (ilk 500):`, text.slice(0, 500));
         result = { raw_text: text, parse_error: true };
       }
     } else if (provider === 'gemini') {
@@ -254,7 +262,7 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
           { text: 'Bu yer teslim tutanagi gorselini analiz et ve JSON olarak don.' },
           { inline_data: { mime_type: mimeType, data: imageBase64 } }
         ]}],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 }
+        generationConfig: { temperature: 0.1, maxOutputTokens: 16384, responseMimeType: 'application/json' }
       });
 
       // Rate limit retry mekanizması (maks 3 deneme)
@@ -281,13 +289,22 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
 
       if (!response.ok) {
         const errMsg = data.error?.message || `HTTP ${response.status}`;
+        console.error(`[YerTeslim] Gemini API hata:`, errMsg);
         return hata(res, `Gemini API hata: ${errMsg}`, 500);
       }
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      console.log(`[YerTeslim] Gemini yanıt uzunluğu: ${text.length} karakter`);
+      if (!text) {
+        console.error(`[YerTeslim] Gemini boş yanıt döndü. finishReason:`, data.candidates?.[0]?.finishReason);
+        console.error(`[YerTeslim] Gemini full response:`, JSON.stringify(data).slice(0, 1000));
+      }
       const cleaned = text.replace(/```json|```/g, '').trim();
       try {
         result = JSON.parse(cleaned);
-      } catch {
+        console.log(`[YerTeslim] JSON parse başarılı`);
+      } catch (parseErr) {
+        console.error(`[YerTeslim] JSON parse hatası:`, parseErr.message);
+        console.error(`[YerTeslim] Ham yanıt (ilk 500):`, text.slice(0, 500));
         result = { raw_text: text, parse_error: true };
       }
     } else if (provider === 'openai') {
@@ -323,7 +340,10 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
 
     basarili(res, result);
   } catch (err) {
-    console.error('Yer teslim parse hatası:', err);
+    console.error('[YerTeslim] HATA:', err.message);
+    if (err.status) console.error('[YerTeslim] HTTP Status:', err.status);
+    if (err.error) console.error('[YerTeslim] Error details:', JSON.stringify(err.error).slice(0, 500));
+    console.error('[YerTeslim] Stack:', err.stack?.split('\n').slice(0, 3).join('\n'));
     hata(res, err.message || 'AI analizi sırasında hata oluştu', 500);
   }
 });
