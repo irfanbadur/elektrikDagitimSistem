@@ -82,7 +82,7 @@ export default function BonoParseModal({ onKapat, onBasarili }) {
   const katalogEslestir = async (liste) => {
     setEslestiriliyor(true)
     try {
-      const eslesmeRes = await api.post('/depo-katalog/eslestir', { kalemler: liste })
+      const eslesmeRes = await api.post('/malzeme-katalog/eslestir', { kalemler: liste })
       const eslesmeler = eslesmeRes?.data || []
       setKalemler(prev => prev.map((k, i) => {
         const e = eslesmeler[i]?.eslesme

@@ -51,7 +51,7 @@ function DemontajSatirDuzenle({ kalem, index, onChange, onSil }) {
     setAraniyor(true)
     aramaTimer.current = setTimeout(async () => {
       try {
-        const res = await api.get('/depo-katalog', { params: { arama: text } })
+        const res = await api.get('/malzeme-katalog', { params: { arama: text } })
         setSonuclar(res?.data || [])
       } catch { setSonuclar([]) }
       setAraniyor(false)

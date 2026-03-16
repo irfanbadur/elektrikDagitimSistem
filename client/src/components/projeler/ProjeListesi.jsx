@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Eye, Pencil, Trash2, X } from 'lucide-react'
-import { useProjeler, useProjeSil } from '@/hooks/useProjeler'
+import { Plus, Eye, Pencil, Trash2, X, CheckSquare } from 'lucide-react'
+import { useProjeler, useProjeSil, useTopluProjeSil } from '@/hooks/useProjeler'
 import { useIsTipleri } from '@/hooks/useIsTipleri'
 import { useBolgeler } from '@/hooks/useBolgeler'
 import { useDonguSablonlari } from '@/hooks/useDongu'
+import { useAuth } from '@/context/AuthContext'
 import DataTable from '@/components/shared/DataTable'
 import { ProjeDurumBadge, OncelikBadge } from '@/components/shared/StatusBadge'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
@@ -14,16 +15,46 @@ import { cn } from '@/lib/utils'
 
 export default function ProjeListesi() {
   const navigate = useNavigate()
+  const { izinVar } = useAuth()
+  const silmeYetkisi = izinVar('projeler', 'silme')
+
   const [filtreler, setFiltreler] = useState({ durum: '', bolge_id: '', tip: '' })
   const { data: projeler, isLoading } = useProjeler(filtreler)
   const { data: bolgeler } = useBolgeler()
   const { data: isTipleri } = useIsTipleri()
   const { data: sablonlar } = useDonguSablonlari()
   const projeSil = useProjeSil()
+  const topluSil = useTopluProjeSil()
 
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [silinecekProje, setSilinecekProje] = useState(null)
   const [silmeHatasi, setSilmeHatasi] = useState(null)
+
+  // Checkbox seçim state
+  const [seciliIdler, setSeciliIdler] = useState(new Set())
+  const [topluSilmeDialogAcik, setTopluSilmeDialogAcik] = useState(false)
+
+  const secimDegistir = useCallback((id) => {
+    setSeciliIdler((prev) => {
+      const yeni = new Set(prev)
+      if (yeni.has(id)) yeni.delete(id)
+      else yeni.add(id)
+      return yeni
+    })
+  }, [])
+
+  const tumunuSec = useCallback(() => {
+    if (!projeler) return
+    if (seciliIdler.size === projeler.length) {
+      setSeciliIdler(new Set())
+    } else {
+      setSeciliIdler(new Set(projeler.map((p) => p.id)))
+    }
+  }, [projeler, seciliIdler.size])
+
+  const secimiTemizle = useCallback(() => {
+    setSeciliIdler(new Set())
+  }, [])
 
   // Tüm şablonlardaki tekrarsız aşamalar (filtre için)
   const tumAsamalar = useMemo(() => {
@@ -46,9 +77,28 @@ export default function ProjeListesi() {
       onSuccess: () => {
         setSilinecekProje(null)
         setSilmeDialogAcik(false)
+        // Silinen proje seçiliyse seçimden çıkar
+        setSeciliIdler((prev) => {
+          const yeni = new Set(prev)
+          yeni.delete(silinecekProje.id)
+          return yeni
+        })
       },
       onError: (err) => {
         setSilmeHatasi(err.message || 'Proje silinirken bir hata olustu')
+      },
+    })
+  }
+
+  const handleTopluSil = () => {
+    setSilmeHatasi(null)
+    topluSil.mutate([...seciliIdler], {
+      onSuccess: () => {
+        setSeciliIdler(new Set())
+        setTopluSilmeDialogAcik(false)
+      },
+      onError: (err) => {
+        setSilmeHatasi(err.response?.data?.error || err.message || 'Toplu silme sirasinda hata olustu')
       },
     })
   }
@@ -59,6 +109,39 @@ export default function ProjeListesi() {
 
   const columns = useMemo(
     () => [
+      // Checkbox sütunu - sadece silme yetkisi varsa
+      ...(silmeYetkisi
+        ? [
+            {
+              id: 'secim',
+              header: () => (
+                <input
+                  type="checkbox"
+                  checked={projeler?.length > 0 && seciliIdler.size === projeler.length}
+                  ref={(el) => {
+                    if (el) el.indeterminate = seciliIdler.size > 0 && seciliIdler.size < (projeler?.length || 0)
+                  }}
+                  onChange={tumunuSec}
+                  className="h-4 w-4 rounded border-gray-300 text-primary accent-primary cursor-pointer"
+                />
+              ),
+              cell: ({ row }) => (
+                <input
+                  type="checkbox"
+                  checked={seciliIdler.has(row.original.id)}
+                  onChange={(e) => {
+                    e.stopPropagation()
+                    secimDegistir(row.original.id)
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-4 w-4 rounded border-gray-300 text-primary accent-primary cursor-pointer"
+                />
+              ),
+              enableSorting: false,
+              size: 40,
+            },
+          ]
+        : []),
       {
         accessorKey: 'proje_no',
         header: 'Proje No',
@@ -193,7 +276,7 @@ export default function ProjeListesi() {
         ),
       },
     ],
-    [navigate]
+    [navigate, silmeYetkisi, projeler, seciliIdler, tumunuSec, secimDegistir]
   )
 
   if (isLoading) {
@@ -268,6 +351,33 @@ export default function ProjeListesi() {
         </select>
       </div>
 
+      {/* Toplu islem bar - secim varsa goster */}
+      {seciliIdler.size > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+          <CheckSquare className="h-5 w-5 text-primary" />
+          <span className="text-sm font-medium">
+            {seciliIdler.size} proje secildi
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={secimiTemizle}
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted"
+            >
+              Secimi Temizle
+            </button>
+            {silmeYetkisi && (
+              <button
+                onClick={() => setTopluSilmeDialogAcik(true)}
+                className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                <Trash2 className="h-4 w-4" />
+                Secilenleri Sil ({seciliIdler.size})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <DataTable
         columns={columns}
         data={projeler || []}
@@ -285,6 +395,7 @@ export default function ProjeListesi() {
         </div>
       )}
 
+      {/* Tekli silme dialog */}
       <ConfirmDialog
         open={silmeDialogAcik}
         onClose={() => {
@@ -304,6 +415,23 @@ export default function ProjeListesi() {
         cancelText="Iptal"
         variant="destructive"
         loading={projeSil.isPending}
+      />
+
+      {/* Toplu silme dialog */}
+      <ConfirmDialog
+        open={topluSilmeDialogAcik}
+        onClose={() => {
+          if (!topluSil.isPending) {
+            setTopluSilmeDialogAcik(false)
+          }
+        }}
+        onConfirm={handleTopluSil}
+        title="Toplu Proje Silme"
+        message={`${seciliIdler.size} adet projeyi silmek istediginize emin misiniz? Bu islem geri alinamaz ve tum iliskili veriler (kesifler, demontajlar, direkler, asamalar vb.) kalici olarak silinecektir.`}
+        confirmText={topluSil.isPending ? 'Siliniyor...' : `${seciliIdler.size} Projeyi Sil`}
+        cancelText="Iptal"
+        variant="destructive"
+        loading={topluSil.isPending}
       />
     </div>
   )

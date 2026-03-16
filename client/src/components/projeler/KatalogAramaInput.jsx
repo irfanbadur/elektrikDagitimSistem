@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Loader2, Link2, X } from 'lucide-react'
 import api from '@/api/client'
 
-// Depo katalogdan aranabilir input (abone kablosu vb. için)
+// Malzeme katalogdan aranabilir input (abone kablosu vb. için)
 export default function KatalogAramaInput({ value, onChange, placeholder, className }) {
   const [focused, setFocused] = useState(false)
   const [sonuclar, setSonuclar] = useState([])
@@ -19,7 +19,7 @@ export default function KatalogAramaInput({ value, onChange, placeholder, classN
     setAraniyor(true)
     aramaTimer.current = setTimeout(async () => {
       try {
-        const res = await api.get('/depo-katalog', { params: { arama: text } })
+        const res = await api.get('/malzeme-katalog', { params: { arama: text } })
         setSonuclar(res?.data || [])
       } catch { setSonuclar([]) }
       setAraniyor(false)

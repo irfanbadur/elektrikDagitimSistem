@@ -140,6 +140,7 @@ const ALT_ALAN_KLASOR = {
   // Depo
   gelen_malzeme_bono: 'gelen_malzeme/bono', gelen_malzeme_irsaliye: 'gelen_malzeme/irsaliye',
   giden_malzeme: 'giden_malzeme',
+  gelen: 'gelen', giden: 'giden',
 };
 
 /**

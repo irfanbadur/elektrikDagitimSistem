@@ -409,7 +409,7 @@ export default function ProjeKrokiKesif({ projeId }) {
       let direkEslesmeler = []
       if (direkListesi.length > 0) {
         try {
-          const esRes = await api.post('/depo-katalog/eslestir', { kalemler: direkListesi.map(d => ({ malzeme_adi: d.kisa_adi })) })
+          const esRes = await api.post('/malzeme-katalog/eslestir', { kalemler: direkListesi.map(d => ({ malzeme_adi: d.kisa_adi })) })
           direkEslesmeler = esRes?.data || []
         } catch { /* opsiyonel */ }
       }
@@ -451,7 +451,7 @@ export default function ProjeKrokiKesif({ projeId }) {
       const demontajKalemleri = kalemler.filter(k => k.kaynak === 'demontaj')
       if (demontajKalemleri.length > 0) {
         try {
-          const esRes = await api.post('/depo-katalog/eslestir', { kalemler: demontajKalemleri })
+          const esRes = await api.post('/malzeme-katalog/eslestir', { kalemler: demontajKalemleri })
           const eslesmeler = esRes?.data || []
           let idx = 0
           for (let i = 0; i < kalemler.length; i++) {

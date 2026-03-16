@@ -25,7 +25,7 @@ function SutunSecici({ table }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const allColumns = table.getAllLeafColumns().filter((c) => c.id !== 'actions')
+  const allColumns = table.getAllLeafColumns().filter((c) => c.id !== 'actions' && c.id !== 'secim')
   const visibleCount = allColumns.filter((c) => c.getIsVisible()).length
 
   return (

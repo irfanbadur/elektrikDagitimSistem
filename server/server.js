@@ -72,8 +72,8 @@ app.use('/api/ai-sohbet', require('./routes/aiSohbet'));
 // Organizasyon (pozisyon, görev, belge, yetkinlik) routes
 app.use('/api/organizasyon', require('./routes/organizasyon'));
 
-// Depo Malzeme Kataloğu routes
-app.use('/api/depo-katalog', require('./routes/depoKatalog'));
+// Malzeme Kataloğu routes
+app.use('/api/malzeme-katalog', require('./routes/depoKatalog'));
 
 // Proje Keşif, Demontaj ve Bono routes
 app.use('/api/proje-kesif', require('./routes/projeKesif'));
@@ -81,6 +81,7 @@ app.use('/api/proje-demontaj', require('./routes/projeDemontaj'));
 app.use('/api/proje-direkler', require('./routes/projeDirekler'));
 app.use('/api/proje-kroki-kesif', require('./routes/projeKrokiKesif'));
 app.use('/api/bonolar', require('./routes/bonolar'));
+app.use('/api/hareketler', require('./routes/hareketler'));
 
 // Yer Teslim Tutanağı AI Parse
 app.use('/api/yer-teslim', require('./routes/yerTeslimParse'));

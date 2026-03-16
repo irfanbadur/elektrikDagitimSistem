@@ -40,7 +40,7 @@ function DirekSatirDuzenle({ kalem, index, onChange, onSil }) {
     setAraniyor(true)
     aramaTimer.current = setTimeout(async () => {
       try {
-        const res = await api.get('/depo-katalog', { params: { arama: text } })
+        const res = await api.get('/malzeme-katalog', { params: { arama: text } })
         setSonuclar(res?.data || [])
       } catch { setSonuclar([]) }
       setAraniyor(false)
@@ -239,7 +239,7 @@ export default function DirekListesiDuzenle({ liste, onChange, eslestiriliyor })
           <Plus className="h-3 w-3" />Ekle
         </button>
       </div>
-      <p className="mb-2 text-[10px] text-muted-foreground">Krokideki direk numarasini yazip depo katalogdan gercek malzeme adini eslestirebilirsiniz.</p>
+      <p className="mb-2 text-[10px] text-muted-foreground">Krokideki direk numarasini yazip malzeme katalogdan gercek malzeme adini eslestirebilirsiniz.</p>
       <div className="overflow-x-auto rounded-lg border border-input bg-card">
         <table className="w-full text-xs">
           <thead>

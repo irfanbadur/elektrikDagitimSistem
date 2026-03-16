@@ -16,7 +16,6 @@ import {
   StickyNote,
   GitBranch,
   Wrench,
-  Compass,
 } from 'lucide-react'
 import { useProje, useProjeSil, useProjeDurumDegistir, useProjeDurumGecmisi } from '@/hooks/useProjeler'
 import { useProjeAsamalari, useProjeFazlar } from '@/hooks/useDongu'
@@ -30,8 +29,7 @@ import ProjeDongu from './ProjeDongu'
 import ProjeKesif from './ProjeKesif'
 import ProjeHakEdis from './ProjeHakEdis'
 import ProjeDemontaj from './ProjeDemontaj'
-import ProjeDirekler from './ProjeDirekler'
-import ProjeKrokiKesif from './ProjeKrokiKesif'
+import ProjeDonguBar from './ProjeDonguBar'
 import { PROJE_DURUMLARI } from '@/utils/constants'
 import { formatTarih, formatYuzde } from '@/utils/formatters'
 import { cn } from '@/lib/utils'
@@ -58,10 +56,8 @@ class TabErrorBoundary extends Component {
 
 const TABS = [
   { key: 'detay', label: 'Detay', icon: FileText },
-  { key: 'kroki_kesif', label: 'Kroki-Kesif', icon: Compass },
   { key: 'dongu', label: 'Dongu', icon: GitBranch },
   { key: 'kesif', label: 'Proje-Kesif', icon: Package },
-  { key: 'direkler', label: 'Direkler', icon: MapPin },
   { key: 'demontaj', label: 'Demontaj', icon: Wrench },
   { key: 'hak_edis', label: 'Hak Edis', icon: BarChart3 },
   { key: 'dokumanlar', label: 'Dokumanlar', icon: FileText },
@@ -334,6 +330,9 @@ export default function ProjeDetay() {
         </div>
       </div>
 
+      {/* Yatay Dongu Bar */}
+      <ProjeDonguBar projeId={id} />
+
       {/* Tabs */}
       <div className="border-b border-border overflow-x-auto">
         <div className="flex gap-0 min-w-max">
@@ -472,11 +471,7 @@ export default function ProjeDetay() {
           </div>
         )}
 
-        {aktifTab === 'kroki_kesif' && (
-          <ProjeKrokiKesif projeId={id} />
-        )}
-
-        {aktifTab === 'dongu' && (
+{aktifTab === 'dongu' && (
           <ProjeDongu projeId={id} projeTipi={proje?.proje_tipi} projeNo={proje?.proje_no} />
         )}
 
@@ -525,11 +520,7 @@ export default function ProjeDetay() {
           <ProjeKesif projeId={id} />
         )}
 
-        {aktifTab === 'direkler' && (
-          <ProjeDirekler projeId={id} />
-        )}
-
-        {aktifTab === 'demontaj' && (
+{aktifTab === 'demontaj' && (
           <ProjeDemontaj projeId={id} />
         )}
 

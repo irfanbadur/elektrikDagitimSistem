@@ -71,7 +71,7 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
     if (!liste || liste.length === 0) return
     setEslestiriliyor(true)
     try {
-      const eslesmeRes = await api.post('/depo-katalog/eslestir', { kalemler: liste })
+      const eslesmeRes = await api.post('/malzeme-katalog/eslestir', { kalemler: liste })
       const eslesmeler = eslesmeRes?.data || []
       setDemontajListesi(prev => prev.map((k, i) => {
         const e = eslesmeler[i]?.eslesme
@@ -113,7 +113,7 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
     setDirekEslestiriliyor(true)
     try {
       const kalemler = liste.map(d => ({ malzeme_adi: d.kisa_adi }))
-      const eslesmeRes = await api.post('/depo-katalog/eslestir', { kalemler })
+      const eslesmeRes = await api.post('/malzeme-katalog/eslestir', { kalemler })
       const eslesmeler = eslesmeRes?.data || []
       setDirekListesi(prev => prev.map((k, i) => {
         const e = eslesmeler[i]?.eslesme
@@ -354,7 +354,7 @@ export default function YerTeslimModal({ onSonuc, onKapat }) {
                   liste={demontajListesi}
                   onChange={setDemontajListesi}
                   eslestiriliyor={eslestiriliyor}
-                  aciklama="Malzeme adini yazmaya baslayin, depo katalogdan otomatik eslestirme yapilacaktir."
+                  aciklama="Malzeme adini yazmaya baslayin, malzeme katalogdan otomatik eslestirme yapilacaktir."
                 />
               </div>
 

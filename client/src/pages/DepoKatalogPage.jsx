@@ -241,11 +241,11 @@ export default function DepoKatalogPage() {
   const gorunurSutunListesi = TUM_SUTUNLAR.filter((s) => gorunurSutunlar.includes(s.key))
 
   return (
-    <MainLayout title="Depo Katalog">
+    <MainLayout title="Malzeme Katalog">
       <div>
         {/* Başlık */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">Depo Malzeme Katalogu</h1>
+          <h1 className="text-2xl font-bold">Malzeme Katalog</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Kurum depo malzeme listesi - {siraliData.length.toLocaleString('tr-TR')} kayit
           </p>

@@ -42,6 +42,14 @@ export function useProjeSil() {
   })
 }
 
+export function useTopluProjeSil() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids) => api.post('/projeler/toplu-sil', { ids }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projeler'] }),
+  })
+}
+
 export function useProjeDurumDegistir() {
   const qc = useQueryClient()
   return useMutation({

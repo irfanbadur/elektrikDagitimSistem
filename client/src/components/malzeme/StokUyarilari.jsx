@@ -139,7 +139,7 @@ export default function StokUyarilari() {
                 </div>
 
                 <Link
-                  to={`/malzeme/${malzeme.id}`}
+                  to={`/depo/${malzeme.id}`}
                   className={cn(
                     'ml-4 flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium',
                     stokTukendi

@@ -148,6 +148,81 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'bono_kalemleri', 'miktar_irsaliye', 'REAL DEFAULT 0');
   addColumnIfNotExists(database, 'bono_kalemleri', 'kaynak', "TEXT DEFAULT 'bono'");
 
+  // ═══════════════════════════════════════════════════
+  // Hareket Sistemi — stok hareketlerini işlem bazlı yönetim
+  // ═══════════════════════════════════════════════════
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS hareketler (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hareket_tipi TEXT NOT NULL CHECK(hareket_tipi IN ('giris','cikis','transfer','iade','fire','sayim')),
+      kaynak TEXT DEFAULT 'manuel' CHECK(kaynak IN ('evrak','manuel','proje','transfer')),
+      durum TEXT DEFAULT 'aktif' CHECK(durum IN ('aktif','iptal')),
+      proje_id INTEGER REFERENCES projeler(id),
+      kaynak_depo_id INTEGER REFERENCES depolar(id),
+      hedef_depo_id INTEGER REFERENCES depolar(id),
+      ekip_id INTEGER REFERENCES ekipler(id),
+      teslim_alan TEXT,
+      teslim_eden TEXT,
+      belge_no TEXT,
+      aciklama TEXT,
+      tarih DATE NOT NULL,
+      iptal_referans_id INTEGER REFERENCES hareketler(id),
+      iptal_nedeni TEXT,
+      olusturan_id INTEGER REFERENCES kullanicilar(id),
+      olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_hareketler_tarih ON hareketler(tarih)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_hareketler_tipi ON hareketler(hareket_tipi)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_hareketler_proje ON hareketler(proje_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_hareketler_durum ON hareketler(durum)');
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS hareket_kalemleri (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hareket_id INTEGER NOT NULL REFERENCES hareketler(id) ON DELETE CASCADE,
+      sira_no INTEGER DEFAULT 1,
+      malzeme_id INTEGER REFERENCES malzemeler(id),
+      malzeme_kodu TEXT,
+      poz_no TEXT,
+      malzeme_adi TEXT NOT NULL,
+      malzeme_cinsi TEXT,
+      malzeme_tanimi_sap TEXT,
+      birim TEXT DEFAULT 'Ad',
+      miktar REAL NOT NULL DEFAULT 0,
+      miktar_bono REAL DEFAULT 0,
+      miktar_irsaliye REAL DEFAULT 0,
+      birim_fiyat REAL DEFAULT 0,
+      proje_kesif_id INTEGER REFERENCES proje_kesif(id),
+      notlar TEXT,
+      olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_hareket_kalemleri_hareket ON hareket_kalemleri(hareket_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_hareket_kalemleri_malzeme ON hareket_kalemleri(malzeme_id)');
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS hareket_dokumanlari (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hareket_id INTEGER NOT NULL REFERENCES hareketler(id) ON DELETE CASCADE,
+      dosya_id INTEGER REFERENCES dosyalar(id),
+      dosya_tipi TEXT DEFAULT 'belge' CHECK(dosya_tipi IN ('bono','irsaliye','fatura','tutanak','belge','diger')),
+      orijinal_adi TEXT,
+      olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_hareket_dokumanlari_hareket ON hareket_dokumanlari(hareket_id)');
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS hareket_meta (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hareket_id INTEGER NOT NULL REFERENCES hareketler(id) ON DELETE CASCADE,
+      meta_tipi TEXT NOT NULL,
+      veri TEXT NOT NULL
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_hareket_meta_hareket ON hareket_meta(hareket_id)');
+
   // Depo bazlı stok yönetimi: malzeme_hareketleri tablosuna depo alanları
   addColumnIfNotExists(database, 'malzeme_hareketleri', 'kaynak_depo_id', 'INTEGER');
   addColumnIfNotExists(database, 'malzeme_hareketleri', 'hedef_depo_id', 'INTEGER');

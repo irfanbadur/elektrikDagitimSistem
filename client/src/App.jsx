@@ -58,7 +58,7 @@ function AppRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/ekipler/*" element={<EkiplerPage />} />
         <Route path="/projeler/*" element={<ProjelerPage />} />
-        <Route path="/malzeme/*" element={<MalzemePage />} />
+        <Route path="/depo/*" element={<MalzemePage />} />
         <Route path="/personel/*" element={<PersonelPage />} />
         <Route path="/puantaj/*" element={<PuantajPage />} />
         <Route path="/talepler/*" element={<TaleplerPage />} />
@@ -72,7 +72,7 @@ function AppRoutes() {
         <Route path="/dosya-yonetimi" element={<DosyaYonetimiPage />} />
         <Route path="/ai-sohbet" element={<AiSohbetPage />} />
         <Route path="/organizasyon/*" element={<OrganizasyonPage />} />
-        <Route path="/depo-katalog" element={<DepoKatalogPage />} />
+        <Route path="/malzeme-katalog" element={<DepoKatalogPage />} />
       </Route>
 
       {/* 404 */}

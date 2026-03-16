@@ -190,6 +190,29 @@ router.patch('/:id/durum', (req, res) => {
   }
 });
 
+// Tek proje silme yardımcısı (transaction içinde)
+function projeSilIslem(db, projeId) {
+  const projeTablolari = [
+    'proje_durum_gecmisi', 'proje_notlari', 'proje_kesifler',
+    'proje_dokumanlari', 'proje_kesif', 'proje_demontaj',
+    'proje_direkler', 'proje_kroki_kesif', 'proje_asamalari',
+    'proje_adimlari', 'gunluk_ilerleme', 'direk_kayitlar',
+    'saha_tespitler',
+  ];
+  for (const tablo of projeTablolari) {
+    try { db.prepare(`DELETE FROM ${tablo} WHERE proje_id = ?`).run(projeId); } catch {}
+  }
+  const paylasimliTablolar = [
+    'hareketler', 'puantajlar', 'talepler', 'gorevler',
+    'sahadan_fotograflar', 'dosyalar', 'ai_analizler',
+    'kullanici_gorevler', 'bono_kalemleri', 'veri_paketleri',
+  ];
+  for (const tablo of paylasimliTablolar) {
+    try { db.prepare(`UPDATE ${tablo} SET proje_id = NULL WHERE proje_id = ?`).run(projeId); } catch {}
+  }
+  db.prepare('DELETE FROM projeler WHERE id = ?').run(projeId);
+}
+
 // DELETE /:id
 router.delete('/:id', (req, res) => {
   try {
@@ -198,37 +221,38 @@ router.delete('/:id', (req, res) => {
     const proje = db.prepare('SELECT * FROM projeler WHERE id = ?').get(projeId);
     if (!proje) return hata(res, 'Proje bulunamadı', 404);
 
-    // Transaction ile iliskili kayitlari temizle, sonra projeyi sil
     const silTransaction = db.transaction(() => {
-      // Proje-spesifik tablolar (DELETE)
-      const projeTablolari = [
-        'proje_durum_gecmisi', 'proje_notlari', 'proje_kesifler',
-        'proje_dokumanlari', 'proje_kesif', 'proje_demontaj',
-        'proje_direkler', 'proje_kroki_kesif', 'proje_asamalari',
-        'proje_adimlari', 'gunluk_ilerleme', 'direk_kayitlar',
-        'saha_tespitler',
-      ];
-      for (const tablo of projeTablolari) {
-        try { db.prepare(`DELETE FROM ${tablo} WHERE proje_id = ?`).run(projeId); } catch {}
-      }
-
-      // Paylasimli tablolar (SET NULL)
-      const paylasimliTablolar = [
-        'hareketler', 'puantajlar', 'talepler', 'gorevler',
-        'sahadan_fotograflar', 'dosyalar', 'ai_analizler',
-        'kullanici_gorevler', 'bono_kalemleri', 'veri_paketleri',
-      ];
-      for (const tablo of paylasimliTablolar) {
-        try { db.prepare(`UPDATE ${tablo} SET proje_id = NULL WHERE proje_id = ?`).run(projeId); } catch {}
-      }
-
-      // Projeyi sil
-      db.prepare('DELETE FROM projeler WHERE id = ?').run(projeId);
+      projeSilIslem(db, projeId);
     });
 
     silTransaction();
     aktiviteLogla('proje', 'silme', proje.id, `Proje silindi: ${proje.proje_no}`);
     basarili(res, { message: 'Proje silindi' });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// DELETE /toplu-sil - Toplu proje silme
+router.post('/toplu-sil', (req, res) => {
+  try {
+    const db = getDb();
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return hata(res, 'Silinecek proje ID listesi gerekli');
+
+    const projeler = ids.map(id => db.prepare('SELECT id, proje_no FROM projeler WHERE id = ?').get(parseInt(id))).filter(Boolean);
+    if (projeler.length === 0) return hata(res, 'Silinecek proje bulunamadı', 404);
+
+    const topluSilTransaction = db.transaction(() => {
+      for (const proje of projeler) {
+        projeSilIslem(db, proje.id);
+      }
+    });
+
+    topluSilTransaction();
+    const silinen = projeler.map(p => p.proje_no).join(', ');
+    aktiviteLogla('proje', 'toplu_silme', null, `${projeler.length} proje toplu silindi: ${silinen}`);
+    basarili(res, { message: `${projeler.length} proje silindi`, silinen: projeler.length });
   } catch (err) {
     hata(res, err.message, 500);
   }

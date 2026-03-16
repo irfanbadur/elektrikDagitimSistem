@@ -93,14 +93,14 @@ export default function StokListesi() {
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
           <button
-            onClick={() => navigate(`/malzeme/${row.original.id}`)}
+            onClick={() => navigate(`/depo/${row.original.id}`)}
             className="rounded p-1.5 hover:bg-muted"
             title="Detay"
           >
             <Eye className="h-4 w-4 text-muted-foreground" />
           </button>
           <button
-            onClick={() => navigate(`/malzeme/${row.original.id}/duzenle`)}
+            onClick={() => navigate(`/depo/${row.original.id}/duzenle`)}
             className="rounded p-1.5 hover:bg-muted"
             title="Düzenle"
           >
@@ -121,7 +121,7 @@ export default function StokListesi() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/malzeme/yeni')}
+          onClick={() => navigate('/depo/yeni')}
           className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
