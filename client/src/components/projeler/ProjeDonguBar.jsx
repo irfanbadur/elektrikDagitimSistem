@@ -69,20 +69,21 @@ function DosyaYuklemeIcerik({ adim, projeId }) {
   const yukle = async (files) => {
     if (!files || files.length === 0) return
     setYukleniyor(true)
-    try {
-      for (const file of files) {
+    let yuklenen = 0
+    for (const file of files) {
+      try {
         const fd = new FormData()
         fd.append('dosya', file)
         fd.append('proje_id', projeId)
         fd.append('proje_adim_id', adim.id)
         await api.post('/dosya/yukle', fd)
+        yuklenen++
+      } catch (err) {
+        console.error('Dosya yukleme hatasi:', file.name, err)
       }
-      qc.invalidateQueries({ queryKey: ['adim-dosyalar', adim.id] })
-    } catch (err) {
-      console.error('Dosya yukleme hatasi:', err)
-    } finally {
-      setYukleniyor(false)
     }
+    if (yuklenen > 0) qc.invalidateQueries({ queryKey: ['adim-dosyalar', adim.id] })
+    setYukleniyor(false)
   }
 
   const sil = async (dosyaId, e) => {

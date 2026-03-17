@@ -227,11 +227,23 @@ router.post('/yukle', upload.single('dosya'), async (req, res) => {
       }
     }
 
+    // Adım bazlı yükleme: mevcut dosya sayısı ve adım adını al
+    let adimAdi = null;
+    let adimDosyaSayisi = 0;
+    if (projeAdimId) {
+      const db2 = require('../db/database').getDb();
+      const adim = db2.prepare('SELECT adim_adi FROM proje_adimlari WHERE id = ?').get(projeAdimId);
+      if (adim) adimAdi = adim.adim_adi;
+      adimDosyaSayisi = db2.prepare("SELECT COUNT(*) as c FROM dosyalar WHERE proje_adim_id = ? AND durum = 'aktif'").get(projeAdimId)?.c || 0;
+    }
+
     const sonuc = await dosyaService.dosyaYukle(req.file.buffer, {
       orijinalAdi: req.file.originalname,
       // v2 alan bazlı parametreler
       alan: req.body.alan || (projeId ? 'proje' : null),
       altAlan: req.body.alt_alan || null,
+      adimAdi,
+      adimDosyaSayisi,
       iliskiliKaynakTipi: req.body.iliskili_kaynak_tipi || null,
       iliskiliKaynakId: req.body.iliskili_kaynak_id ? parseInt(req.body.iliskili_kaynak_id) : null,
       personelKodu: req.body.personel_kodu || null,

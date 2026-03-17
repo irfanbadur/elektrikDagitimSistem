@@ -156,8 +156,15 @@ function dosyaYoluHesaplaV2({
 
   switch (alan) {
     case 'proje':
-      // Düz yapı: projeler/{İŞ_TİPİ}/{projeNo}/dosya
+      // projeler/{İŞ_TİPİ}/{projeNo}/dosya veya projeler/{İŞ_TİPİ}/{projeNo}/{adimKlasoru}/dosya
       if (projeTipi) {
+        // altAlan = "KET/KET-2026-03/yer-teslim-tutanagi" → adım klasörü var
+        // altAlan = "KET/KET-2026-03" → düz yapı
+        const parcalar = (altAlan || '').split('/');
+        if (parcalar.length >= 3) {
+          // IS_TIPI/PROJE_NO/ADIM_KLASORU
+          return `${kokKlasor}/${parcalar.join('/')}/${dosyaAdi}`;
+        }
         return `${kokKlasor}/${projeTipi.toUpperCase()}/${projeNo || '_genel'}/${dosyaAdi}`;
       }
       return `${kokKlasor}/${yil}/${projeNo || '_genel'}/${dosyaAdi}`;

@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../db/database');
 const {
   sahaFotoAdi, projeDosyaAdi, dosyaYoluHesapla, dosyaYoluHesaplaV2,
-  thumbnailYoluHesapla, uzantidanKategori
+  thumbnailYoluHesapla, uzantidanKategori, slugify
 } = require('./dosyaIsimService');
 const donguService = require('./donguService');
 
@@ -30,6 +30,8 @@ class DosyaService {
     ihaleNo = null,
     kurumAdi = null,
     ozelAlanlar = null,
+    adimAdi = null,
+    adimDosyaSayisi = 0,
     // mevcut parametreler
     projeNo = null,
     projeTipi = null,
@@ -75,9 +77,54 @@ class DosyaService {
     const efektifAlan = alan || 'proje';
     let efektifAltAlan = altAlan || (efektifAlan !== 'proje' ? null : null);
 
-    // Proje dosyaları: düz yapı — IS_TIPI/PROJE_NO
+    // Proje dosyaları: IS_TIPI/PROJE_NO (tek dosya) veya IS_TIPI/PROJE_NO/ADIM_ADI (çoklu)
+    let adimKlasoru = null;
     if (efektifAlan === 'proje' && projeTipi && projeNo) {
       efektifAltAlan = `${projeTipi.toUpperCase()}/${projeNo}`;
+
+      // Adım bazlı: birden çok dosya varsa adım adı ile alt klasör
+      if (adimAdi && adimDosyaSayisi >= 1) {
+        adimKlasoru = slugify(adimAdi);
+        efektifAltAlan = `${projeTipi.toUpperCase()}/${projeNo}/${adimKlasoru}`;
+
+        // İlk dosyayı da adım klasörüne taşı (eğer proje kökündeyse)
+        if (adimDosyaSayisi === 1 && projeAdimId) {
+          try {
+            const ilkDosya = db.prepare("SELECT id, dosya_yolu, thumbnail_yolu, alt_alan FROM dosyalar WHERE proje_adim_id = ? AND durum = 'aktif' ORDER BY id ASC LIMIT 1").get(projeAdimId);
+            if (ilkDosya && ilkDosya.dosya_yolu) {
+              const ilkKlasorAdi = path.basename(path.dirname(ilkDosya.dosya_yolu));
+              // Sadece adım klasöründe değilse taşı
+              if (ilkKlasorAdi !== adimKlasoru) {
+                const dosyaBasAdi = path.basename(ilkDosya.dosya_yolu);
+                const ustKlasor = path.dirname(ilkDosya.dosya_yolu).replace(/\\/g, '/');
+                const yeniYol = `${ustKlasor}/${adimKlasoru}/${dosyaBasAdi}`;
+                const eskiTam = path.join(UPLOADS_ROOT, ilkDosya.dosya_yolu);
+                const yeniTam = path.join(UPLOADS_ROOT, yeniYol);
+                fs.mkdirSync(path.dirname(yeniTam), { recursive: true });
+                if (fs.existsSync(eskiTam)) {
+                  fs.renameSync(eskiTam, yeniTam);
+                  const yeniAltAlan = `${projeTipi.toUpperCase()}/${projeNo}/${adimKlasoru}`;
+                  db.prepare('UPDATE dosyalar SET dosya_yolu = ?, alt_alan = ? WHERE id = ?').run(yeniYol, yeniAltAlan, ilkDosya.id);
+                  // Thumbnail da taşı
+                  if (ilkDosya.thumbnail_yolu) {
+                    const thumbAdi = path.basename(ilkDosya.thumbnail_yolu);
+                    const yeniThumbYol = `${ustKlasor}/${adimKlasoru}/thumb/${thumbAdi}`;
+                    const eskiThumbTam = path.join(UPLOADS_ROOT, ilkDosya.thumbnail_yolu);
+                    const yeniThumbTam = path.join(UPLOADS_ROOT, yeniThumbYol);
+                    fs.mkdirSync(path.dirname(yeniThumbTam), { recursive: true });
+                    if (fs.existsSync(eskiThumbTam)) {
+                      fs.renameSync(eskiThumbTam, yeniThumbTam);
+                      db.prepare('UPDATE dosyalar SET thumbnail_yolu = ? WHERE id = ?').run(yeniThumbYol, ilkDosya.id);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.error('İlk dosya taşıma hatası:', e.message);
+          }
+        }
+      }
     }
 
     const goreceliYol = alan
