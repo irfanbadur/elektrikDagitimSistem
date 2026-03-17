@@ -56,8 +56,7 @@ class TabErrorBoundary extends Component {
 
 const TABS = [
   { key: 'detay', label: 'Detay', icon: FileText },
-  { key: 'dongu', label: 'Dongu', icon: GitBranch },
-  { key: 'kesif', label: 'Proje-Kesif', icon: Package },
+{ key: 'kesif', label: 'Proje-Kesif', icon: Package },
   { key: 'demontaj', label: 'Demontaj', icon: Wrench },
   { key: 'hak_edis', label: 'Hak Edis', icon: BarChart3 },
   { key: 'dokumanlar', label: 'Dokumanlar', icon: FileText },
@@ -471,11 +470,7 @@ export default function ProjeDetay() {
           </div>
         )}
 
-{aktifTab === 'dongu' && (
-          <ProjeDongu projeId={id} projeTipi={proje?.proje_tipi} projeNo={proje?.proje_no} />
-        )}
-
-        {aktifTab === 'raporlar' && (
+{aktifTab === 'raporlar' && (
           <div className="rounded-lg border border-border bg-card p-6">
             <h3 className="mb-4 font-semibold">Raporlar</h3>
             {proje.raporlar && proje.raporlar.length > 0 ? (

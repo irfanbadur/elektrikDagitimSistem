@@ -83,8 +83,14 @@ app.use('/api/proje-kroki-kesif', require('./routes/projeKrokiKesif'));
 app.use('/api/bonolar', require('./routes/bonolar'));
 app.use('/api/hareketler', require('./routes/hareketler'));
 
+// Dış Kişiler (3. taraf kurum/firma personelleri)
+app.use('/api/dis-kisiler', require('./routes/disKisiler'));
+
 // Yer Teslim Tutanağı AI Parse
 app.use('/api/yer-teslim', require('./routes/yerTeslimParse'));
+
+// Enerji Kesinti Planlayıcı
+app.use('/api/enerji-kesintileri', require('./routes/enerjiKesintileri'));
 
 // Error handler
 const { errorHandler } = require('./middleware/errorHandler');

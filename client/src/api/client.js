@@ -7,11 +7,15 @@ const api = axios.create({
   },
 })
 
-// Her istekte JWT token ekle
+// Her istekte JWT token ekle + FormData için Content-Type düzelt
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  // FormData gönderimlerinde Content-Type'ı kaldır, axios otomatik multipart/form-data ayarlar
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type']
   }
   return config
 })

@@ -134,9 +134,20 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'projeler', 'kesinti_ihtiyaci', 'INTEGER');
   addColumnIfNotExists(database, 'projeler', 'izinler', 'TEXT');
 
+  // Projeler: yer teslim tutanağı dosya referansı
+  addColumnIfNotExists(database, 'projeler', 'yer_teslim_dosya_id', 'INTEGER REFERENCES dosyalar(id)');
+
+  // Projeler: dış kişi (teslim eden) referansı
+  addColumnIfNotExists(database, 'projeler', 'teslim_eden_id', 'INTEGER REFERENCES dis_kisiler(id)');
+
   // Departman sistemi: roller tablosuna departman_id ve birim_id
   addColumnIfNotExists(database, 'roller', 'departman_id', 'INTEGER REFERENCES departmanlar(id)');
   addColumnIfNotExists(database, 'roller', 'birim_id', 'INTEGER REFERENCES departman_birimleri(id)');
+
+  // Adım komponent tipleri (dosya_yukleme, koordinat, kesinti)
+  addColumnIfNotExists(database, 'faz_adimlari', 'komponent_tipi', "TEXT DEFAULT 'dosya_yukleme'");
+  addColumnIfNotExists(database, 'proje_adimlari', 'komponent_tipi', "TEXT DEFAULT 'dosya_yukleme'");
+  addColumnIfNotExists(database, 'proje_adimlari', 'meta_veri', "TEXT DEFAULT '{}'");
 
   // Bonolar tablosuna irsaliye alanları
   addColumnIfNotExists(database, 'bonolar', 'irsaliye_no', 'TEXT');
@@ -267,6 +278,42 @@ function runMigrations(database) {
   }
 }
 
+function migrateExistingTeslimEden(database) {
+  try {
+    const projeler = database.prepare(
+      `SELECT id, teslim_eden FROM projeler WHERE teslim_eden IS NOT NULL AND teslim_eden != '' AND teslim_eden_id IS NULL`
+    ).all();
+    if (projeler.length === 0) return;
+
+    const findKisi = database.prepare('SELECT id FROM dis_kisiler WHERE ad_soyad = ? COLLATE NOCASE AND aktif = 1');
+    const insertKisi = database.prepare('INSERT INTO dis_kisiler (ad_soyad) VALUES (?)');
+    const updateProje = database.prepare('UPDATE projeler SET teslim_eden_id = ? WHERE id = ?');
+
+    const kisiCache = new Map();
+    const transaction = database.transaction(() => {
+      for (const p of projeler) {
+        const ad = p.teslim_eden.trim();
+        if (!ad) continue;
+        let kisiId = kisiCache.get(ad.toLowerCase());
+        if (!kisiId) {
+          const existing = findKisi.get(ad);
+          if (existing) {
+            kisiId = existing.id;
+          } else {
+            kisiId = insertKisi.run(ad).lastInsertRowid;
+          }
+          kisiCache.set(ad.toLowerCase(), kisiId);
+        }
+        updateProje.run(kisiId, p.id);
+      }
+    });
+    transaction();
+    console.log(`✅ ${projeler.length} proje teslim eden → dis_kisiler taşındı`);
+  } catch (err) {
+    // Tablo yoksa veya migration zaten yapılmışsa sessizce atla
+  }
+}
+
 function migrateDonguDosyalariToVeriPaketi(database) {
   try {
     // proje_adim_id olan ama veri_paketi_id olmayan dosyaları bul
@@ -304,13 +351,43 @@ function migrateDonguDosyalariToVeriPaketi(database) {
   }
 }
 
+function migrateAltAlanFlat(database) {
+  try {
+    const dosyalar = database.prepare(`
+      SELECT d.id, d.alt_alan, p.proje_tipi, p.proje_no
+      FROM dosyalar d
+      JOIN projeler p ON d.proje_id = p.id
+      WHERE d.alan = 'proje' AND d.durum = 'aktif'
+        AND d.alt_alan IS NOT NULL
+    `).all();
+
+    let guncellenen = 0;
+    const stmt = database.prepare('UPDATE dosyalar SET alt_alan = ? WHERE id = ?');
+    for (const d of dosyalar) {
+      if (!d.proje_tipi || !d.proje_no) continue;
+      const hedefAltAlan = `${d.proje_tipi.toUpperCase()}/${d.proje_no}`;
+      if (d.alt_alan !== hedefAltAlan) {
+        stmt.run(hedefAltAlan, d.id);
+        guncellenen++;
+      }
+    }
+    if (guncellenen > 0) {
+      console.log(`✅ ${guncellenen} dosyanın alt_alan'ı düzeltildi (düz proje yapısı)`);
+    }
+  } catch (err) {
+    // Sessizce atla
+  }
+}
+
 function initDatabase() {
   const database = getDb();
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   database.exec(schema);
 
   runMigrations(database);
+  migrateExistingTeslimEden(database);
   migrateDonguDosyalariToVeriPaketi(database);
+  migrateAltAlanFlat(database);
 
   const count = database.prepare('SELECT COUNT(*) as c FROM personel').get();
   if (count.c === 0) {

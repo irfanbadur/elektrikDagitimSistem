@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ArrowLeftRight, Save, X, Sparkles, AlertCircle } from 'lucide-react'
 import { useProje, useProjeOlustur, useProjeGuncelle } from '@/hooks/useProjeler'
@@ -14,6 +14,96 @@ import DemontajListesiDuzenle from './DemontajListesiDuzenle'
 import DirekListesiDuzenle from './DirekListesiDuzenle'
 import KatalogAramaInput from './KatalogAramaInput'
 import { cn } from '@/lib/utils'
+
+// Dış kişi (kurum personeli) autocomplete
+function DisKisiSecici({ value, onChange, placeholder }) {
+  const [acik, setAcik] = useState(false)
+  const [sonuclar, setSonuclar] = useState([])
+  const [araniyor, setAraniyor] = useState(false)
+  const inputRef = useRef(null)
+  const dropdownRef = useRef(null)
+  const timerRef = useRef(null)
+
+  const ara = useCallback((q) => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (!q || q.length < 2) { setSonuclar([]); setAraniyor(false); return }
+    setAraniyor(true)
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await api.get('/dis-kisiler/ara', { params: { q } })
+        setSonuclar(res?.data || [])
+      } catch { setSonuclar([]) }
+      setAraniyor(false)
+    }, 300)
+  }, [])
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+  }, [])
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target) &&
+          inputRef.current && !inputRef.current.contains(e.target)) {
+        setAcik(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const handleInputChange = (e) => {
+    const val = e.target.value
+    onChange(val)
+    ara(val)
+    setAcik(true)
+  }
+
+  const handleSec = (kisi) => {
+    onChange(kisi.ad_soyad, kisi)
+    setAcik(false)
+    setSonuclar([])
+  }
+
+  const showDropdown = acik && value?.length >= 2 && (araniyor || sonuclar.length > 0)
+
+  return (
+    <div className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value || ''}
+        onChange={handleInputChange}
+        onFocus={() => { if (value?.length >= 2) { ara(value); setAcik(true) } }}
+        className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+        placeholder={placeholder || 'Ad Soyad'}
+      />
+      {showDropdown && (
+        <div ref={dropdownRef} className="absolute left-0 right-0 z-20 mt-1 rounded-lg border border-input bg-white shadow-lg max-h-48 overflow-y-auto">
+          {araniyor ? (
+            <div className="px-3 py-2 text-xs text-muted-foreground">Araniyor...</div>
+          ) : (
+            sonuclar.map(k => (
+              <button
+                key={k.id}
+                type="button"
+                onMouseDown={() => handleSec(k)}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-primary/5 flex items-center justify-between"
+              >
+                <span className="font-medium">{k.ad_soyad}</span>
+                {(k.unvan || k.kurum) && (
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {[k.unvan, k.kurum].filter(Boolean).join(' - ')}
+                  </span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const BOS_FORM = {
   proje_no: '',
@@ -32,6 +122,8 @@ const BOS_FORM = {
   tamamlanma_yuzdesi: 0,
   notlar: '',
   teslim_eden: '',
+  teslim_eden_unvan: '',
+  teslim_eden_kurum: '',
   teslim_alan_id: '',
   // YB ve genel yer teslim alanları
   basvuru_no: '',
@@ -107,7 +199,7 @@ export default function ProjeForm() {
         proje_no: proje.proje_no || '',
         proje_tipi: proje.proje_tipi || '',
         musteri_adi: proje.musteri_adi || '',
-        bolge_id: proje.bolge_id || '',
+        bolge_id: proje.bolge_id ? String(proje.bolge_id) : '',
         mahalle: proje.mahalle || '',
         adres: proje.adres || '',
         durum: proje.durum || 'teslim_alindi',
@@ -120,7 +212,9 @@ export default function ProjeForm() {
         tamamlanma_yuzdesi: proje.tamamlanma_yuzdesi || 0,
         notlar: proje.notlar || '',
         teslim_eden: proje.teslim_eden || '',
-        teslim_alan_id: proje.teslim_alan_id || '',
+        teslim_eden_unvan: proje.teslim_eden_unvan || '',
+        teslim_eden_kurum: proje.teslim_eden_kurum || '',
+        teslim_alan_id: proje.teslim_alan_id ? String(proje.teslim_alan_id) : '',
         basvuru_no: proje.basvuru_no || '',
         il: proje.il || '',
         ilce: proje.ilce || '',
@@ -148,16 +242,31 @@ export default function ProjeForm() {
     }
   }
 
-  // Personel listesinde isim ara (fuzzy)
+  // Türkçe karakter uyumlu normalizasyon
+  const normTR = (s) => (s || '').toUpperCase()
+    .replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G')
+    .replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+    .replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+
+  // Personel listesinde isim ara (fuzzy, Türkçe uyumlu)
   const findPersonByName = (name) => {
     if (!name || !Array.isArray(personeller) || personeller.length === 0) return null
-    const normalized = name.toLowerCase().trim()
-    if (!normalized) return null
-    let match = personeller.find(p => p.ad_soyad?.toLowerCase().trim() === normalized)
+    const n = normTR(name)
+    if (!n) return null
+    // 1) Tam eşleşme
+    let match = personeller.find(p => normTR(p.ad_soyad) === n)
     if (match) return match
+    // 2) İçerme
     match = personeller.find(p => {
-      const pName = p.ad_soyad?.toLowerCase().trim()
-      return pName && (pName.includes(normalized) || normalized.includes(pName))
+      const pn = normTR(p.ad_soyad)
+      return pn && (pn.includes(n) || n.includes(pn))
+    })
+    if (match) return match
+    // 3) Kelime bazlı (tüm kelimeler eşleşir mi)
+    const kelimeler = n.split(' ').filter(Boolean)
+    match = personeller.find(p => {
+      const pn = normTR(p.ad_soyad)
+      return kelimeler.length > 0 && kelimeler.every(k => pn.includes(k))
     })
     return match
   }
@@ -170,7 +279,7 @@ export default function ProjeForm() {
     setForm(prev => ({
       ...prev,
       teslim_eden: alanName,
-      teslim_alan_id: edenPerson ? edenPerson.id : '',
+      teslim_alan_id: edenPerson ? String(edenPerson.id) : '',
     }))
   }
 
@@ -198,31 +307,44 @@ export default function ProjeForm() {
       ek_bilgiler: data.ek_bilgiler,
     })
 
-    // Teslim eden/alan otomatik tespit: personel listesinde olan = teslim alan
+    // Teslim yapan = kurum tarafı (teslim_eden), Teslim alan = yüklenici tarafı (teslim_alan_id)
+    // Modal'da zaten personel eşleştirmesi ve swap yapılmış durumda
     const yapanAd = data.yer_teslim_yapan?.ad_soyad || ''
+    const yapanUnvan = data.yer_teslim_yapan?.unvan || ''
     const alanAd = data.yer_teslim_alan?.ad_soyad || ''
-    const alanPersonel = findPersonByName(alanAd)
-    const yapanPersonel = findPersonByName(yapanAd)
-    let teslimEden = ''
-    let teslimAlanId = ''
-    if (alanPersonel) {
-      teslimAlanId = alanPersonel.id
-      teslimEden = yapanAd
-    } else if (yapanPersonel) {
-      teslimAlanId = yapanPersonel.id
-      teslimEden = alanAd
-    } else {
-      teslimEden = yapanAd
-    }
+    // personel_id modal'dan direkt geliyor (PersonelSecici seçimi veya auto-swap)
+    const teslimEden = yapanAd
+    // Personel eşleştirme: önce modal'dan gelen ID, sonra isme göre arama
+    const rawAlanId = data.yer_teslim_alan?.personel_id || (findPersonByName(alanAd)?.id) || ''
+    // String'e çevir ki select option value ile eşleşsin
+    const teslimAlanId = rawAlanId ? String(rawAlanId) : ''
 
     // Bölge eşleştirme: ilçe adını bölge listesinden bul
     const ilce = data.ilce || ''
     let bolgeId = ''
     if (ilce && Array.isArray(bolgeler) && bolgeler.length > 0) {
-      const norm = (s) => (s || '').toUpperCase().replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '')
-      const ilceNorm = norm(ilce)
-      const eslesme = bolgeler.find(b => norm(b.bolge_adi) === ilceNorm)
-      if (eslesme) bolgeId = eslesme.id
+      // Türkçe sayı kelimeleri → rakam dönüşümü
+      const SAYI_MAP = [
+        [/ONDOKUZ/g, '19'], [/ONSEKIZ/g, '18'], [/ONYEDI/g, '17'], [/ONALTI/g, '16'],
+        [/ONBES/g, '15'], [/ONDORT/g, '14'], [/ONUC/g, '13'], [/ONIKI/g, '12'],
+        [/ONBIR/g, '11'], [/ON/g, '10'], [/DOKUZ/g, '9'], [/SEKIZ/g, '8'],
+        [/YEDI/g, '7'], [/ALTI/g, '6'], [/BES/g, '5'], [/DORT/g, '4'],
+        [/UC/g, '3'], [/IKI/g, '2'], [/BIR/g, '1'],
+      ]
+      const normBolge = (s) => {
+        let r = (s || '').toUpperCase()
+          .replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G')
+          .replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+          .replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '')
+        // Sayı kelimelerini rakama çevir
+        for (const [pattern, digit] of SAYI_MAP) {
+          r = r.replace(pattern, digit)
+        }
+        return r
+      }
+      const ilceNorm = normBolge(ilce)
+      const eslesme = bolgeler.find(b => normBolge(b.bolge_adi) === ilceNorm)
+      if (eslesme) bolgeId = String(eslesme.id)
     }
 
     // Tahmini süre: başlama ve bitiş tarihleri arasındaki gün farkı
@@ -260,6 +382,7 @@ export default function ProjeForm() {
       tahmini_sure_gun: tahminiSure || prev.tahmini_sure_gun,
       notlar: [prev.notlar, data.notlar].filter(Boolean).join('\n') || '',
       teslim_eden: teslimEden || prev.teslim_eden,
+      teslim_eden_unvan: yapanUnvan || prev.teslim_eden_unvan,
       teslim_alan_id: teslimAlanId || prev.teslim_alan_id,
       // YB alanları
       basvuru_no: data.basvuru_no || prev.basvuru_no,
@@ -301,6 +424,8 @@ export default function ProjeForm() {
       bitis_tarihi: form.bitis_tarihi || null,
       teslim_tarihi: form.teslim_tarihi || null,
       teslim_eden: form.teslim_eden || null,
+      teslim_eden_unvan: form.teslim_eden_unvan || null,
+      teslim_eden_kurum: form.teslim_eden_kurum || null,
       teslim_alan_id: form.teslim_alan_id || null,
       basvuru_no: form.basvuru_no || null,
       il: form.il || null,
@@ -383,26 +508,32 @@ export default function ProjeForm() {
             }
           }
 
-          // Yer teslim dosyasını kroki adımına kaydet
+          // Yer teslim dosyasını dosya yönetimine kaydet
           if (yerTeslimDosya) {
             try {
-              // Projenin ilk adımını (kroki) bul
               const fazRes = await api.get(`/dongu/proje/${yeniProjeId}/faz`)
               const fazlar = fazRes?.data
               const ilkAdim = fazlar?.[0]?.adimlar?.[0]
-              if (ilkAdim) {
-                const formData = new FormData()
-                formData.append('dosya', yerTeslimDosya)
-                formData.append('proje_adim_id', ilkAdim.id)
-                formData.append('alan', 'proje')
-                formData.append('alt_alan', 'kroki')
-                formData.append('iliskili_kaynak_tipi', 'proje')
-                formData.append('iliskili_kaynak_id', yeniProjeId)
-                await fetch('/api/dosya/yukle', {
-                  method: 'POST',
-                  headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                  body: formData
-                })
+
+              const formData = new FormData()
+              const uzanti = yerTeslimDosya.name.split('.').pop()
+              formData.append('dosya', yerTeslimDosya, `Yer_Teslim_Tutanağı_${form.proje_no}.${uzanti}`)
+              formData.append('proje_id', yeniProjeId)
+              formData.append('proje_no', form.proje_no)
+              if (ilkAdim) formData.append('proje_adim_id', ilkAdim.id)
+              formData.append('alan', 'proje')
+              formData.append('alt_alan', 'belge')
+              formData.append('iliskili_kaynak_tipi', 'yer_teslim')
+              formData.append('iliskili_kaynak_id', yeniProjeId)
+
+              const dosyaRes = await fetch('/api/dosya/yukle', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                body: formData
+              })
+              const dosyaData = await dosyaRes.json()
+              if (dosyaData?.id) {
+                await api.patch(`/projeler/${yeniProjeId}/yer-teslim-dosya`, { yer_teslim_dosya_id: dosyaData.id })
               }
             } catch (err) {
               console.error('Dosya yukleme hatasi:', err)
@@ -555,7 +686,7 @@ export default function ProjeForm() {
               >
                 <option value="">Seciniz</option>
                 {bolgeler?.map((b) => (
-                  <option key={b.id} value={b.id}>
+                  <option key={b.id} value={String(b.id)}>
                     {b.bolge_adi}
                   </option>
                 ))}
@@ -634,14 +765,27 @@ export default function ProjeForm() {
             <div className="sm:col-span-2">
               <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Teslim Eden</label>
-                  <input
-                    type="text"
+                  <label className="mb-1 block text-sm font-medium">Teslim Eden (Kurum)</label>
+                  <DisKisiSecici
                     value={form.teslim_eden}
-                    onChange={(e) => handleChange('teslim_eden', e.target.value)}
-                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    onChange={(val, kisi) => {
+                      handleChange('teslim_eden', val)
+                      if (kisi) {
+                        setForm(prev => ({
+                          ...prev,
+                          teslim_eden: kisi.ad_soyad,
+                          teslim_eden_unvan: kisi.unvan || prev.teslim_eden_unvan,
+                          teslim_eden_kurum: kisi.kurum || prev.teslim_eden_kurum,
+                        }))
+                      }
+                    }}
                     placeholder="Kurum yetkilisi"
                   />
+                  {(form.teslim_eden_unvan || form.teslim_eden_kurum) && (
+                    <div className="mt-1 text-[10px] text-muted-foreground">
+                      {[form.teslim_eden_unvan, form.teslim_eden_kurum].filter(Boolean).join(' - ')}
+                    </div>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -660,7 +804,7 @@ export default function ProjeForm() {
                   >
                     <option value="">Seciniz</option>
                     {Array.isArray(personeller) && personeller.map((p) => (
-                      <option key={p.id} value={p.id}>
+                      <option key={p.id} value={String(p.id)}>
                         {p.ad_soyad}{p.unvan ? ` - ${p.unvan}` : ''}{p.ekip_adi ? ` (${p.ekip_adi})` : ''}
                       </option>
                     ))}

@@ -148,7 +148,7 @@ const ALT_ALAN_KLASOR = {
  */
 function dosyaYoluHesaplaV2({
   alan, altAlan, dosyaAdi,
-  projeNo, personelKodu, ekipmanKodu, ihaleNo, kurumAdi
+  projeNo, projeTipi, personelKodu, ekipmanKodu, ihaleNo, kurumAdi
 }) {
   const yil = new Date().getFullYear().toString();
   const kokKlasor = ALAN_KLASOR[alan] || 'diger';
@@ -156,7 +156,11 @@ function dosyaYoluHesaplaV2({
 
   switch (alan) {
     case 'proje':
-      return `${kokKlasor}/${yil}/${projeNo || '_genel'}/${altKlasor}/${dosyaAdi}`;
+      // Düz yapı: projeler/{İŞ_TİPİ}/{projeNo}/dosya
+      if (projeTipi) {
+        return `${kokKlasor}/${projeTipi.toUpperCase()}/${projeNo || '_genel'}/${dosyaAdi}`;
+      }
+      return `${kokKlasor}/${yil}/${projeNo || '_genel'}/${dosyaAdi}`;
     case 'personel':
       return `${kokKlasor}/${personelKodu || '_genel'}/${altKlasor}/${dosyaAdi}`;
     case 'ekipman':

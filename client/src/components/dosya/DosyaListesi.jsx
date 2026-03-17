@@ -114,6 +114,15 @@ export default function DosyaListesi({
     const buradakiDosyalar = []
 
     for (const d of dosyalar) {
+      // Sanal placeholder dosyaları atla (sadece klasör oluşturmak için)
+      if (d._sanal && d.alt_alan?.endsWith('/placeholder')) {
+        const parcalar = (d.alt_alan || '').split('/')
+        const klasorAdi = parcalar[0]
+        if (!yolStr && klasorAdi) {
+          if (!klasorMap[klasorAdi]) klasorMap[klasorAdi] = { ad: klasorAdi, dosyaSayisi: 0, toplamBoyut: 0 }
+        }
+        continue
+      }
       const altAlan = d.alt_alan || ''
 
       // Arama filtresi

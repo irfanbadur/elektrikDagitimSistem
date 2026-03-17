@@ -4,6 +4,28 @@ const { aktiviteLogla, basarili, hata } = require('../utils/helpers');
 const donguService = require('../services/donguService');
 const fazService = require('../services/fazService');
 
+// Teslim eden kişiyi dis_kisiler tablosunda bul veya oluştur
+function ensureDisKisi(db, adSoyad, unvan, kurum) {
+  if (!adSoyad?.trim()) return null;
+  const ad = adSoyad.trim();
+  const existing = db.prepare(
+    'SELECT id FROM dis_kisiler WHERE ad_soyad = ? COLLATE NOCASE AND aktif = 1'
+  ).get(ad);
+  if (existing) {
+    // Unvan/kurum bilgisi eksikse güncelle
+    if (unvan || kurum) {
+      db.prepare(
+        'UPDATE dis_kisiler SET unvan = COALESCE(unvan, ?), kurum = COALESCE(kurum, ?), guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?'
+      ).run(unvan || null, kurum || null, existing.id);
+    }
+    return existing.id;
+  }
+  const result = db.prepare(
+    'INSERT INTO dis_kisiler (ad_soyad, unvan, kurum) VALUES (?, ?, ?)'
+  ).run(ad, unvan || null, kurum || null);
+  return Number(result.lastInsertRowid);
+}
+
 // Proje sorgularında tekrarlanan SELECT/JOIN bloğu
 const PROJE_SELECT = `SELECT p.*, b.bolge_adi, e.ekip_adi,
   pa.asama_adi AS aktif_asama_adi, pa.renk AS aktif_asama_renk, pa.ikon AS aktif_asama_ikon,
@@ -14,7 +36,8 @@ const PROJE_SELECT = `SELECT p.*, b.bolge_adi, e.ekip_adi,
   COALESCE(r_faz_kod.rol_adi, r_faz_sira.rol_adi, r_adim.rol_adi) AS aktif_sorumlu_rol_adi,
   (SELECT k.ad_soyad FROM kullanici_rolleri kr JOIN kullanicilar k ON kr.kullanici_id = k.id
    WHERE kr.rol_id = COALESCE(itf_kod.sorumlu_rol_id, itf_sira.sorumlu_rol_id, pad.sorumlu_rol_id) AND k.durum = 'aktif'
-   ORDER BY k.ad_soyad LIMIT 1) AS aktif_sorumlu_adi
+   ORDER BY k.ad_soyad LIMIT 1) AS aktif_sorumlu_adi,
+  dk.ad_soyad AS teslim_eden_adi, dk.unvan AS teslim_eden_unvan, dk.kurum AS teslim_eden_kurum
   FROM projeler p
   LEFT JOIN bolgeler b ON p.bolge_id = b.id
   LEFT JOIN ekipler e ON p.ekip_id = e.id
@@ -22,6 +45,7 @@ const PROJE_SELECT = `SELECT p.*, b.bolge_adi, e.ekip_adi,
   LEFT JOIN proje_adimlari pad ON p.aktif_adim_id = pad.id
   LEFT JOIN is_tipi_fazlari itf_kod ON itf_kod.is_tipi_id = p.is_tipi_id AND itf_kod.faz_kodu = pad.faz_kodu
   LEFT JOIN is_tipi_fazlari itf_sira ON itf_sira.is_tipi_id = p.is_tipi_id AND itf_sira.sira = pad.faz_sira AND itf_kod.id IS NULL
+  LEFT JOIN dis_kisiler dk ON p.teslim_eden_id = dk.id
   LEFT JOIN roller r_faz_kod ON itf_kod.sorumlu_rol_id = r_faz_kod.id
   LEFT JOIN roller r_faz_sira ON itf_sira.sorumlu_rol_id = r_faz_sira.id
   LEFT JOIN roller r_adim ON pad.sorumlu_rol_id = r_adim.id`;
@@ -97,9 +121,10 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   try {
     const db = getDb();
-    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler } = req.body;
+    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler, teslim_eden_unvan, teslim_eden_kurum } = req.body;
     if (!proje_no || !proje_tipi) return hata(res, 'Proje no ve tipi zorunludur');
-    const result = db.prepare('INSERT INTO projeler (proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum||'teslim_alindi', oncelik||'normal', ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi||0, notlar, teslim_eden||null, teslim_alan_id||null, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, izinler?JSON.stringify(izinler):null);
+    const teslimEdenId = ensureDisKisi(db, teslim_eden, teslim_eden_unvan, teslim_eden_kurum);
+    const result = db.prepare('INSERT INTO projeler (proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, teslim_eden_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum||'teslim_alindi', oncelik||'normal', ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi||0, notlar, teslim_eden||null, teslim_alan_id||null, teslimEdenId, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, izinler?JSON.stringify(izinler):null);
     const projeId = result.lastInsertRowid;
 
     // Yeni faz sistemi: İş tipine uygun faz/adım şablonu ata
@@ -126,6 +151,17 @@ router.post('/', (req, res) => {
       console.error('Döngü otomatik ataması başarısız:', donguHata.message);
     }
 
+    // Dosya yönetiminde proje klasörü oluştur: projeler/{İŞ_TİPİ}/{proje_no}/
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
+      const projeKlasoru = path.join(UPLOADS_ROOT, 'projeler', proje_tipi.toUpperCase(), proje_no);
+      fs.mkdirSync(projeKlasoru, { recursive: true });
+    } catch (err) {
+      console.error('Proje klasörü oluşturulamadı:', err.message);
+    }
+
     const yeni = db.prepare(`SELECT p.*, b.bolge_adi, e.ekip_adi, pa.asama_adi AS aktif_asama_adi, pa.renk AS aktif_asama_renk, pa.ikon AS aktif_asama_ikon, pad.adim_adi AS aktif_adim_adi, pad.faz_adi AS aktif_faz_adi, pad.renk AS aktif_adim_renk, pad.ikon AS aktif_adim_ikon FROM projeler p LEFT JOIN bolgeler b ON p.bolge_id = b.id LEFT JOIN ekipler e ON p.ekip_id = e.id LEFT JOIN proje_asamalari pa ON p.aktif_asama_id = pa.id LEFT JOIN proje_adimlari pad ON p.aktif_adim_id = pad.id WHERE p.id = ?`).get(projeId);
     aktiviteLogla('proje', 'olusturma', yeni.id, `Yeni proje: ${proje_no} (${proje_tipi})`);
     basarili(res, yeni, 201);
@@ -139,11 +175,25 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const db = getDb();
-    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler } = req.body;
-    db.prepare('UPDATE projeler SET proje_no=?, proje_tipi=?, musteri_adi=?, bolge_id=?, mahalle=?, adres=?, durum=?, oncelik=?, ekip_id=?, tahmini_sure_gun=?, baslama_tarihi=?, bitis_tarihi=?, teslim_tarihi=?, gerceklesen_bitis=?, tamamlanma_yuzdesi=?, notlar=?, teslim_eden=?, teslim_alan_id=?, basvuru_no=?, il=?, ilce=?, ada_parsel=?, telefon=?, tesis=?, abone_kablosu=?, abone_kablosu_metre=?, enerji_alinan_direk_no=?, kesinti_ihtiyaci=?, izinler=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum, oncelik, ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden||null, teslim_alan_id||null, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, izinler?JSON.stringify(izinler):null, req.params.id);
+    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler, teslim_eden_unvan, teslim_eden_kurum } = req.body;
+    const teslimEdenId = ensureDisKisi(db, teslim_eden, teslim_eden_unvan, teslim_eden_kurum);
+    db.prepare('UPDATE projeler SET proje_no=?, proje_tipi=?, musteri_adi=?, bolge_id=?, mahalle=?, adres=?, durum=?, oncelik=?, ekip_id=?, tahmini_sure_gun=?, baslama_tarihi=?, bitis_tarihi=?, teslim_tarihi=?, gerceklesen_bitis=?, tamamlanma_yuzdesi=?, notlar=?, teslim_eden=?, teslim_alan_id=?, teslim_eden_id=?, basvuru_no=?, il=?, ilce=?, ada_parsel=?, telefon=?, tesis=?, abone_kablosu=?, abone_kablosu_metre=?, enerji_alinan_direk_no=?, kesinti_ihtiyaci=?, izinler=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum, oncelik, ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden||null, teslim_alan_id||null, teslimEdenId, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, izinler?JSON.stringify(izinler):null, req.params.id);
     const guncellenen = db.prepare('SELECT * FROM projeler WHERE id = ?').get(req.params.id);
     aktiviteLogla('proje', 'guncelleme', guncellenen.id, `Proje güncellendi: ${proje_no}`);
     basarili(res, guncellenen);
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// PATCH /:id/yer-teslim-dosya
+router.patch('/:id/yer-teslim-dosya', (req, res) => {
+  try {
+    const db = getDb();
+    const { yer_teslim_dosya_id } = req.body;
+    if (!yer_teslim_dosya_id) return hata(res, 'Dosya ID zorunludur');
+    db.prepare('UPDATE projeler SET yer_teslim_dosya_id = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?').run(yer_teslim_dosya_id, req.params.id);
+    basarili(res, { ok: true });
   } catch (err) {
     hata(res, err.message, 500);
   }

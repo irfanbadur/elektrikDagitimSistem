@@ -4,6 +4,12 @@ import { useIsTipleri, useIsTipiOlustur, useIsTipiGuncelle, useIsTipiSil } from 
 import { useRoller } from '@/hooks/useYonetim'
 import { cn } from '@/lib/utils'
 
+const KOMPONENT_TIPLERI = [
+  { value: 'dosya_yukleme', label: 'Dosya Yükleme', ikon: '📁' },
+  { value: 'koordinat', label: 'Koordinat', ikon: '📍' },
+  { value: 'kesinti', label: 'Enerji Kesintisi', ikon: '⚡' },
+]
+
 const RENKLER = ['#6366f1','#8b5cf6','#0ea5e9','#f59e0b','#10b981','#3b82f6','#14b8a6','#f43f5e','#ec4899','#84cc16']
 const IKONLAR = ['🚀','📐','📋','🔧','💰','✅','🏁','📍','📦','🗺️','🔴','📊','🔍','📝','⚡','🏗️']
 
@@ -51,6 +57,7 @@ export default function ProjeTipleri() {
           adim_adi: a.adim_adi,
           adim_kodu: a.adim_kodu,
           tahmini_gun: a.tahmini_gun || '',
+          komponent_tipi: a.komponent_tipi || 'dosya_yukleme',
         }))
       }))
     })
@@ -136,7 +143,7 @@ export default function ProjeTipleri() {
     const yeniSira = yeni[fazIdx].adimlar.length + 1
     yeni[fazIdx] = {
       ...yeni[fazIdx],
-      adimlar: [...yeni[fazIdx].adimlar, { sira: yeniSira, adim_adi: '', adim_kodu: '', tahmini_gun: '' }]
+      adimlar: [...yeni[fazIdx].adimlar, { sira: yeniSira, adim_adi: '', adim_kodu: '', tahmini_gun: '', komponent_tipi: 'dosya_yukleme' }]
     }
     setForm({ ...form, fazlar: yeni })
   }
@@ -402,6 +409,15 @@ export default function ProjeTipleri() {
                                     placeholder="Adım adı"
                                     className="flex-1 rounded border border-input bg-white px-2 py-1 text-sm outline-none focus:border-primary"
                                   />
+                                  <select
+                                    value={adim.komponent_tipi || 'dosya_yukleme'}
+                                    onChange={e => adimGuncelle(fi, ai, 'komponent_tipi', e.target.value)}
+                                    className="w-40 rounded border border-input bg-white px-2 py-1 text-sm outline-none focus:border-primary"
+                                  >
+                                    {KOMPONENT_TIPLERI.map(kt => (
+                                      <option key={kt.value} value={kt.value}>{kt.ikon} {kt.label}</option>
+                                    ))}
+                                  </select>
                                   <input
                                     type="number"
                                     value={adim.tahmini_gun}

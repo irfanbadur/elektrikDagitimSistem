@@ -1,4 +1,8 @@
 const { getDb } = require('../db/database');
+const path = require('path');
+const fs = require('fs');
+
+const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
 
 class FazService {
 
@@ -47,16 +51,42 @@ class FazService {
 
   isTipiOlustur({ kod, ad, aciklama }) {
     const db = getDb();
+    const kodUpper = kod.toUpperCase();
+
+    // Pasif (silinmiş) kayıt varsa reaktif et
+    const mevcut = db.prepare('SELECT id FROM is_tipleri WHERE kod = ? AND aktif = 0').get(kodUpper);
+    if (mevcut) {
+      db.prepare(`UPDATE is_tipleri SET ad = ?, aciklama = ?, aktif = 1, guncelleme_tarihi = datetime('now') WHERE id = ?`)
+        .run(ad, aciklama || null, mevcut.id);
+
+      // Klasör oluştur
+      try {
+        const klasorYolu = path.join(UPLOADS_ROOT, 'projeler', kodUpper);
+        fs.mkdirSync(klasorYolu, { recursive: true });
+      } catch (err) {
+        console.error('İş tipi klasörü oluşturulamadı:', err.message);
+      }
+
+      return this.isTipiGetir(mevcut.id);
+    }
 
     const result = db.prepare(`
       INSERT INTO is_tipleri (kod, ad, aciklama, sira)
       VALUES (?, ?, ?, (SELECT COALESCE(MAX(sira), 0) + 1 FROM is_tipleri))
-    `).run(kod.toUpperCase(), ad, aciklama || null);
+    `).run(kodUpper, ad, aciklama || null);
 
     const tipId = result.lastInsertRowid;
 
     // Varsayılan 7 faz seed et
     this._varsayilanFazlarEkle(tipId);
+
+    // Dosya yönetiminde projeler altında iş tipi klasörü oluştur
+    try {
+      const klasorYolu = path.join(UPLOADS_ROOT, 'projeler', kod.toUpperCase());
+      fs.mkdirSync(klasorYolu, { recursive: true });
+    } catch (err) {
+      console.error('İş tipi klasörü oluşturulamadı:', err.message);
+    }
 
     return this.isTipiGetir(tipId);
   }
@@ -72,8 +102,8 @@ class FazService {
     const fazlar = [
       { sira: 1, faz_adi: 'Başlama', faz_kodu: 'baslama', ikon: '🚀', renk: '#6366f1', sorumlu: 'saha_muhendis', tahmini_gun: 5,
         adimlar: [
-          { adim_adi: 'Krokinin hazırlanması', adim_kodu: 'kroki', tahmini_gun: 2 },
-          { adim_adi: 'Koordinatların alınması', adim_kodu: 'koordinat', tahmini_gun: 3 },
+          { adim_adi: 'Krokinin hazırlanması', adim_kodu: 'kroki', tahmini_gun: 2, komponent_tipi: 'dosya_yukleme' },
+          { adim_adi: 'Koordinatların alınması', adim_kodu: 'koordinat', tahmini_gun: 3, komponent_tipi: 'koordinat' },
         ]},
       { sira: 2, faz_adi: 'Teknik Hazırlık-Tasarım', faz_kodu: 'teknik_hazirlik', ikon: '📐', renk: '#8b5cf6', sorumlu: 'saha_muhendis', tahmini_gun: 15,
         adimlar: [
@@ -116,8 +146,8 @@ class FazService {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const adimStmt = db.prepare(`
-      INSERT INTO faz_adimlari (faz_id, sira, adim_adi, adim_kodu, tahmini_gun)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO faz_adimlari (faz_id, sira, adim_adi, adim_kodu, tahmini_gun, komponent_tipi)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     for (const faz of fazlar) {
@@ -126,7 +156,7 @@ class FazService {
       const fazId = r.lastInsertRowid;
       for (let i = 0; i < faz.adimlar.length; i++) {
         const a = faz.adimlar[i];
-        adimStmt.run(fazId, i + 1, a.adim_adi, a.adim_kodu, a.tahmini_gun);
+        adimStmt.run(fazId, i + 1, a.adim_adi, a.adim_kodu, a.tahmini_gun, a.komponent_tipi || 'dosya_yukleme');
       }
     }
   }
@@ -162,8 +192,8 @@ class FazService {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const adimStmt = db.prepare(`
-          INSERT INTO faz_adimlari (faz_id, sira, adim_adi, adim_kodu, tahmini_gun)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO faz_adimlari (faz_id, sira, adim_adi, adim_kodu, tahmini_gun, komponent_tipi)
+          VALUES (?, ?, ?, ?, ?, ?)
         `);
 
         for (const faz of fazlar) {
@@ -176,7 +206,7 @@ class FazService {
 
           if (faz.adimlar && faz.adimlar.length > 0) {
             for (const a of faz.adimlar) {
-              adimStmt.run(fazId, a.sira, a.adim_adi, a.adim_kodu, a.tahmini_gun || null);
+              adimStmt.run(fazId, a.sira, a.adim_adi, a.adim_kodu, a.tahmini_gun || null, a.komponent_tipi || 'dosya_yukleme');
             }
           }
         }
@@ -218,8 +248,9 @@ class FazService {
         sira_global, faz_sira, adim_sira,
         faz_adi, faz_kodu, adim_adi, adim_kodu,
         renk, ikon, tahmini_gun, durum,
-        sorumlu_rol_id, sorumlu_kullanici_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'bekliyor', ?, ?)
+        sorumlu_rol_id, sorumlu_kullanici_id,
+        komponent_tipi
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'bekliyor', ?, ?, ?)
     `);
 
     let siraGlobal = 0;
@@ -231,7 +262,8 @@ class FazService {
           siraGlobal, faz.sira, adim.sira,
           faz.faz_adi, faz.faz_kodu, adim.adim_adi, adim.adim_kodu,
           faz.renk, faz.ikon, adim.tahmini_gun,
-          faz.sorumlu_rol_id || null, faz.sorumlu_kullanici_id || null
+          faz.sorumlu_rol_id || null, faz.sorumlu_kullanici_id || null,
+          adim.komponent_tipi || 'dosya_yukleme'
         );
       }
     }
@@ -399,6 +431,21 @@ class FazService {
         guncelleme_tarihi = datetime('now')
       WHERE id = ?
     `).run(notu || 'Adım atlandı', adimId);
+  }
+
+  adimMetaGuncelle(adimId, metaVeri) {
+    const db = getDb();
+    const adim = db.prepare('SELECT * FROM proje_adimlari WHERE id = ?').get(adimId);
+    if (!adim) throw new Error('Adım bulunamadı');
+
+    const mevcut = adim.meta_veri ? JSON.parse(adim.meta_veri) : {};
+    const yeni = { ...mevcut, ...metaVeri };
+
+    db.prepare(`
+      UPDATE proje_adimlari SET meta_veri = ?, guncelleme_tarihi = datetime('now') WHERE id = ?
+    `).run(JSON.stringify(yeni), adimId);
+
+    return { ...adim, meta_veri: JSON.stringify(yeni) };
   }
 
   // Aktif adım ID getir (veri paketi entegrasyonu için)

@@ -94,6 +94,56 @@ router.get('/alan/:alan', (req, res) => {
       limit: parseInt(req.query.limit) || 50,
       offset: parseInt(req.query.offset) || 0,
     });
+
+    // Proje alanında: sanal klasörler ekle
+    if (req.params.alan === 'proje') {
+      const db = require('../db/database').getDb();
+      const altAlanQuery = req.query.alt_alan || '';
+      const mevcutAltAlanlar = new Set(dosyalar.map(d => (d.alt_alan || '').split('/')[0]).filter(Boolean));
+
+      if (!altAlanQuery) {
+        // Kök seviye: iş tipi klasörleri
+        const isTipleri = db.prepare('SELECT kod FROM is_tipleri WHERE aktif = 1').all();
+        for (const tip of isTipleri) {
+          if (!mevcutAltAlanlar.has(tip.kod)) {
+            dosyalar.push({
+              id: null, dosya_adi: null, orijinal_adi: null,
+              dosya_yolu: `projeler/${tip.kod}/.klasor`,
+              alt_alan: `${tip.kod}/placeholder`,
+              kategori: null, dosya_boyutu: 0, _sanal: true,
+            });
+          }
+        }
+      } else {
+        // İş tipi klasörü içinde: o tipteki projelerin klasörleri
+        const parcalar = altAlanQuery.split('/');
+        const isTipiKodu = parcalar[0];
+        if (parcalar.length === 1) {
+          // İş tipi kök seviyesi - projeleri listele
+          const projeler = db.prepare('SELECT proje_no FROM projeler WHERE UPPER(proje_tipi) = UPPER(?)').all(isTipiKodu);
+          const mevcutProjeYollar = new Set(
+            dosyalar.map(d => {
+              const aa = (d.alt_alan || '');
+              if (aa.startsWith(isTipiKodu + '/')) {
+                return aa.split('/')[1];
+              }
+              return null;
+            }).filter(Boolean)
+          );
+          for (const p of projeler) {
+            if (!mevcutProjeYollar.has(p.proje_no)) {
+              dosyalar.push({
+                id: null, dosya_adi: null, orijinal_adi: null,
+                dosya_yolu: `projeler/${isTipiKodu}/${p.proje_no}/.klasor`,
+                alt_alan: `${isTipiKodu}/${p.proje_no}/placeholder`,
+                kategori: null, dosya_boyutu: 0, _sanal: true,
+              });
+            }
+          }
+        }
+      }
+    }
+
     res.json({ success: true, data: dosyalar });
   } catch (error) {
     console.error('Alan dosya listeleme hatası:', error);
@@ -165,10 +215,22 @@ router.post('/yukle', upload.single('dosya'), async (req, res) => {
       db.prepare('UPDATE veri_paketleri SET proje_adim_id = ? WHERE id = ?').run(projeAdimId, veriPaketiId);
     }
 
+    // proje_no ve proje_tipi gönderilmediyse proje_id'den çek
+    let projeNo = req.body.proje_no || null;
+    let projeTipi = req.body.proje_tipi || null;
+    if (projeId && (!projeNo || !projeTipi)) {
+      const db = require('../db/database').getDb();
+      const proje = db.prepare('SELECT proje_no, proje_tipi FROM projeler WHERE id = ?').get(projeId);
+      if (proje) {
+        if (!projeNo) projeNo = proje.proje_no;
+        if (!projeTipi) projeTipi = proje.proje_tipi;
+      }
+    }
+
     const sonuc = await dosyaService.dosyaYukle(req.file.buffer, {
       orijinalAdi: req.file.originalname,
       // v2 alan bazlı parametreler
-      alan: req.body.alan || null,
+      alan: req.body.alan || (projeId ? 'proje' : null),
       altAlan: req.body.alt_alan || null,
       iliskiliKaynakTipi: req.body.iliskili_kaynak_tipi || null,
       iliskiliKaynakId: req.body.iliskili_kaynak_id ? parseInt(req.body.iliskili_kaynak_id) : null,
@@ -178,7 +240,8 @@ router.post('/yukle', upload.single('dosya'), async (req, res) => {
       kurumAdi: req.body.kurum_adi || null,
       ozelAlanlar: req.body.ozel_alanlar ? JSON.parse(req.body.ozel_alanlar) : null,
       // mevcut parametreler
-      projeNo: req.body.proje_no || null,
+      projeNo,
+      projeTipi,
       projeId,
       ekipId: req.body.ekip_id ? parseInt(req.body.ekip_id) : null,
       ekipKodu: req.body.ekip_kodu || null,

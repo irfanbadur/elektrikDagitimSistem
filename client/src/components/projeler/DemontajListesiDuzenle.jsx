@@ -74,11 +74,16 @@ function DemontajSatirDuzenle({ kalem, index, onChange, onSil }) {
 
   const handleKatalogSec = (item) => {
     const katalogBirim = item.olcu || ''
-    const orijinalBirim = kalem.birim || 'Ad'
+    let orijinalBirim = kalem.birim || 'Ad'
+    const katalogText = `${item.malzeme_cinsi || ''} ${item.malzeme_tanimi_sap || ''}`
+    const kgKmOranHam = extractKgKmOran(katalogText)
+    // Kg/Km oranı varsa ve birim Ad ise → iletken metraj, m olarak kabul et
+    if (kgKmOranHam && orijinalBirim.toLowerCase() === 'ad') {
+      orijinalBirim = 'm'
+    }
     const birimFarkli = katalogBirim && orijinalBirim &&
       katalogBirim.toLowerCase().replace(/\./g, '') !== orijinalBirim.toLowerCase().replace(/\./g, '')
-    const katalogText = `${item.malzeme_cinsi || ''} ${item.malzeme_tanimi_sap || ''}`
-    const kgKmOran = birimFarkli ? extractKgKmOran(katalogText) : null
+    const kgKmOran = birimFarkli ? kgKmOranHam : null
     let yeniMiktar = kalem.miktar
     if (kgKmOran && birimFarkli) {
       if (isMtBirim(orijinalBirim) && isKgBirim(katalogBirim)) {

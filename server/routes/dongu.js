@@ -192,6 +192,16 @@ router.put('/adim/:id/tamamla', (req, res) => {
   }
 });
 
+// PUT /api/dongu/adim/:id/meta — Adım meta verisi güncelle
+router.put('/adim/:id/meta', (req, res) => {
+  try {
+    const sonuc = fazService.adimMetaGuncelle(parseInt(req.params.id), req.body);
+    res.json({ success: true, data: sonuc });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // PUT /api/dongu/adim/:id/atla
 router.put('/adim/:id/atla', (req, res) => {
   try {

@@ -41,6 +41,22 @@ CREATE TABLE IF NOT EXISTS personel (
     FOREIGN KEY (ekip_id) REFERENCES ekipler(id)
 );
 
+-- DIŞ KİŞİLER (3. taraf kurum/firma personelleri)
+CREATE TABLE IF NOT EXISTS dis_kisiler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ad_soyad TEXT NOT NULL,
+    unvan TEXT,
+    kurum TEXT,
+    telefon TEXT,
+    email TEXT,
+    aktif BOOLEAN DEFAULT 1,
+    notlar TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_dis_kisiler_ad ON dis_kisiler(ad_soyad);
+CREATE INDEX IF NOT EXISTS idx_dis_kisiler_kurum ON dis_kisiler(kurum);
+
 -- EKİPLER
 CREATE TABLE IF NOT EXISTS ekipler (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -211,6 +227,25 @@ CREATE TABLE IF NOT EXISTS talepler (
     FOREIGN KEY (ekip_id) REFERENCES ekipler(id),
     FOREIGN KEY (proje_id) REFERENCES projeler(id),
     FOREIGN KEY (talep_eden_id) REFERENCES personel(id)
+);
+
+-- ENERJİ KESİNTİ PLANLARI
+CREATE TABLE IF NOT EXISTS enerji_kesintileri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER,
+    bolge_id INTEGER,
+    basla_tarih DATE NOT NULL,
+    basla_saat TIME,
+    bitis_tarih DATE,
+    bitis_saat TIME,
+    etkilenen_alan TEXT,
+    aciklama TEXT,
+    durum TEXT DEFAULT 'planli',
+    olusturan TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id),
+    FOREIGN KEY (bolge_id) REFERENCES bolgeler(id)
 );
 
 -- GÖREVLER

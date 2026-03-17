@@ -179,6 +179,18 @@ export function useAdimTamamla() {
   })
 }
 
+export function useAdimMetaGuncelle() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ adimId, ...meta }) =>
+      api.put(`/dongu/adim/${adimId}/meta`, meta),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proje-fazlar'] })
+      qc.invalidateQueries({ queryKey: ['proje-faz-ilerleme'] })
+    },
+  })
+}
+
 export function useAdimAtla() {
   const qc = useQueryClient()
   return useMutation({

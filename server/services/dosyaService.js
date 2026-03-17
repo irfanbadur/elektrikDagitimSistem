@@ -32,6 +32,7 @@ class DosyaService {
     ozelAlanlar = null,
     // mevcut parametreler
     projeNo = null,
+    projeTipi = null,
     projeId = null,
     ekipId = null,
     ekipKodu = null,
@@ -72,11 +73,17 @@ class DosyaService {
     // 3. Fiziksel yolu hesapla
     // v2: alan belirtilmişse yeni yol hesaplama, yoksa eski uyumlu yol
     const efektifAlan = alan || 'proje';
-    const efektifAltAlan = altAlan || (efektifAlan === 'proje' ? kategori : null);
+    let efektifAltAlan = altAlan || (efektifAlan !== 'proje' ? null : null);
+
+    // Proje dosyaları: düz yapı — IS_TIPI/PROJE_NO
+    if (efektifAlan === 'proje' && projeTipi && projeNo) {
+      efektifAltAlan = `${projeTipi.toUpperCase()}/${projeNo}`;
+    }
 
     const goreceliYol = alan
-      ? dosyaYoluHesaplaV2({ alan: efektifAlan, altAlan: efektifAltAlan, dosyaAdi, projeNo, personelKodu, ekipmanKodu, ihaleNo, kurumAdi })
+      ? dosyaYoluHesaplaV2({ alan: efektifAlan, altAlan: efektifAltAlan, dosyaAdi, projeNo, projeTipi, personelKodu, ekipmanKodu, ihaleNo, kurumAdi })
       : dosyaYoluHesapla({ projeNo, kategori, dosyaAdi });
+
     const tamYol = path.join(UPLOADS_ROOT, goreceliYol);
     const klasor = path.dirname(tamYol);
 
