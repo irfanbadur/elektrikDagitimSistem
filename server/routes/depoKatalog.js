@@ -27,6 +27,33 @@ function boyutCikar(ad) {
   return parcalar.join(' ').replace(/\s+/g, '').toUpperCase();
 }
 
+// Kullanıcı eşleştirme hafızası için normalize (Türkçe karakter desteği dahil)
+function normalizeForMatch(ad) {
+  if (!ad) return '';
+  return ad
+    .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+    .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+    .replace(/ş/g, 's').replace(/Ş/g, 'S')
+    .replace(/ı/g, 'i').replace(/İ/g, 'I')
+    .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+    .replace(/ç/g, 'c').replace(/Ç/g, 'C')
+    .toUpperCase()
+    .replace(/\(.*?\)/g, '')        // parantez içini kaldır (205kg, Kg/Mt vb.)
+    .replace(/[^A-Z0-9\s]/g, ' ')  // sadece alfanümerik
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// İki normalize edilmiş isim arasında kelime örtüşme skoru (0–1)
+function kelimeOrtusme(a, b) {
+  const wa = new Set(a.split(' ').filter(w => w.length > 2));
+  const wb = new Set(b.split(' ').filter(w => w.length > 2));
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let ortak = 0;
+  for (const w of wa) if (wb.has(w)) ortak++;
+  return ortak / Math.min(wa.size, wb.size);
+}
+
 // GET / - tüm katalog (filtreleme destekli)
 router.get('/', (req, res) => {
   try {
@@ -137,6 +164,48 @@ router.get('/istatistikler', (req, res) => {
   }
 });
 
+// POST /kullanici-eslesme - Kullanıcının manuel seçtiği eşleştirmeyi hafızaya kaydet
+router.post('/kullanici-eslesme', (req, res) => {
+  try {
+    const db = getDb();
+    const { excel_adi, katalog } = req.body;
+    if (!excel_adi || !katalog) return hata(res, 'excel_adi ve katalog zorunludur', 400);
+
+    const norm = normalizeForMatch(excel_adi);
+    const mevcut = db.prepare('SELECT id FROM kullanici_eslestirme WHERE excel_adi_norm = ?').get(norm);
+
+    if (mevcut) {
+      db.prepare(`
+        UPDATE kullanici_eslestirme SET
+          excel_adi = ?, katalog_id = ?, malzeme_kodu = ?, poz_birlesik = ?,
+          malzeme_cinsi = ?, malzeme_tanimi_sap = ?, olcu = ?,
+          kullanim_sayisi = kullanim_sayisi + 1,
+          guncelleme_tarihi = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        excel_adi, katalog.id || null, katalog.malzeme_kodu || null,
+        katalog.poz_birlesik || null, katalog.malzeme_cinsi || null,
+        katalog.malzeme_tanimi_sap || null, katalog.olcu || null,
+        mevcut.id
+      );
+    } else {
+      db.prepare(`
+        INSERT INTO kullanici_eslestirme
+          (excel_adi, excel_adi_norm, katalog_id, malzeme_kodu, poz_birlesik, malzeme_cinsi, malzeme_tanimi_sap, olcu)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        excel_adi, norm, katalog.id || null, katalog.malzeme_kodu || null,
+        katalog.poz_birlesik || null, katalog.malzeme_cinsi || null,
+        katalog.malzeme_tanimi_sap || null, katalog.olcu || null
+      );
+    }
+
+    basarili(res, { kaydedildi: true });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
 // POST /eslestir - Malzeme adlarını katalogla eşleştir
 router.post('/eslestir', async (req, res) => {
   try {
@@ -174,9 +243,34 @@ router.post('/eslestir', async (req, res) => {
       FROM depo_malzeme_katalogu WHERE is_category = 0
     `).all();
 
+    // Kullanıcı hafızasını yükle
+    let tumKullanici = [];
+    try {
+      tumKullanici = db.prepare('SELECT * FROM kullanici_eslestirme ORDER BY kullanim_sayisi DESC').all();
+    } catch { /* tablo henüz yoksa atla */ }
+
+    const kullaniciKatalogStmt = db.prepare(`
+      SELECT id, malzeme_kodu, poz_birlesik, malzeme_cinsi, malzeme_tanimi_sap, olcu
+      FROM depo_malzeme_katalogu WHERE id = ?
+    `);
+
     const eslesmeYap = (k) => {
       const adi = k.malzeme_adi || k.malzeme_adi_belge || '';
       let eslesme = null;
+
+      // 0) Kullanıcı hafızasından eşleştir (en yüksek öncelik)
+      if (adi && tumKullanici.length > 0) {
+        const norm = normalizeForMatch(adi);
+        let enIyiKullanici = null, enIyiSkor = 0;
+        for (const u of tumKullanici) {
+          if (u.excel_adi_norm === norm) { enIyiKullanici = u; break; }
+          const skor = kelimeOrtusme(norm, u.excel_adi_norm);
+          if (skor > enIyiSkor && skor >= 0.7) { enIyiSkor = skor; enIyiKullanici = u; }
+        }
+        if (enIyiKullanici?.katalog_id) {
+          eslesme = kullaniciKatalogStmt.get(enIyiKullanici.katalog_id) || null;
+        }
+      }
 
       // 1) Malzeme kodu ile direkt eşleştir
       if (k.malzeme_kodu) {

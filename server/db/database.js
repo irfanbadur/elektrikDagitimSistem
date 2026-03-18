@@ -251,6 +251,25 @@ function runMigrations(database) {
     // Tablo henüz yoksa sessizce atla
   }
 
+  // Kullanıcı katalog eşleştirme hafızası
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS kullanici_eslestirme (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      excel_adi TEXT NOT NULL,
+      excel_adi_norm TEXT NOT NULL,
+      katalog_id INTEGER,
+      malzeme_kodu TEXT,
+      poz_birlesik TEXT,
+      malzeme_cinsi TEXT,
+      malzeme_tanimi_sap TEXT,
+      olcu TEXT,
+      kullanim_sayisi INTEGER DEFAULT 1,
+      olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+      guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_kullanici_eslestirme_norm ON kullanici_eslestirme(excel_adi_norm)');
+
   // sorumlu_pozisyon_id → sorumlu_rol_id migration
   renameColumnIfNeeded(database, 'is_tipi_fazlari', 'sorumlu_pozisyon_id', 'sorumlu_rol_id');
   renameColumnIfNeeded(database, 'proje_adimlari', 'sorumlu_pozisyon_id', 'sorumlu_rol_id');

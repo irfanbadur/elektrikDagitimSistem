@@ -160,6 +160,13 @@ function KesifKalemSatir({ kalem, index, onChange, onSil }) {
       else if (isKgBirim(orijinalBirim) && isMtBirim(katalogBirim))
         yeniMiktar = Math.round(kalem.miktar / kgKmOran * 1000 * 100) / 100
     }
+
+    // Kullanıcı seçimini hafızaya kaydet (fire-and-forget)
+    const excelAdi = kalem._excel_adi || kalem.malzeme_adi
+    if (excelAdi) {
+      api.post('/malzeme-katalog/kullanici-eslesme', { excel_adi: excelAdi, katalog: item }).catch(() => {})
+    }
+
     onChange(index, {
       ...kalem,
       malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || kalem.malzeme_adi,
