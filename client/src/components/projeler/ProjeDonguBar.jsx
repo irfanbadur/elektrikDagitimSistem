@@ -1,13 +1,17 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { PhotoProvider, PhotoView } from 'react-photo-view'
+import 'react-photo-view/dist/react-photo-view.css'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useProjeFazIlerleme, useAdimMetaGuncelle } from '@/hooks/useDongu'
 import {
   FileText, Image, File, Upload, MapPin, Zap, X, Navigation, Clock,
-  CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus
+  CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus, Sparkles
 } from 'lucide-react'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
+import KesifParseModal from './KesifParseModal'
+import ConfirmDialog from '@/components/shared/ConfirmDialog'
 
 const DURUM = {
   bekliyor:     { bg: 'bg-gray-50',    border: 'border-gray-200',    text: 'text-gray-500',    dot: 'bg-gray-300',    label: 'Bekliyor',      badgeBg: 'bg-gray-100 text-gray-500' },
@@ -52,9 +56,16 @@ function resimMi(adi) {
 }
 
 // ─── Dosya Yukleme Komponenti ────────────────
+function xlsMi(adi) {
+  if (!adi) return false
+  return ['xls', 'xlsx'].includes(adi.split('.').pop().toLowerCase())
+}
+
 function DosyaYuklemeIcerik({ adim, projeId }) {
   const [dragOver, setDragOver] = useState(false)
   const [yukleniyor, setYukleniyor] = useState(false)
+  const [parseModal, setParseModal] = useState(null)
+  const [silOnay, setSilOnay] = useState(null) // { id, adi }
   const fileRef = useRef(null)
   const qc = useQueryClient()
 
@@ -86,14 +97,15 @@ function DosyaYuklemeIcerik({ adim, projeId }) {
     setYukleniyor(false)
   }
 
-  const sil = async (dosyaId, e) => {
-    e.stopPropagation()
+  const silOnayla = async () => {
+    if (!silOnay) return
     try {
-      await api.delete(`/dosya/${dosyaId}?fiziksel=true`)
+      await api.delete(`/dosya/${silOnay.id}?fiziksel=true`)
       qc.invalidateQueries({ queryKey: ['adim-dosyalar', adim.id] })
     } catch (err) {
       console.error('Dosya silme hatasi:', err)
     }
+    setSilOnay(null)
   }
 
   const liste = dosyalar || []
@@ -110,30 +122,48 @@ function DosyaYuklemeIcerik({ adim, projeId }) {
     >
       {/* Dosya listesi */}
       {liste.length > 0 && (
-        <div className="flex items-center gap-1 flex-wrap">
-          {liste.slice(0, 6).map((dosya) => {
-            const adi = dosya.orijinal_adi || dosya.dosya_adi || ''
-            return (
-              <div key={dosya.id} className="group relative w-10 h-10 rounded border border-gray-200 bg-white overflow-hidden flex items-center justify-center flex-shrink-0" title={adi}>
-                {resimMi(adi) ? (
-                  <img src={`/api/dosya/${dosya.id}/thumb`} alt={adi} className="w-full h-full object-cover" loading="lazy" />
-                ) : (
-                  <DosyaUzantiBadge adi={adi} />
-                )}
-                <button
-                  onClick={(e) => sil(dosya.id, e)}
-                  className="absolute -top-0.5 -right-0.5 hidden group-hover:flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-white"
-                  title="Sil"
-                >
-                  <X className="h-2 w-2" />
-                </button>
-              </div>
-            )
-          })}
-          {liste.length > 6 && (
-            <span className="text-[10px] text-gray-400 font-semibold">+{liste.length - 6}</span>
-          )}
-        </div>
+        <PhotoProvider>
+          <div className="flex items-center gap-1 flex-wrap">
+            {liste.slice(0, 6).map((dosya) => {
+              const adi = dosya.orijinal_adi || dosya.dosya_adi || ''
+              const gorsel = resimMi(adi)
+              const thumb = (
+                <div className="group relative w-10 h-10 rounded border border-gray-200 bg-white overflow-hidden flex items-center justify-center flex-shrink-0 cursor-pointer" title={adi}>
+                  {gorsel ? (
+                    <img src={`/api/dosya/${dosya.id}/thumb`} alt={adi} className="w-full h-full object-cover" loading="lazy" />
+                  ) : (
+                    <DosyaUzantiBadge adi={adi} />
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); setSilOnay({ id: dosya.id, adi }) }}
+                    className="absolute -top-0.5 -right-0.5 hidden group-hover:flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-white"
+                    title="Sil"
+                  >
+                    <X className="h-2 w-2" />
+                  </button>
+                </div>
+              )
+              if (gorsel) return (
+                <PhotoView key={dosya.id} src={`/api/dosya/${dosya.id}/dosya`}>
+                  {thumb}
+                </PhotoView>
+              )
+              if (xlsMi(adi)) return (
+                <div key={dosya.id} className="relative group" onClick={(e) => { e.stopPropagation(); setParseModal({ dosyaId: dosya.id, dosyaAdi: adi }) }}>
+                  {thumb}
+                </div>
+              )
+              return (
+                <a key={dosya.id} href={`/api/dosya/${dosya.id}/dosya`} download={adi} onClick={e => e.stopPropagation()}>
+                  {thumb}
+                </a>
+              )
+            })}
+            {liste.length > 6 && (
+              <span className="text-[10px] text-gray-400 font-semibold">+{liste.length - 6}</span>
+            )}
+          </div>
+        </PhotoProvider>
       )}
 
       {/* Yukle */}
@@ -151,6 +181,32 @@ function DosyaYuklemeIcerik({ adim, projeId }) {
         </button>
       )}
       <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { yukle(Array.from(e.target.files)); e.target.value = '' }} />
+
+      {/* Silme onay */}
+      {silOnay && createPortal(
+        <ConfirmDialog
+          open={true}
+          onClose={() => setSilOnay(null)}
+          onConfirm={silOnayla}
+          title="Dosyayi Sil"
+          message={`"${silOnay.adi}" dosyasi kalici olarak silinecek.`}
+          confirmText="Sil"
+          variant="destructive"
+        />,
+        document.body
+      )}
+
+      {/* Keşif XLS Parse Modal */}
+      {parseModal && createPortal(
+        <KesifParseModal
+          projeId={projeId}
+          dosyaId={parseModal.dosyaId}
+          dosyaAdi={parseModal.dosyaAdi}
+          onKapat={() => setParseModal(null)}
+          onBasarili={() => qc.invalidateQueries({ queryKey: ['proje-kesif'] })}
+        />,
+        document.body
+      )}
     </div>
   )
 }

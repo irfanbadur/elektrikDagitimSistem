@@ -137,7 +137,7 @@ function DemontajSatirDuzenle({ kalem, index, onChange, onSil }) {
       setDropdownPos({
         position: 'fixed',
         left: rect.left,
-        width: 450,
+        width: 600,
         zIndex: 9999,
         ...(openUp
           ? { bottom: window.innerHeight - rect.top + 4 }
@@ -194,6 +194,7 @@ function DemontajSatirDuzenle({ kalem, index, onChange, onSil }) {
                   <tr className="border-b border-input">
                     <th className="px-2 py-1 text-left font-medium text-muted-foreground">Poz</th>
                     <th className="px-2 py-1 text-left font-medium text-muted-foreground">Malzeme</th>
+                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">SAP Tanım</th>
                     <th className="px-2 py-1 text-left font-medium text-muted-foreground">Birim</th>
                   </tr>
                 </thead>
@@ -201,7 +202,8 @@ function DemontajSatirDuzenle({ kalem, index, onChange, onSil }) {
                   {sonuclar.slice(0, 20).map((item) => (
                     <tr key={item.id} onMouseDown={() => handleKatalogSec(item)} className="cursor-pointer border-b border-input/30 hover:bg-primary/5">
                       <td className="px-2 py-1 font-mono text-blue-600 whitespace-nowrap">{item.poz_birlesik || '-'}</td>
-                      <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
+                      <td className="px-2 py-1">{item.malzeme_cinsi || '-'}</td>
+                      <td className="px-2 py-1 text-muted-foreground">{item.malzeme_tanimi_sap || '-'}</td>
                       <td className="px-2 py-1 text-muted-foreground">{item.olcu || '-'}</td>
                     </tr>
                   ))}

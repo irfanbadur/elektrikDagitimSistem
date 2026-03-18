@@ -75,7 +75,7 @@ export default function KatalogAramaInput({ value, onChange, placeholder, classN
       setDropdownPos({
         position: 'fixed',
         left: rect.left,
-        width: Math.max(rect.width, 400),
+        width: Math.max(rect.width, 600),
         zIndex: 9999,
         ...(openUp
           ? { bottom: window.innerHeight - rect.top + 4 }
@@ -122,6 +122,7 @@ export default function KatalogAramaInput({ value, onChange, placeholder, classN
                 <tr className="border-b border-input">
                   <th className="px-2 py-1 text-left font-medium text-muted-foreground">Kod</th>
                   <th className="px-2 py-1 text-left font-medium text-muted-foreground">Malzeme</th>
+                  <th className="px-2 py-1 text-left font-medium text-muted-foreground">SAP Tanım</th>
                   <th className="px-2 py-1 text-left font-medium text-muted-foreground">Birim</th>
                 </tr>
               </thead>
@@ -129,7 +130,8 @@ export default function KatalogAramaInput({ value, onChange, placeholder, classN
                 {sonuclar.slice(0, 15).map((item) => (
                   <tr key={item.id} onMouseDown={() => handleSec(item)} className="cursor-pointer border-b border-input/30 hover:bg-primary/5">
                     <td className="px-2 py-1 font-mono text-blue-600 whitespace-nowrap">{item.malzeme_kodu || item.poz_birlesik || '-'}</td>
-                    <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
+                    <td className="px-2 py-1">{item.malzeme_cinsi || '-'}</td>
+                    <td className="px-2 py-1 text-muted-foreground">{item.malzeme_tanimi_sap || '-'}</td>
                     <td className="px-2 py-1 text-muted-foreground">{item.olcu || '-'}</td>
                   </tr>
                 ))}

@@ -185,6 +185,7 @@ function DemontajFormSatiri({ onKaydet, onIptal }) {
                     <tr className="border-b border-input">
                       <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Poz No</th>
                       <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Malzeme Cinsi</th>
+                      <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">SAP Tanım</th>
                       <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Birim</th>
                     </tr>
                   </thead>
@@ -193,6 +194,7 @@ function DemontajFormSatiri({ onKaydet, onIptal }) {
                       <tr key={item.id} onClick={() => handleSec(item)} className="cursor-pointer border-b border-input/30 hover:bg-primary/5 transition-colors">
                         <td className="px-2 py-1.5 font-mono text-blue-600 whitespace-nowrap">{item.poz_birlesik || '-'}</td>
                         <td className="px-2 py-1.5">{item.malzeme_cinsi || '-'}</td>
+                        <td className="px-2 py-1.5 text-muted-foreground">{item.malzeme_tanimi_sap || '-'}</td>
                         <td className="px-2 py-1.5 text-muted-foreground whitespace-nowrap">{item.olcu || '-'}</td>
                       </tr>
                     ))}

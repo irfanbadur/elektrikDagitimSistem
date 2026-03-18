@@ -1,6 +1,31 @@
 const router = require('express').Router();
 const { getDb } = require('../db/database');
 const { basarili, hata } = require('../utils/helpers');
+const { metinTabanliAI } = require('../services/aiParseService');
+
+// Teknik malzeme adını normalize et (kablo boyutları, birimler, marka bilgisi temizleme)
+function normalizeAd(ad) {
+  if (!ad) return '';
+  return ad
+    .toUpperCase()
+    .replace(/[xX×]/g, 'X')           // çarpı işareti
+    .replace(/mm\^?2/gi, 'MM2')       // mm2, mm^2
+    .replace(/\(.*?\)/g, '')           // parantez içi (Kg/Mt, marka vb.) kaldır
+    .replace(/\b\d+[.,]\d+\s*KG\s*\/\s*M[Tt]\.?\b/gi, '') // "0.620 Kg/Mt." kaldır
+    .replace(/\b(ALPEK|PRYSMIAN|NEXANS|TR|KABLO|ILETKEN|OZGUVEN|NKT)\b/gi, '') // marka adları
+    .replace(/[\/\\]/g, ' ')           // slash → boşluk
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Teknik boyut pattern çıkar: "3 X 35 + 50 MM2" → "3X35+50"
+function boyutCikar(ad) {
+  const norm = normalizeAd(ad);
+  // Sayı X Sayı kalıplarını yakala
+  const parcalar = norm.match(/\d+\s*X\s*\d+|\d+\s*\+\s*\d+|\d+\s*MM2?/gi);
+  if (!parcalar) return '';
+  return parcalar.join(' ').replace(/\s+/g, '').toUpperCase();
+}
 
 // GET / - tüm katalog (filtreleme destekli)
 router.get('/', (req, res) => {
@@ -113,7 +138,7 @@ router.get('/istatistikler', (req, res) => {
 });
 
 // POST /eslestir - Malzeme adlarını katalogla eşleştir
-router.post('/eslestir', (req, res) => {
+router.post('/eslestir', async (req, res) => {
   try {
     const db = getDb();
     const { kalemler } = req.body;
@@ -143,7 +168,13 @@ router.post('/eslestir', (req, res) => {
       LIMIT 1
     `);
 
-    const sonuclar = kalemler.map(k => {
+    // Tüm katalog verilerini bir kez çek (boyut eşleştirme için)
+    const tumKatalog = db.prepare(`
+      SELECT id, malzeme_kodu, poz_birlesik, malzeme_cinsi, malzeme_tanimi_sap, olcu
+      FROM depo_malzeme_katalogu WHERE is_category = 0
+    `).all();
+
+    const eslesmeYap = (k) => {
       const adi = k.malzeme_adi || k.malzeme_adi_belge || '';
       let eslesme = null;
 
@@ -157,43 +188,83 @@ router.post('/eslestir', (req, res) => {
         eslesme = pozStmt.get(k.poz_no);
       }
 
-      // 3) İsim ile eşleştir
+      // 3) İsim ile tam LIKE eşleştir
       if (!eslesme && adi) {
-        // Önce tam arama
         eslesme = adStmt.get(`%${adi}%`, `%${adi}%`);
+      }
 
-        // Kelimelere böl
-        if (!eslesme) {
-          const kelimeler = adi.split(/\s+/).filter(w => w.length > 2);
-          // Kelimeleri birleştirerek ara
-          if (kelimeler.length > 1) {
-            for (let len = kelimeler.length; len >= 2 && !eslesme; len--) {
-              const q = `%${kelimeler.slice(0, len).join('%')}%`;
-              eslesme = adStmt.get(q, q);
-            }
+      // 4) Normalize edilmiş isim ile LIKE arama
+      if (!eslesme && adi) {
+        const norm = normalizeAd(adi);
+        const kelimeler = norm.split(/\s+/).filter(w => w.length > 2);
+        if (kelimeler.length > 1) {
+          for (let len = kelimeler.length; len >= 2 && !eslesme; len--) {
+            const q = `%${kelimeler.slice(0, len).join('%')}%`;
+            eslesme = adStmt.get(q, q);
           }
-          // Tek tek kelimelerle
-          if (!eslesme && kelimeler.length > 0) {
-            const enUzun = [...kelimeler].sort((a, b) => b.length - a.length)[0];
-            if (enUzun.length >= 4) {
-              eslesme = adStmt.get(`%${enUzun}%`, `%${enUzun}%`);
+        }
+        if (!eslesme && kelimeler.length > 0) {
+          const enUzun = [...kelimeler].sort((a, b) => b.length - a.length)[0];
+          if (enUzun.length >= 4) {
+            eslesme = adStmt.get(`%${enUzun}%`, `%${enUzun}%`);
+          }
+        }
+      }
+
+      // 5) Boyut pattern eşleştirme (kablo kesitleri için)
+      if (!eslesme && adi) {
+        const kayBoyut = boyutCikar(adi);
+        if (kayBoyut.length >= 3) {
+          for (const kat of tumKatalog) {
+            const katBoyut = boyutCikar(kat.malzeme_cinsi || kat.malzeme_tanimi_sap || '');
+            if (katBoyut && katBoyut === kayBoyut) {
+              eslesme = kat;
+              break;
             }
           }
         }
       }
 
-      return {
-        malzeme_adi: adi,
-        eslesme: eslesme ? {
-          id: eslesme.id,
-          malzeme_kodu: eslesme.malzeme_kodu,
-          poz_birlesik: eslesme.poz_birlesik,
-          malzeme_cinsi: eslesme.malzeme_cinsi,
-          malzeme_tanimi_sap: eslesme.malzeme_tanimi_sap,
-          olcu: eslesme.olcu,
-        } : null
-      };
-    });
+      return { malzeme_adi: adi, eslesme: eslesme ? { id: eslesme.id, malzeme_kodu: eslesme.malzeme_kodu, poz_birlesik: eslesme.poz_birlesik, malzeme_cinsi: eslesme.malzeme_cinsi, malzeme_tanimi_sap: eslesme.malzeme_tanimi_sap, olcu: eslesme.olcu } : null };
+    };
+
+    let sonuclar = kalemler.map(eslesmeYap);
+
+    // 6) AI fallback: eşleşemeyen kalemler için toplu AI eşleştirme
+    const eslesemeyenler = sonuclar.filter(s => !s.eslesme).map(s => s.malzeme_adi);
+    if (eslesemeyenler.length > 0 && eslesemeyenler.length <= 30) {
+      try {
+        const katalogListesi = tumKatalog.slice(0, 500).map(k =>
+          `[${k.malzeme_kodu || ''}] ${k.malzeme_cinsi || k.malzeme_tanimi_sap || ''}`
+        ).join('\n');
+
+        const aiSonuc = await metinTabanliAI(
+          `Sen elektrik dağıtım malzemeleri uzmanısın. Aşağıdaki malzeme adlarını katalog listesiyle eşleştir.
+Her malzeme için katalogdaki en uygun eşleşmeyi bul. Kablo kesit boyutları, direk tipleri, trafo güçleri gibi teknik değerleri dikkate al.
+Marka adlarını, parantez içi bilgileri (Kg/Mt, üretici) görmezden gel, sadece teknik özelliklere odaklan.
+JSON döndür: { "eslesmeler": { "malzeme_adi": "eslesmeKodu veya null" } }
+SADECE JSON döndür.`,
+          `ESLESECEK MALZEMELER:\n${eslesemeyenler.join('\n')}\n\nKATALOG:\n${katalogListesi}`
+        );
+
+        if (aiSonuc && !aiSonuc.parse_error && aiSonuc.eslesmeler) {
+          const kodMap = {};
+          tumKatalog.forEach(k => { if (k.malzeme_kodu) kodMap[k.malzeme_kodu] = k; });
+
+          sonuclar = sonuclar.map(s => {
+            if (s.eslesme) return s;
+            const aiKod = aiSonuc.eslesmeler[s.malzeme_adi];
+            if (aiKod && kodMap[aiKod]) {
+              const kat = kodMap[aiKod];
+              return { ...s, eslesme: { id: kat.id, malzeme_kodu: kat.malzeme_kodu, poz_birlesik: kat.poz_birlesik, malzeme_cinsi: kat.malzeme_cinsi, malzeme_tanimi_sap: kat.malzeme_tanimi_sap, olcu: kat.olcu } };
+            }
+            return s;
+          });
+        }
+      } catch (aiErr) {
+        console.error('AI katalog eşleştirme hatası:', aiErr.message);
+      }
+    }
 
     basarili(res, sonuclar);
   } catch (err) {
