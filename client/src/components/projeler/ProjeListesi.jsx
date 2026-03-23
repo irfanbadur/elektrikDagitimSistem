@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Eye, Pencil, Trash2, X, CheckSquare } from 'lucide-react'
+import { Plus, Eye, Pencil, Trash2, X, CheckSquare, FileSpreadsheet } from 'lucide-react'
 import { useProjeler, useProjeSil, useTopluProjeSil } from '@/hooks/useProjeler'
 import { useIsTipleri } from '@/hooks/useIsTipleri'
 import { useBolgeler } from '@/hooks/useBolgeler'
@@ -8,6 +8,7 @@ import { useDonguSablonlari } from '@/hooks/useDongu'
 import { useAuth } from '@/context/AuthContext'
 import DataTable from '@/components/shared/DataTable'
 import { ProjeDurumBadge, OncelikBadge } from '@/components/shared/StatusBadge'
+import MalzemeTalepModal from './MalzemeTalepModal'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton'
 import { PROJE_DURUMLARI } from '@/utils/constants'
@@ -33,6 +34,7 @@ export default function ProjeListesi() {
   // Checkbox seçim state
   const [seciliIdler, setSeciliIdler] = useState(new Set())
   const [topluSilmeDialogAcik, setTopluSilmeDialogAcik] = useState(false)
+  const [malzemeTalepModalAcik, setMalzemeTalepModalAcik] = useState(false)
 
   const secimDegistir = useCallback((id) => {
     setSeciliIdler((prev) => {
@@ -109,9 +111,8 @@ export default function ProjeListesi() {
 
   const columns = useMemo(
     () => [
-      // Checkbox sütunu - sadece silme yetkisi varsa
-      ...(silmeYetkisi
-        ? [
+      // Checkbox sütunu
+      ...[
             {
               id: 'secim',
               header: () => (
@@ -140,8 +141,7 @@ export default function ProjeListesi() {
               enableSorting: false,
               size: 40,
             },
-          ]
-        : []),
+          ],
       {
         accessorKey: 'proje_no',
         header: 'Proje No',
@@ -365,6 +365,13 @@ export default function ProjeListesi() {
             >
               Secimi Temizle
             </button>
+            <button
+              onClick={() => setMalzemeTalepModalAcik(true)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Malzeme Talebi ({seciliIdler.size})
+            </button>
             {silmeYetkisi && (
               <button
                 onClick={() => setTopluSilmeDialogAcik(true)}
@@ -393,6 +400,14 @@ export default function ProjeListesi() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Malzeme Talebi Modal */}
+      {malzemeTalepModalAcik && (
+        <MalzemeTalepModal
+          projeler={(projeler || []).filter((p) => seciliIdler.has(p.id))}
+          onKapat={() => setMalzemeTalepModalAcik(false)}
+        />
       )}
 
       {/* Tekli silme dialog */}

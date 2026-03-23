@@ -92,6 +92,9 @@ app.use('/api/yer-teslim', require('./routes/yerTeslimParse'));
 // Enerji Kesinti Planlayıcı
 app.use('/api/enerji-kesintileri', require('./routes/enerjiKesintileri'));
 
+// Malzeme Talebi (Keşif → Excel şablon)
+app.use('/api/malzeme-talep', require('./routes/malzemeTalep'));
+
 // Error handler
 const { errorHandler } = require('./middleware/errorHandler');
 app.use(errorHandler);
