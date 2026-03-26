@@ -23,7 +23,6 @@ import { ProjeDurumBadge, OncelikBadge } from '@/components/shared/StatusBadge'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { CardSkeleton, TableSkeleton } from '@/components/shared/LoadingSkeleton'
 import ProjeDurumTimeline from './ProjeDurumTimeline'
-import ProjeDetayBirlesikDokumanlar from './ProjeDetayBirlesikDokumanlar'
 import ProjeDetayNotlar from './ProjeDetayNotlar'
 import ProjeDongu from './ProjeDongu'
 import ProjeKesif from './ProjeKesif'
@@ -59,7 +58,6 @@ const TABS = [
 { key: 'kesif', label: 'Proje-Kesif', icon: Package },
   { key: 'demontaj', label: 'Demontaj', icon: Wrench },
   { key: 'hak_edis', label: 'Hak Edis', icon: BarChart3 },
-  { key: 'dokumanlar', label: 'Dokumanlar', icon: FileText },
   { key: 'raporlar', label: 'Raporlar', icon: BarChart3 },
   { key: 'gecmis', label: 'Gecmis', icon: Clock },
   { key: 'notlar', label: 'Notlar', icon: StickyNote },
@@ -75,7 +73,7 @@ export default function ProjeDetay() {
   const projeSil = useProjeSil()
   const durumDegistir = useProjeDurumDegistir()
 
-  const [aktifTab, setAktifTab] = useState('dokumanlar')
+  const [aktifTab, setAktifTab] = useState('detay')
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [durumMenuAcik, setDurumMenuAcik] = useState(false)
 
@@ -521,10 +519,6 @@ export default function ProjeDetay() {
 
         {aktifTab === 'hak_edis' && (
           <ProjeHakEdis projeId={id} />
-        )}
-
-        {aktifTab === 'dokumanlar' && (
-          <ProjeDetayBirlesikDokumanlar projeId={id} />
         )}
 
         {aktifTab === 'notlar' && (

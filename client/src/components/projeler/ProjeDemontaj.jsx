@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, Trash2, Search, Package, Check, Clock, Wrench } from 'lucide-react'
+import { Plus, Trash2, Search, Package, Check, Clock, Wrench, FileSpreadsheet, Loader2, ExternalLink, RefreshCw } from 'lucide-react'
 import { useProjeDemontaj, useProjeDemontajEkle, useProjeDemontajGuncelle, useProjeDemontajSil, useProjeDemontajOzet } from '@/hooks/useProjeDemontaj'
 import { useDepoKatalog } from '@/hooks/useDepoKatalog'
+import api from '@/api/client'
 import { cn } from '@/lib/utils'
 
 const DURUM_MAP = {
@@ -229,6 +230,8 @@ export default function ProjeDemontaj({ projeId }) {
   const sil = useProjeDemontajSil(projeId)
 
   const [yeniSatir, setYeniSatir] = useState(false)
+  const [tutanakYukleniyor, setTutanakYukleniyor] = useState(false)
+  const [tutanakDosya, setTutanakDosya] = useState(null) // { dosya_id, dosya_yolu, guncellendi }
 
   const handleKaydet = async (data) => {
     await ekle.mutateAsync(data)
@@ -239,6 +242,19 @@ export default function ProjeDemontaj({ projeId }) {
     guncelle.mutate({ id, ...kalem, durum: yeniDurum })
   }
 
+  const handleTutanakOlustur = async () => {
+    setTutanakYukleniyor(true)
+    try {
+      const res = await api.post(`/proje-demontaj/${projeId}/tutanak-olustur`)
+      const data = res?.data || res
+      setTutanakDosya(data)
+    } catch (err) {
+      console.error('Tutanak oluşturma hatası:', err)
+    } finally {
+      setTutanakYukleniyor(false)
+    }
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -246,10 +262,39 @@ export default function ProjeDemontaj({ projeId }) {
           <h3 className="text-lg font-semibold">Demontaj Listesi</h3>
           <p className="text-sm text-muted-foreground">Projede sokulmesi gereken malzemeler</p>
         </div>
-        <button onClick={() => setYeniSatir(true)} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90">
-          <Plus className="h-4 w-4" />
-          Ekle
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Tutanak Oluştur/Güncelle */}
+          <button
+            onClick={handleTutanakOlustur}
+            disabled={tutanakYukleniyor}
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+          >
+            {tutanakYukleniyor ? (
+              <><Loader2 className="h-4 w-4 animate-spin" />Oluşturuluyor...</>
+            ) : tutanakDosya ? (
+              <><RefreshCw className="h-4 w-4" />Tutanağı Güncelle</>
+            ) : (
+              <><FileSpreadsheet className="h-4 w-4" />Tutanak Oluştur</>
+            )}
+          </button>
+          {/* Tutanak dosya linki */}
+          {tutanakDosya && (
+            <a
+              href={`/api/dosya/indir/${tutanakDosya.dosya_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 rounded-lg border border-input px-3 py-2 text-sm text-primary hover:bg-primary/5 transition-colors"
+              title="Tutanağı indir"
+            >
+              <ExternalLink className="h-4 w-4" />
+              İndir
+            </a>
+          )}
+          <button onClick={() => setYeniSatir(true)} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90">
+            <Plus className="h-4 w-4" />
+            Ekle
+          </button>
+        </div>
       </div>
 
       <DemontajOzet projeId={projeId} />
