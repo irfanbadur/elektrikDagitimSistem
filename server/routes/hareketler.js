@@ -517,11 +517,17 @@ router.post('/:id/iptal', (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const db = getDb();
-    const { irsaliye_bilgi, kalemler } = req.body;
+    const { irsaliye_bilgi, kalemler, silinen_dokuman_ids } = req.body;
     const hareket = db.prepare('SELECT * FROM hareketler WHERE id = ?').get(req.params.id);
     if (!hareket) return hata(res, 'Hareket bulunamadı', 404);
 
     db.transaction(() => {
+      // Silinen dokümanları kaldır
+      if (silinen_dokuman_ids && silinen_dokuman_ids.length > 0) {
+        const stmt = db.prepare('DELETE FROM hareket_dokumanlari WHERE id = ? AND hareket_id = ?');
+        for (const dokId of silinen_dokuman_ids) stmt.run(dokId, req.params.id);
+      }
+
       // İrsaliye meta güncelle
       if (irsaliye_bilgi) {
         const mevcutMeta = db.prepare("SELECT id FROM hareket_meta WHERE hareket_id = ? AND meta_tipi = 'irsaliye_bilgi'").get(req.params.id);
@@ -552,6 +558,34 @@ router.put('/:id', async (req, res) => {
     })();
 
     basarili(res, { message: 'Hareket güncellendi' });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// POST /:id/dokuman-ekle — Harekete yeni doküman ekle
+const dokumanUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }).array('dosyalar', 10);
+router.post('/:id/dokuman-ekle', dokumanUpload, async (req, res) => {
+  try {
+    const db = getDb();
+    const hareket = db.prepare('SELECT * FROM hareketler WHERE id = ?').get(req.params.id);
+    if (!hareket) return hata(res, 'Hareket bulunamadı', 404);
+    if (!req.files || req.files.length === 0) return hata(res, 'Dosya yüklenmedi');
+
+    const eklenen = [];
+    for (const file of req.files) {
+      const dosya = await dosyaService.dosyaYukle(file.buffer, {
+        orijinalAdi: file.originalname,
+        alan: 'depo',
+        altAlan: `${new Date().getFullYear()}/gelen`,
+        aciklama: 'irsaliye',
+        mimeType: file.mimetype,
+      });
+      db.prepare('INSERT INTO hareket_dokumanlari (hareket_id, dosya_id, dosya_tipi, orijinal_adi) VALUES (?, ?, ?, ?)').run(
+        req.params.id, dosya.id, 'irsaliye', file.originalname);
+      eklenen.push(dosya.id);
+    }
+    basarili(res, { eklenen_sayisi: eklenen.length });
   } catch (err) {
     hata(res, err.message, 500);
   }

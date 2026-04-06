@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   ArrowDownCircle, ArrowUpCircle, ArrowRightLeft, RotateCcw, Flame, ClipboardList,
-  ChevronDown, ChevronUp, FileText, AlertTriangle, XCircle, Loader2, Eye, Pencil, Save, ArrowRight,
+  ChevronDown, ChevronUp, FileText, AlertTriangle, XCircle, Loader2, Eye, Pencil, Save, ArrowRight, Plus, Trash2, Image,
 } from 'lucide-react'
 import { useHareketler, useHareket, useHareketIptal } from '@/hooks/useHareketler'
 import api from '@/api/client'
@@ -25,7 +25,10 @@ function HareketDetay({ hareketId, onKapat, onResimTikla }) {
   const [irsaliyeForm, setIrsaliyeForm] = useState({})
   const [kalemlerForm, setKalemlerForm] = useState([])
   const [kaydediliyor, setKaydediliyor] = useState(false)
-  // onizlemeUrl artık parent'tan geliyor
+  const [mevcutDokumanlar, setMevcutDokumanlar] = useState([]) // silinecekler tracking
+  const [silinenDokumanIds, setSilinenDokumanIds] = useState([])
+  const [yeniDosyalar, setYeniDosyalar] = useState([]) // {file, onizleme, tip}
+  const dosyaRef = useRef(null)
 
   // Düzenleme moduna geçince formu doldur
   const handleDuzenleAc = () => {
@@ -47,18 +50,55 @@ function HareketDetay({ hareketId, onKapat, onResimTikla }) {
       ...k,
       malzeme_adi: k.malzeme_cinsi || k.malzeme_tanimi_sap || k.malzeme_adi || '',
     })))
+    setMevcutDokumanlar(h.dokumanlar || [])
+    setSilinenDokumanIds([])
+    setYeniDosyalar([])
     setDuzenleAcik(true)
   }
 
   const handleKalemDegistir = (idx, yeni) => setKalemlerForm(prev => prev.map((k, i) => i === idx ? yeni : k))
 
+  const handleYeniDosyaEkle = (e) => {
+    const files = Array.from(e.target.files || [])
+    files.forEach(file => {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        setYeniDosyalar(prev => [...prev, { file, onizleme: ev.target.result, tip: 'irsaliye' }])
+      }
+      reader.readAsDataURL(file)
+    })
+    if (dosyaRef.current) dosyaRef.current.value = ''
+  }
+
+  const handleMevcutDokumanSil = (dokId) => {
+    setSilinenDokumanIds(prev => [...prev, dokId])
+    setMevcutDokumanlar(prev => prev.filter(d => d.id !== dokId))
+  }
+
+  const handleYeniDosyaSil = (idx) => {
+    setYeniDosyalar(prev => prev.filter((_, i) => i !== idx))
+  }
+
   const handleKaydet = async () => {
     setKaydediliyor(true)
     try {
+      // Temel güncelleme
       await api.put(`/hareketler/${h.id}`, {
         irsaliye_bilgi: irsaliyeForm,
         kalemler: kalemlerForm,
+        silinen_dokuman_ids: silinenDokumanIds,
       })
+      // Yeni dosya yükleme
+      if (yeniDosyalar.length > 0) {
+        const formData = new FormData()
+        yeniDosyalar.forEach(d => formData.append('dosyalar', d.file))
+        formData.append('hareket_id', h.id)
+        await fetch(`/api/hareketler/${h.id}/dokuman-ekle`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+          body: formData,
+        })
+      }
       setDuzenleAcik(false)
       onKapat() // refresh tetikle
     } catch (err) {
@@ -170,6 +210,57 @@ function HareketDetay({ hareketId, onKapat, onResimTikla }) {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Belgeler — düzenlenebilir */}
+          <div className="rounded-lg border border-input p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase">Belgeler</h4>
+              <button type="button" onClick={() => dosyaRef.current?.click()}
+                className="flex items-center gap-1 rounded-lg border border-input px-2.5 py-1.5 text-xs font-medium hover:bg-muted">
+                <Plus className="h-3 w-3" /> Görsel Ekle
+              </button>
+              <input ref={dosyaRef} type="file" accept="image/*" multiple onChange={handleYeniDosyaEkle} className="hidden" />
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {/* Mevcut dokümanlar */}
+              {mevcutDokumanlar.map(d => {
+                const url = `/uploads/${d.dosya_yolu}`
+                const isImg = (d.mime_tipi || '').startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(d.dosya_adi || '')
+                return (
+                  <div key={d.id} className="relative group">
+                    {isImg ? (
+                      <img src={url} alt={d.orijinal_adi || ''} className="h-20 w-28 rounded-lg border border-input object-cover" />
+                    ) : (
+                      <div className="flex h-20 w-28 items-center justify-center rounded-lg border border-input bg-muted">
+                        <FileText className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    <button type="button" onClick={() => handleMevcutDokumanSil(d.id)}
+                      className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                    <div className="mt-0.5 text-[10px] text-muted-foreground truncate w-28">{d.dosya_tipi || 'Belge'}</div>
+                  </div>
+                )
+              })}
+              {/* Yeni eklenen dosyalar */}
+              {yeniDosyalar.map((d, i) => (
+                <div key={i} className="relative group">
+                  <img src={d.onizleme} alt="Yeni" className="h-20 w-28 rounded-lg border-2 border-emerald-300 object-cover" />
+                  <button type="button" onClick={() => handleYeniDosyaSil(i)}
+                    className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                  <div className="mt-0.5 text-[10px] text-emerald-600 truncate w-28">Yeni</div>
+                </div>
+              ))}
+              {mevcutDokumanlar.length === 0 && yeniDosyalar.length === 0 && (
+                <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
+                  <Image className="h-4 w-4" /> Belge yok — yukarıdaki butonla ekleyin
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Kaydet/İptal */}
