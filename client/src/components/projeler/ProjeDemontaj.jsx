@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Search, Package, Check, Clock, Wrench, FileSpreadsheet, Loader2, ExternalLink, RefreshCw } from 'lucide-react'
 import { useProjeDemontaj, useProjeDemontajEkle, useProjeDemontajGuncelle, useProjeDemontajSil, useProjeDemontajOzet } from '@/hooks/useProjeDemontaj'
 import { useDepoKatalog } from '@/hooks/useDepoKatalog'
+import useDropdownNav from '@/hooks/useDropdownNav'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
 
@@ -141,12 +142,16 @@ function DemontajFormSatiri({ onKaydet, onIptal }) {
     if (!val) setForm({ malzeme_adi: '', malzeme_kodu: '', poz_no: '', birim: 'Ad', miktar: form.miktar })
   }
 
-  const handleSec = (item) => {
-    setForm({ ...form, malzeme_kodu: item.malzeme_kodu || '', poz_no: item.poz_birlesik || '', malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '', birim: item.olcu || 'Ad' })
+  const handleSec = useCallback((item) => {
+    setForm(prev => ({ ...prev, malzeme_kodu: item.malzeme_kodu || '', poz_no: item.poz_birlesik || '', malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '', birim: item.olcu || 'Ad' }))
     setArama(item.malzeme_cinsi || item.malzeme_tanimi_sap || '')
     setSecildi(true)
     setDropdownAcik(false)
-  }
+  }, [])
+
+  const gosterilenSonuclar = (sonuclar || []).slice(0, 50)
+  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilenSonuclar, handleSec, () => setDropdownAcik(false))
+  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
 
   // Serbest giriş de mümkün (katalogda olmayan malzeme)
   const handleSerbestKaydet = () => {
@@ -163,16 +168,17 @@ function DemontajFormSatiri({ onKaydet, onIptal }) {
       <td className="px-3 py-2">
         <div className="relative">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
             <input
               ref={inputRef}
               value={arama}
               onChange={handleAramaChange}
               onFocus={() => { if (arama.length >= 2 && !secildi) setDropdownAcik(true) }}
+              onKeyDown={dropdownAcik ? handleKeyDown : undefined}
               placeholder="Malzeme adi yazin..."
-              className="w-full rounded border border-input bg-background py-1 pl-7 pr-2 text-xs focus:border-primary focus:outline-none"
+              className="w-full rounded border border-input bg-background py-1 pl-2 pr-7 text-xs focus:border-primary focus:outline-none"
               autoFocus
             />
+            <Search className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
           </div>
           {dropdownAcik && (
             <div ref={dropdownRef} className="absolute left-0 top-full z-50 mt-1 max-h-60 w-[500px] overflow-y-auto rounded-lg border border-input bg-card shadow-xl">
@@ -191,8 +197,8 @@ function DemontajFormSatiri({ onKaydet, onIptal }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {sonuclar.slice(0, 50).map((item) => (
-                      <tr key={item.id} onClick={() => handleSec(item)} className="cursor-pointer border-b border-input/30 hover:bg-primary/5 transition-colors">
+                    {gosterilenSonuclar.map((item, i) => (
+                      <tr key={item.id} onClick={() => handleSec(item)} className={cn('cursor-pointer border-b border-input/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
                         <td className="px-2 py-1.5 font-mono text-blue-600 whitespace-nowrap">{item.poz_birlesik || '-'}</td>
                         <td className="px-2 py-1.5">{item.malzeme_cinsi || '-'}</td>
                         <td className="px-2 py-1.5 text-muted-foreground">{item.malzeme_tanimi_sap || '-'}</td>

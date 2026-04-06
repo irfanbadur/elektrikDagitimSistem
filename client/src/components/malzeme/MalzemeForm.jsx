@@ -1,16 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Save, ArrowLeft, Loader2, FileText, PenLine, ArrowRight, Search } from 'lucide-react'
-import api from '@/api/client'
-import {
-  useMalzeme,
-  useMalzemeOlustur,
-  useMalzemeGuncelle,
-} from '@/hooks/useMalzeme'
+import { Save, ArrowLeft, Loader2, ArrowRight, Plus, Trash2, Search, Image, X } from 'lucide-react'
+import useDropdownNav from '@/hooks/useDropdownNav'
+import { useMalzeme, useMalzemeOlustur, useMalzemeGuncelle } from '@/hooks/useMalzeme'
 import { useDepolar } from '@/hooks/useDepolar'
+import { useHareketKaydet } from '@/hooks/useHareketler'
 import { MALZEME_KATEGORILERI } from '@/utils/constants'
+import api from '@/api/client'
 import { cn } from '@/lib/utils'
-import EvrakGiris from './EvrakGiris'
 
 const BIRIMLER = [
   { value: 'metre', label: 'Metre' },
@@ -21,586 +18,414 @@ const BIRIMLER = [
   { value: 'top', label: 'Top' },
 ]
 
-const bosForm = {
-  malzeme_kodu: '',
-  malzeme_adi: '',
-  kategori: '',
-  birim: 'adet',
-  stok_miktari: '',
-  kritik_seviye: '',
-  birim_fiyat: '',
-  depo_konumu: '',
-  notlar: '',
+// ─── İrsaliye bilgileri boş form ───
+const bosIrsaliye = {
+  irsaliye_no: '', irsaliye_tarihi: '', sevk_tarihi: '', irsaliye_zamani: '',
+  sevk_zamani: '', referans_belge: '', irsaliye_tipi: '', tasiyici_firma: '', arac_plakasi: '',
 }
 
-const TABS = [
-  { key: 'evrak', label: 'Evrak ile', icon: FileText },
-  { key: 'manuel', label: 'Manuel', icon: PenLine },
-]
-
-// Manuel malzeme giris formu
-function ManuelGiris() {
-  const navigate = useNavigate()
-  const malzemeOlustur = useMalzemeOlustur()
-  const [form, setForm] = useState(bosForm)
-  const [hatalar, setHatalar] = useState({})
-
-  // Katalog arama autocomplete
-  const [katalogSonuclar, setKatalogSonuclar] = useState([])
-  const [katalogAcik, setKatalogAcik] = useState(false)
-  const [katalogAraniyor, setKatalogAraniyor] = useState(false)
-  const aramaTimer = useRef(null)
-  const katalogRef = useRef(null)
-  const inputRef = useRef(null)
-
-  const katalogAra = useCallback((text) => {
-    if (aramaTimer.current) clearTimeout(aramaTimer.current)
-    if (!text || text.length < 2) { setKatalogSonuclar([]); setKatalogAcik(false); return }
-    setKatalogAraniyor(true)
-    aramaTimer.current = setTimeout(async () => {
-      try {
-        const res = await api.get('/malzeme-katalog', { params: { arama: text } })
-        setKatalogSonuclar(res?.data || [])
-        setKatalogAcik(true)
-      } catch { setKatalogSonuclar([]) }
-      setKatalogAraniyor(false)
-    }, 300)
-  }, [])
-
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (katalogRef.current && !katalogRef.current.contains(e.target) &&
-          inputRef.current && !inputRef.current.contains(e.target)) setKatalogAcik(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => { document.removeEventListener('mousedown', handleClick); if (aramaTimer.current) clearTimeout(aramaTimer.current) }
-  }, [])
-
-  const handleKatalogSec = (item) => {
-    setForm(prev => ({
-      ...prev,
-      malzeme_kodu: item.malzeme_kodu || prev.malzeme_kodu,
-      malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || prev.malzeme_adi,
-      birim: (item.olcu || 'adet').toLowerCase(),
-    }))
-    setKatalogAcik(false)
-  }
-
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
-    if (hatalar[name]) {
-      setHatalar((prev) => ({ ...prev, [name]: '' }))
-    }
-    // Malzeme adı veya kodu yazıldığında katalogda ara
-    if (name === 'malzeme_adi' || name === 'malzeme_kodu') {
-      katalogAra(value)
-    }
-  }
-
-  const dogrula = () => {
-    const yeniHatalar = {}
-    if (!form.malzeme_adi.trim()) yeniHatalar.malzeme_adi = 'Malzeme adi zorunludur'
-    if (!form.malzeme_kodu.trim()) yeniHatalar.malzeme_kodu = 'Malzeme kodu zorunludur'
-    if (!form.kategori) yeniHatalar.kategori = 'Kategori secimi zorunludur'
-    setHatalar(yeniHatalar)
-    return Object.keys(yeniHatalar).length === 0
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!dogrula()) return
-    const veri = {
-      ...form,
-      stok_miktari: form.stok_miktari !== '' ? Number(form.stok_miktari) : 0,
-      kritik_seviye: form.kritik_seviye !== '' ? Number(form.kritik_seviye) : 0,
-      birim_fiyat: form.birim_fiyat !== '' ? Number(form.birim_fiyat) : 0,
-    }
-    try {
-      await malzemeOlustur.mutateAsync(veri)
-      navigate('/depo')
-    } catch { /* hook yonetir */ }
-  }
-
-  const kaydediliyor = malzemeOlustur.isPending
-
-  return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-4xl rounded-lg border border-input bg-card shadow-sm" style={{ padding: '24px 32px' }}>
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">
-            Malzeme Kodu <span className="text-red-500">*</span>
-          </label>
-          <input type="text" name="malzeme_kodu" value={form.malzeme_kodu} onChange={handleChange} placeholder="orn: KBL-001"
-            className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${hatalar.malzeme_kodu ? 'border-red-500' : 'border-input'} bg-background`} />
-          {hatalar.malzeme_kodu && <p className="mt-1 text-xs text-red-500">{hatalar.malzeme_kodu}</p>}
-        </div>
-        <div className="relative">
-          <label className="mb-1.5 block text-sm font-medium">
-            Malzeme Adi <span className="text-red-500">*</span>
-          </label>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input ref={inputRef} type="text" name="malzeme_adi" value={form.malzeme_adi} onChange={handleChange}
-              onFocus={() => { if (form.malzeme_adi.length >= 2) katalogAra(form.malzeme_adi) }}
-              placeholder="Katalogdan arayın veya serbest girin..."
-              className={`w-full rounded-md border pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${hatalar.malzeme_adi ? 'border-red-500' : 'border-input'} bg-background`} />
-          </div>
-          {katalogAcik && (katalogAraniyor || katalogSonuclar.length > 0) && (
-            <div ref={katalogRef} className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-white shadow-xl ring-1 ring-black/5">
-              {katalogAraniyor ? (
-                <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                  <Loader2 className="inline h-3 w-3 animate-spin mr-1" />Aranıyor...
-                </div>
-              ) : (
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm">
-                    <tr className="border-b border-border">
-                      <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Kod</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Malzeme</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">SAP Tanım</th>
-                      <th className="px-2 py-1.5 text-center font-medium text-muted-foreground">Birim</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {katalogSonuclar.slice(0, 20).map(item => (
-                      <tr key={item.id} onMouseDown={() => handleKatalogSec(item)}
-                        className="cursor-pointer border-b border-border/30 hover:bg-primary/5 transition-colors">
-                        <td className="px-2 py-1.5 font-mono text-blue-600 whitespace-nowrap">{item.malzeme_kodu || '-'}</td>
-                        <td className="px-2 py-1.5">{item.malzeme_cinsi || '-'}</td>
-                        <td className="px-2 py-1.5 text-muted-foreground">{item.malzeme_tanimi_sap || '-'}</td>
-                        <td className="px-2 py-1.5 text-center text-muted-foreground">{item.olcu || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          )}
-          {hatalar.malzeme_adi && <p className="mt-1 text-xs text-red-500">{hatalar.malzeme_adi}</p>}
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">
-            Kategori <span className="text-red-500">*</span>
-          </label>
-          <select name="kategori" value={form.kategori} onChange={handleChange}
-            className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${hatalar.kategori ? 'border-red-500' : 'border-input'} bg-background`}>
-            <option value="">Kategori secin</option>
-            {Object.entries(MALZEME_KATEGORILERI).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </select>
-          {hatalar.kategori && <p className="mt-1 text-xs text-red-500">{hatalar.kategori}</p>}
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">Birim</label>
-          <select name="birim" value={form.birim} onChange={handleChange}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-            {BIRIMLER.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">Stok Miktari</label>
-          <input type="number" name="stok_miktari" value={form.stok_miktari} onChange={handleChange} min="0" step="0.01" placeholder="0"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">Kritik Seviye</label>
-          <input type="number" name="kritik_seviye" value={form.kritik_seviye} onChange={handleChange} min="0" step="0.01" placeholder="0"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-          <p className="mt-1 text-xs text-muted-foreground">Stok bu seviyenin altina dustugunde uyari verilir</p>
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">Birim Fiyat (TL)</label>
-          <input type="number" name="birim_fiyat" value={form.birim_fiyat} onChange={handleChange} min="0" step="0.01" placeholder="0.00"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">Depo Konumu</label>
-          <input type="text" name="depo_konumu" value={form.depo_konumu} onChange={handleChange} placeholder="orn: A-3-Raf-2"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="mb-1.5 block text-sm font-medium">Notlar</label>
-          <textarea name="notlar" value={form.notlar} onChange={handleChange} rows={3} placeholder="Ek aciklama veya not..."
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-        </div>
-      </div>
-      <div className="mt-6 flex justify-end gap-3 border-t border-input pt-4">
-        <button type="button" onClick={() => navigate('/depo')}
-          className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted">Iptal</button>
-        <button type="submit" disabled={kaydediliyor}
-          className="flex items-center gap-2 rounded-md bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-          {kaydediliyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Kaydet
-        </button>
-      </div>
-    </form>
-  )
-}
-
-// Duzenleme modu (sadece manuel form)
-function MalzemeDuzenleForm() {
-  const navigate = useNavigate()
-  const { id } = useParams()
-  const { data: mevcutMalzeme, isLoading: yukleniyor } = useMalzeme(id, { enabled: true })
-  const malzemeGuncelle = useMalzemeGuncelle()
-  const [form, setForm] = useState(bosForm)
-  const [hatalar, setHatalar] = useState({})
-
-  useEffect(() => {
-    if (mevcutMalzeme) {
-      setForm({
-        malzeme_kodu: mevcutMalzeme.malzeme_kodu || '',
-        malzeme_adi: mevcutMalzeme.malzeme_adi || '',
-        kategori: mevcutMalzeme.kategori || '',
-        birim: mevcutMalzeme.birim || 'adet',
-        stok_miktari: mevcutMalzeme.stok_miktari ?? '',
-        kritik_seviye: mevcutMalzeme.kritik_seviye ?? '',
-        birim_fiyat: mevcutMalzeme.birim_fiyat ?? '',
-        depo_konumu: mevcutMalzeme.depo_konumu || '',
-        notlar: mevcutMalzeme.notlar || '',
-      })
-    }
-  }, [mevcutMalzeme])
-
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
-    if (hatalar[name]) setHatalar((prev) => ({ ...prev, [name]: '' }))
-  }
-
-  const dogrula = () => {
-    const yeniHatalar = {}
-    if (!form.malzeme_adi.trim()) yeniHatalar.malzeme_adi = 'Malzeme adi zorunludur'
-    if (!form.malzeme_kodu.trim()) yeniHatalar.malzeme_kodu = 'Malzeme kodu zorunludur'
-    if (!form.kategori) yeniHatalar.kategori = 'Kategori secimi zorunludur'
-    setHatalar(yeniHatalar)
-    return Object.keys(yeniHatalar).length === 0
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!dogrula()) return
-    const veri = {
-      ...form,
-      stok_miktari: form.stok_miktari !== '' ? Number(form.stok_miktari) : 0,
-      kritik_seviye: form.kritik_seviye !== '' ? Number(form.kritik_seviye) : 0,
-      birim_fiyat: form.birim_fiyat !== '' ? Number(form.birim_fiyat) : 0,
-    }
-    try {
-      await malzemeGuncelle.mutateAsync({ id: Number(id), ...veri })
-      navigate('/depo')
-    } catch { /* hook yonetir */ }
-  }
-
-  const kaydediliyor = malzemeGuncelle.isPending
-
-  if (yukleniyor) {
-    return (
-      <div className="space-y-4">
-        <div className="skeleton h-8 w-48 rounded" />
-        <div className="skeleton h-96 w-full rounded" />
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      <div className="mb-6">
-        <button onClick={() => navigate('/depo')}
-          className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />Depoya Don
-        </button>
-        <h1 className="text-2xl font-bold">Malzeme Duzenle</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Malzeme bilgilerini guncelleyin</p>
-      </div>
-      <form onSubmit={handleSubmit} className="mx-auto max-w-4xl rounded-lg border border-input bg-card shadow-sm" style={{ padding: '24px 32px' }}>
-        <div className="grid gap-5 sm:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Malzeme Kodu <span className="text-red-500">*</span></label>
-            <input type="text" name="malzeme_kodu" value={form.malzeme_kodu} onChange={handleChange} placeholder="orn: KBL-001"
-              className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${hatalar.malzeme_kodu ? 'border-red-500' : 'border-input'} bg-background`} />
-            {hatalar.malzeme_kodu && <p className="mt-1 text-xs text-red-500">{hatalar.malzeme_kodu}</p>}
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Malzeme Adi <span className="text-red-500">*</span></label>
-            <input type="text" name="malzeme_adi" value={form.malzeme_adi} onChange={handleChange} placeholder="Malzeme adini girin"
-              className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${hatalar.malzeme_adi ? 'border-red-500' : 'border-input'} bg-background`} />
-            {hatalar.malzeme_adi && <p className="mt-1 text-xs text-red-500">{hatalar.malzeme_adi}</p>}
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Kategori <span className="text-red-500">*</span></label>
-            <select name="kategori" value={form.kategori} onChange={handleChange}
-              className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${hatalar.kategori ? 'border-red-500' : 'border-input'} bg-background`}>
-              <option value="">Kategori secin</option>
-              {Object.entries(MALZEME_KATEGORILERI).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-            {hatalar.kategori && <p className="mt-1 text-xs text-red-500">{hatalar.kategori}</p>}
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Birim</label>
-            <select name="birim" value={form.birim} onChange={handleChange}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-              {BIRIMLER.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Stok Miktari</label>
-            <input type="number" name="stok_miktari" value={form.stok_miktari} onChange={handleChange} min="0" step="0.01" placeholder="0"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Kritik Seviye</label>
-            <input type="number" name="kritik_seviye" value={form.kritik_seviye} onChange={handleChange} min="0" step="0.01" placeholder="0"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Birim Fiyat (TL)</label>
-            <input type="number" name="birim_fiyat" value={form.birim_fiyat} onChange={handleChange} min="0" step="0.01" placeholder="0.00"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Depo Konumu</label>
-            <input type="text" name="depo_konumu" value={form.depo_konumu} onChange={handleChange} placeholder="orn: A-3-Raf-2"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="mb-1.5 block text-sm font-medium">Notlar</label>
-            <textarea name="notlar" value={form.notlar} onChange={handleChange} rows={3} placeholder="Ek aciklama veya not..."
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-3 border-t border-input pt-4">
-          <button type="button" onClick={() => navigate('/depo')}
-            className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted">Iptal</button>
-          <button type="submit" disabled={kaydediliyor}
-            className="flex items-center gap-2 rounded-md bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-            {kaydediliyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Guncelle
-          </button>
-        </div>
-      </form>
-    </div>
-  )
-}
-
-// Sabit taraflar (DB dışı)
+// ─── Taraf seçenekleri ───
 const SABIT_TARAFLAR = [
   { key: 'ambar', label: 'Ambar (Kurum)' },
   { key: 'piyasa', label: 'Piyasa' },
 ]
 
 function tarafListesiOlustur(depolar) {
-  const depoSecenekleri = (depolar || []).map(d => ({
-    key: `depo_${d.id}`,
-    label: d.depo_adi,
-    depoId: d.id,
-    depoTipi: d.depo_tipi,
-  }))
-  const sabitSecenekler = SABIT_TARAFLAR.map(s => ({
-    ...s,
-    depoId: null,
-    depoTipi: null,
-  }))
-  return [...depoSecenekleri, ...sabitSecenekler]
+  const depoSec = (depolar || []).map(d => ({ key: `depo_${d.id}`, label: d.depo_adi, depoId: d.id, depoTipi: d.depo_tipi }))
+  return [...depoSec, ...SABIT_TARAFLAR.map(s => ({ ...s, depoId: null, depoTipi: null }))]
 }
 
-function tarafLabel(secenekler, key, firmaAdi) {
+function tarafLabel(secenekler, key, firma) {
   if (!key) return ''
-  if (key === 'piyasa') return firmaAdi || 'Piyasa'
+  if (key === 'piyasa') return firma || 'Piyasa'
   return secenekler.find(s => s.key === key)?.label || key
 }
 
-function HareketYonSecici({ veren, setVeren, alan, setAlan, firmaAdi, setFirmaAdi, depolar }) {
-  const secenekler = tarafListesiOlustur(depolar)
-  const piyasaSecili = veren === 'piyasa' || alan === 'piyasa'
-  const verenLabel = tarafLabel(secenekler, veren, firmaAdi)
-  const alanLabel = tarafLabel(secenekler, alan, firmaAdi)
-  const secimTamam = veren && alan && veren !== alan
+// ─── Satır: malzeme adı ile katalog arama ───
+function MalzemeSatiri({ kalem, index, onDegistir, onSil }) {
+  const [katalogAcik, setKatalogAcik] = useState(false)
+  const [katalogSonuc, setKatalogSonuc] = useState([])
+  const [araniyor, setAraniyor] = useState(false)
+  const timer = useRef(null)
+  const dropRef = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    const h = (e) => { if (dropRef.current && !dropRef.current.contains(e.target) && inputRef.current && !inputRef.current.contains(e.target)) setKatalogAcik(false) }
+    document.addEventListener('mousedown', h)
+    return () => { document.removeEventListener('mousedown', h); if (timer.current) clearTimeout(timer.current) }
+  }, [])
+
+  const ara = (text) => {
+    if (timer.current) clearTimeout(timer.current)
+    if (!text || text.length < 2) { setKatalogSonuc([]); setKatalogAcik(false); return }
+    setAraniyor(true)
+    timer.current = setTimeout(async () => {
+      try {
+        const r = await api.get('/malzeme-katalog', { params: { arama: text } })
+        const liste = Array.isArray(r) ? r : (r?.data || [])
+        setKatalogSonuc(liste)
+        setKatalogAcik(liste.length > 0)
+      } catch { setKatalogSonuc([]) }
+      setAraniyor(false)
+    }, 300)
+  }
+
+  const sec = useCallback((item) => {
+    onDegistir(index, {
+      ...kalem,
+      malzeme_kodu: item.malzeme_kodu || kalem.malzeme_kodu,
+      malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || kalem.malzeme_adi,
+      birim: item.olcu || kalem.birim,
+      poz_no: item.poz_birlesik || kalem.poz_no,
+    })
+    setKatalogAcik(false)
+  }, [index, kalem, onDegistir])
+
+  const gosterilen = katalogSonuc.slice(0, 15)
+  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, sec, () => setKatalogAcik(false))
+
+  // Arama değiştiğinde seçimi sıfırla
+  useEffect(() => { setSeciliIdx(-1) }, [katalogSonuc, setSeciliIdx])
+
+  const inputCls = 'w-full rounded border border-transparent bg-transparent px-2 py-1.5 text-xs hover:border-input focus:border-primary focus:outline-none'
 
   return (
-    <div className="space-y-4 rounded-lg border border-input bg-card p-4 shadow-sm">
-      <div className="flex items-end gap-3">
-        {/* Veren */}
-        <div className="flex-1">
-          <label className="mb-1.5 block text-sm font-medium">Veren</label>
-          <select
-            value={veren}
-            onChange={e => {
-              setVeren(e.target.value)
-              if (e.target.value === alan) setAlan('')
-            }}
-            className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-          >
-            <option value="">Secin...</option>
-            {secenekler.map(s => (
-              <option key={s.key} value={s.key} disabled={s.key === alan}>{s.label}</option>
-            ))}
-          </select>
-        </div>
+    <tr className="border-b border-input/50 group hover:bg-muted/20 transition-colors">
+      <td className="w-8 px-2 py-1.5 text-center text-xs text-muted-foreground">{index + 1}</td>
+      <td className="w-24 px-1 py-1.5">
+        <input value={kalem.malzeme_kodu || ''} onChange={e => onDegistir(index, { ...kalem, malzeme_kodu: e.target.value })} className={inputCls} placeholder="-" />
+      </td>
+      <td className="px-1 py-1.5 relative" style={{ overflow: 'visible' }}>
+        <input ref={inputRef} value={kalem.malzeme_adi || ''} onChange={e => { onDegistir(index, { ...kalem, malzeme_adi: e.target.value }); ara(e.target.value) }}
+          onFocus={() => { if ((kalem.malzeme_adi || '').length >= 2) ara(kalem.malzeme_adi) }}
+          onKeyDown={katalogAcik ? handleKeyDown : undefined}
+          className={inputCls} placeholder="Malzeme adı..." />
+        {katalogAcik && (araniyor || gosterilen.length > 0) && (
+          <div ref={dropRef} className="absolute left-0 top-full z-50 mt-1 max-h-48 w-[500px] overflow-y-auto rounded-lg border border-border bg-white shadow-xl ring-1 ring-black/5">
+            {araniyor ? <div className="px-3 py-3 text-center text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Aranıyor...</div> : (
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-muted/90"><tr className="border-b border-border">
+                  <th className="px-2 py-1 text-left font-medium text-muted-foreground">Kod</th>
+                  <th className="px-2 py-1 text-left font-medium text-muted-foreground">Malzeme</th>
+                  <th className="px-2 py-1 text-center font-medium text-muted-foreground">Birim</th>
+                </tr></thead>
+                <tbody>{gosterilen.map((item, i) => (
+                  <tr key={item.id} onMouseDown={() => sec(item)} className={cn('cursor-pointer border-b border-border/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
+                    <td className="px-2 py-1 font-mono text-blue-600">{item.malzeme_kodu || '-'}</td>
+                    <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
+                    <td className="px-2 py-1 text-center text-muted-foreground">{item.olcu || '-'}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </td>
+      <td className="w-16 px-1 py-1.5">
+        <input value={kalem.birim || 'Ad'} onChange={e => onDegistir(index, { ...kalem, birim: e.target.value })} className={cn(inputCls, 'text-center w-14')} />
+      </td>
+      <td className="w-20 px-1 py-1.5">
+        <input type="number" value={kalem.miktar || ''} onChange={e => onDegistir(index, { ...kalem, miktar: Number(e.target.value) || 0 })} className={cn(inputCls, 'text-center w-16')} />
+      </td>
+      <td className="w-8 px-1 py-1.5 text-center">
+        <button onClick={() => onSil(index)} className="rounded p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-opacity">
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </td>
+    </tr>
+  )
+}
 
-        {/* Ok */}
-        <div className="flex h-[42px] items-center">
-          <ArrowRight className={cn(
-            'h-5 w-5 transition-colors',
-            secimTamam ? 'text-primary' : 'text-muted-foreground/40'
-          )} />
-        </div>
+// ─── Ana Bileşen ───
+export default function MalzemeForm() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const duzenlemeModu = Boolean(id)
 
-        {/* Alan */}
-        <div className="flex-1">
-          <label className="mb-1.5 block text-sm font-medium">Alan</label>
-          <select
-            value={alan}
-            onChange={e => {
-              setAlan(e.target.value)
-              if (e.target.value === veren) setVeren('')
-            }}
-            className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-          >
-            <option value="">Secin...</option>
-            {secenekler.map(s => (
-              <option key={s.key} value={s.key} disabled={s.key === veren}>{s.label}</option>
-            ))}
-          </select>
-        </div>
+  if (duzenlemeModu) return <MalzemeDuzenleForm />
+
+  const { data: depolar } = useDepolar()
+  const hareketKaydet = useHareketKaydet()
+
+  // Taraf seçimi
+  const [veren, setVeren] = useState('')
+  const [alan, setAlan] = useState('')
+  const [firmaAdi, setFirmaAdi] = useState('')
+
+  // İrsaliye bilgileri
+  const [irsaliye, setIrsaliye] = useState(bosIrsaliye)
+
+  // Malzeme listesi
+  const [kalemler, setKalemler] = useState([])
+
+  // Belge dosyaları
+  const [irsaliyeDosya, setIrsaliyeDosya] = useState(null)
+  const [irsaliyeOnizleme, setIrsaliyeOnizleme] = useState(null)
+  const [bonoDosya, setBonoDosya] = useState(null)
+  const [bonoOnizleme, setBonoOnizleme] = useState(null)
+  const irsaliyeRef = useRef(null)
+  const bonoRef = useRef(null)
+
+  const secenekler = tarafListesiOlustur(depolar)
+  const secimTamam = veren && alan && veren !== alan
+  const piyasaSecili = veren === 'piyasa' || alan === 'piyasa'
+
+  const verenSec = secenekler.find(s => s.key === veren)
+  const alanSec = secenekler.find(s => s.key === alan)
+  let hareketYon = 'giris'
+  if (verenSec?.depoTipi === 'ana_depo') hareketYon = 'cikis'
+  else if (alanSec?.depoTipi === 'ana_depo') hareketYon = 'giris'
+  else if (verenSec?.depoId && alanSec?.depoId) hareketYon = 'transfer'
+
+  const handleIrsaliyeDegistir = (e) => {
+    const { name, value } = e.target
+    setIrsaliye(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleKalemDegistir = (idx, yeni) => setKalemler(prev => prev.map((k, i) => i === idx ? yeni : k))
+  const handleKalemSil = (idx) => setKalemler(prev => prev.filter((_, i) => i !== idx))
+  const handleKalemEkle = () => setKalemler(prev => [...prev, { _id: Date.now(), malzeme_kodu: '', malzeme_adi: '', birim: 'Ad', miktar: 0, poz_no: '' }])
+
+  const handleBelgeSec = (e, tip) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      if (tip === 'irsaliye') { setIrsaliyeDosya(file); setIrsaliyeOnizleme(ev.target.result) }
+      else { setBonoDosya(file); setBonoOnizleme(ev.target.result) }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Kaydet
+  const handleKaydet = async () => {
+    const gecerliKalemler = kalemler.filter(k => k.malzeme_adi?.trim())
+    if (gecerliKalemler.length === 0) return
+    // TODO: hareketler API'ye kaydet
+    navigate('/depo')
+  }
+
+  return (
+    <div>
+      <div className="mb-6">
+        <button onClick={() => navigate('/depo')} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />Depoya Dön
+        </button>
+        <h1 className="text-2xl font-bold">Yeni Hareket</h1>
+        <p className="mt-1 text-sm text-muted-foreground">İrsaliye belgesi ile malzeme girişi/çıkışı yapın</p>
       </div>
 
-      {/* Piyasa seçiliyse firma adı */}
-      {piyasaSecili && (
-        <div>
-          <label className="mb-1 block text-xs text-muted-foreground">Firma Adi</label>
-          <input
-            value={firmaAdi}
-            onChange={e => setFirmaAdi(e.target.value)}
-            placeholder="Tedarikci / alici firma adi"
-            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-          />
+      {/* ─── Veren → Alan Seçimi ─── */}
+      <div className="space-y-4 rounded-lg border border-input bg-card p-5 shadow-sm">
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label className="mb-1.5 block text-sm font-medium">Veren</label>
+            <select value={veren} onChange={e => { setVeren(e.target.value); if (e.target.value === alan) setAlan('') }}
+              className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:border-primary focus:outline-none">
+              <option value="">Seçin...</option>
+              {secenekler.map(s => <option key={s.key} value={s.key} disabled={s.key === alan}>{s.label}</option>)}
+            </select>
+          </div>
+          <div className="flex h-[42px] items-center"><ArrowRight className={cn('h-5 w-5', secimTamam ? 'text-primary' : 'text-muted-foreground/40')} /></div>
+          <div className="flex-1">
+            <label className="mb-1.5 block text-sm font-medium">Alan</label>
+            <select value={alan} onChange={e => { setAlan(e.target.value); if (e.target.value === veren) setVeren('') }}
+              className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:border-primary focus:outline-none">
+              <option value="">Seçin...</option>
+              {secenekler.map(s => <option key={s.key} value={s.key} disabled={s.key === veren}>{s.label}</option>)}
+            </select>
+          </div>
         </div>
-      )}
+        {piyasaSecili && (
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">Firma Adı</label>
+            <input value={firmaAdi} onChange={e => setFirmaAdi(e.target.value)} placeholder="Tedarikçi / alıcı firma adı"
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+          </div>
+        )}
+        {secimTamam && (
+          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
+            <span className="font-semibold">{tarafLabel(secenekler, veren, firmaAdi)}</span>
+            <ArrowRight className="h-4 w-4 text-primary" />
+            <span className="font-semibold">{tarafLabel(secenekler, alan, firmaAdi)}</span>
+          </div>
+        )}
+      </div>
 
-      {/* Ozet */}
       {secimTamam && (
-        <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
-          <span className="font-semibold">{verenLabel}</span>
-          <ArrowRight className="h-4 w-4 text-primary" />
-          <span className="font-semibold">{alanLabel}</span>
-        </div>
+        <>
+          {/* ─── Belge Yükleme: İrsaliye + Bono ─── */}
+          <div className="mt-6 grid grid-cols-2 gap-4">
+            {/* İrsaliye Belgesi */}
+            <div className="rounded-lg border border-input bg-card p-5 shadow-sm">
+              <h3 className="mb-3 text-sm font-semibold">İrsaliye Belgesi</h3>
+              {irsaliyeOnizleme ? (
+                <div className="relative inline-block">
+                  <img src={irsaliyeOnizleme} alt="İrsaliye" className="max-h-36 rounded-lg border border-input object-contain" />
+                  <button onClick={() => { setIrsaliyeDosya(null); setIrsaliyeOnizleme(null) }}
+                    className="absolute -right-2 -top-2 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ) : (
+                <div onClick={() => irsaliyeRef.current?.click()}
+                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-input p-6 hover:border-primary hover:bg-primary/5 transition-colors">
+                  <Image className="mb-2 h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-xs text-muted-foreground">İrsaliye görseli yükleyin</p>
+                </div>
+              )}
+              <input ref={irsaliyeRef} type="file" accept="image/*" onChange={e => handleBelgeSec(e, 'irsaliye')} className="hidden" />
+            </div>
+
+            {/* Bono Belgesi */}
+            <div className="rounded-lg border border-input bg-card p-5 shadow-sm">
+              <h3 className="mb-3 text-sm font-semibold">Bono Belgesi</h3>
+              {bonoOnizleme ? (
+                <div className="relative inline-block">
+                  <img src={bonoOnizleme} alt="Bono" className="max-h-36 rounded-lg border border-input object-contain" />
+                  <button onClick={() => { setBonoDosya(null); setBonoOnizleme(null) }}
+                    className="absolute -right-2 -top-2 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ) : (
+                <div onClick={() => bonoRef.current?.click()}
+                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-input p-6 hover:border-primary hover:bg-primary/5 transition-colors">
+                  <Image className="mb-2 h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-xs text-muted-foreground">Bono görseli yükleyin</p>
+                </div>
+              )}
+              <input ref={bonoRef} type="file" accept="image/*" onChange={e => handleBelgeSec(e, 'bono')} className="hidden" />
+            </div>
+          </div>
+
+          {/* ─── İrsaliye Temel Bilgiler ─── */}
+          <div className="mt-6 rounded-lg border border-input bg-card p-5 shadow-sm">
+            <h3 className="mb-3 text-sm font-semibold">İrsaliye Bilgileri</h3>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {[
+                { name: 'irsaliye_no', label: 'İrsaliye No' },
+                { name: 'irsaliye_tarihi', label: 'İrsaliye Tarihi', type: 'date' },
+                { name: 'sevk_tarihi', label: 'Sevk Tarihi', type: 'date' },
+                { name: 'irsaliye_zamani', label: 'İrsaliye Zamanı', type: 'time' },
+                { name: 'sevk_zamani', label: 'Sevk Zamanı', type: 'time' },
+                { name: 'referans_belge', label: 'Referans Belge' },
+                { name: 'irsaliye_tipi', label: 'İrsaliye Tipi' },
+                { name: 'tasiyici_firma', label: 'Taşıyıcı Firma' },
+                { name: 'arac_plakasi', label: 'Araç Plakası' },
+              ].map(f => (
+                <div key={f.name}>
+                  <label className="mb-1 block text-xs text-muted-foreground">{f.label}</label>
+                  <input type={f.type || 'text'} name={f.name} value={irsaliye[f.name] || ''} onChange={handleIrsaliyeDegistir}
+                    className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:border-primary focus:outline-none" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ─── Malzeme Listesi ─── */}
+          <div className="mt-6 rounded-lg border border-input bg-card p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Malzeme Listesi ({kalemler.length} kalem)</h3>
+              <button onClick={handleKalemEkle} className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90">
+                <Plus className="h-3.5 w-3.5" />Ekle
+              </button>
+            </div>
+            <div className="rounded-lg border border-input" style={{ overflow: 'visible' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b-2 border-border bg-muted/70">
+                    <th className="w-8 px-2 py-2.5 text-center font-semibold text-muted-foreground">#</th>
+                    <th className="w-24 px-2 py-2.5 text-left font-semibold text-muted-foreground">Kod</th>
+                    <th className="px-2 py-2.5 text-left font-semibold text-muted-foreground">Malzeme</th>
+                    <th className="w-16 px-2 py-2.5 text-center font-semibold text-muted-foreground">Birim</th>
+                    <th className="w-20 px-2 py-2.5 text-center font-semibold text-muted-foreground">Miktar</th>
+                    <th className="w-8 px-1 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {kalemler.length === 0 ? (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-xs">
+                      Henüz malzeme eklenmedi. AI ile analiz edin veya manuel ekleyin.
+                    </td></tr>
+                  ) : kalemler.map((k, i) => (
+                    <MalzemeSatiri key={k._id || i} kalem={k} index={i} onDegistir={handleKalemDegistir} onSil={handleKalemSil} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ─── Kaydet ─── */}
+          <div className="mt-6 flex justify-end gap-3">
+            <button onClick={() => navigate('/depo')} className="rounded-lg border border-input px-4 py-2.5 text-sm font-medium hover:bg-muted">İptal</button>
+            <button onClick={handleKaydet} disabled={kalemler.filter(k => k.malzeme_adi?.trim()).length === 0}
+              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+              <Save className="h-4 w-4" />
+              {kalemler.filter(k => k.malzeme_adi?.trim()).length} Kalemi Kaydet
+            </button>
+          </div>
+        </>
       )}
     </div>
   )
 }
 
-export default function MalzemeForm() {
-  const { id } = useParams()
+// ─── Düzenleme Formu (mevcut malzeme düzenleme) ───
+function MalzemeDuzenleForm() {
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const duzenlemeModu = Boolean(id)
+  const { id } = useParams()
+  const { data: mevcutMalzeme, isLoading: yukleniyor } = useMalzeme(id, { enabled: true })
+  const malzemeGuncelle = useMalzemeGuncelle()
+  const [form, setForm] = useState({ malzeme_kodu: '', malzeme_adi: '', kategori: '', birim: 'adet', stok_miktari: '', kritik_seviye: '', birim_fiyat: '', depo_konumu: '', notlar: '' })
+  const [hatalar, setHatalar] = useState({})
 
-  // Duzenleme modunda direkt form goster
-  if (duzenlemeModu) return <MalzemeDuzenleForm />
+  useEffect(() => {
+    if (mevcutMalzeme) setForm({
+      malzeme_kodu: mevcutMalzeme.malzeme_kodu || '', malzeme_adi: mevcutMalzeme.malzeme_adi || '',
+      kategori: mevcutMalzeme.kategori || '', birim: mevcutMalzeme.birim || 'adet',
+      stok_miktari: mevcutMalzeme.stok_miktari ?? '', kritik_seviye: mevcutMalzeme.kritik_seviye ?? '',
+      birim_fiyat: mevcutMalzeme.birim_fiyat ?? '', depo_konumu: mevcutMalzeme.depo_konumu || '', notlar: mevcutMalzeme.notlar || '',
+    })
+  }, [mevcutMalzeme])
 
-  const { data: depolar } = useDepolar()
-  const aktifTab = searchParams.get('tab') || 'evrak'
-  const [veren, setVeren] = useState('')
-  const [alan, setAlan] = useState('')
-  const [firmaAdi, setFirmaAdi] = useState('')
+  const handleChange = (e) => { setForm(prev => ({ ...prev, [e.target.name]: e.target.value })); if (hatalar[e.target.name]) setHatalar(prev => ({ ...prev, [e.target.name]: '' })) }
+  const dogrula = () => { const h = {}; if (!form.malzeme_adi.trim()) h.malzeme_adi = 'Zorunlu'; if (!form.malzeme_kodu.trim()) h.malzeme_kodu = 'Zorunlu'; if (!form.kategori) h.kategori = 'Zorunlu'; setHatalar(h); return !Object.keys(h).length }
 
-  const handleTabDegistir = (key) => {
-    setSearchParams({ tab: key })
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!dogrula()) return
+    try {
+      await malzemeGuncelle.mutateAsync({ id: Number(id), ...form, stok_miktari: Number(form.stok_miktari) || 0, kritik_seviye: Number(form.kritik_seviye) || 0, birim_fiyat: Number(form.birim_fiyat) || 0 })
+      navigate('/depo')
+    } catch {}
   }
 
-  const secimTamam = veren && alan && veren !== alan
-  const secenekler = tarafListesiOlustur(depolar)
+  if (yukleniyor) return <div className="skeleton h-96 w-full rounded" />
 
-  // Hareket yonunu otomatik belirle
-  // Ana depo alan ise giris, veren ise cikis, ikisi de depo ise transfer
-  const verenSecenek = secenekler.find(s => s.key === veren)
-  const alanSecenek = secenekler.find(s => s.key === alan)
-  let hareketYon = 'giris'
-  if (verenSecenek?.depoTipi === 'ana_depo') hareketYon = 'cikis'
-  else if (alanSecenek?.depoTipi === 'ana_depo') hareketYon = 'giris'
-  else if (verenSecenek?.depoId && alanSecenek?.depoId) hareketYon = 'transfer'
-
-  // Taraf etiketleri
-  const verenAdi = tarafLabel(secenekler, veren, firmaAdi)
-  const alanAdi = tarafLabel(secenekler, alan, firmaAdi)
-
-  // Karsi taraf: ana depo olmayan taraf
-  const karsiTarafKey = hareketYon === 'cikis' ? alan : veren
-  const karsiTarafAdi = tarafLabel(secenekler, karsiTarafKey, firmaAdi)
-  const karsiTarafTipi = karsiTarafKey?.startsWith('depo_') ? 'depo' : karsiTarafKey || ''
-
-  // Depo ID'leri (server'a gonderilecek)
-  const verenDepoId = verenSecenek?.depoId || null
-  const alanDepoId = alanSecenek?.depoId || null
+  const inputCls = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
 
   return (
     <div>
       <div className="mb-6">
-        <button onClick={() => navigate('/depo')}
-          className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />Depoya Don
-        </button>
-        <h1 className="text-2xl font-bold">Yeni Hareket</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Mal girisi veya cikisi icin hareket olusturun
-        </p>
+        <button onClick={() => navigate('/depo')} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Depoya Dön</button>
+        <h1 className="text-2xl font-bold">Malzeme Düzenle</h1>
       </div>
-
-      {/* Veren → Alan Secimi */}
-      <HareketYonSecici
-        veren={veren} setVeren={setVeren}
-        alan={alan} setAlan={setAlan}
-        firmaAdi={firmaAdi} setFirmaAdi={setFirmaAdi}
-        depolar={depolar}
-      />
-
-      {/* Secim tamam ise malzeme giris yontemi */}
-      {secimTamam && (
-        <>
-          {/* Tab Bar */}
-          <div className="mt-6 mb-4 flex gap-1 border-b border-border">
-            {TABS.map((tab) => {
-              const Icon = tab.icon
-              const aktif = aktifTab === tab.key
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => handleTabDegistir(tab.key)}
-                  className={cn(
-                    'flex items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors',
-                    aktif
-                      ? 'border-b-2 border-primary text-primary'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Tab Icerik */}
-          {aktifTab === 'evrak' && (
-            <div className="rounded-lg border border-input bg-card p-6 shadow-sm">
-              <EvrakGiris
-                onBasarili={() => navigate('/depo')}
-                hareketYon={hareketYon}
-                karsiTarafAdi={karsiTarafAdi}
-                karsiTarafTipi={karsiTarafTipi}
-                kaynakDepoId={verenDepoId}
-                hedefDepoId={alanDepoId}
-                verenAdi={verenAdi}
-                alanAdi={alanAdi}
-              />
-            </div>
-          )}
-          {aktifTab === 'manuel' && <ManuelGiris />}
-        </>
-      )}
+      <form onSubmit={handleSubmit} className="mx-auto max-w-4xl rounded-lg border border-input bg-card shadow-sm" style={{ padding: '24px 32px' }}>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div><label className="mb-1.5 block text-sm font-medium">Malzeme Kodu *</label><input name="malzeme_kodu" value={form.malzeme_kodu} onChange={handleChange} className={cn(inputCls, hatalar.malzeme_kodu && 'border-red-500')} /></div>
+          <div><label className="mb-1.5 block text-sm font-medium">Malzeme Adı *</label><input name="malzeme_adi" value={form.malzeme_adi} onChange={handleChange} className={cn(inputCls, hatalar.malzeme_adi && 'border-red-500')} /></div>
+          <div><label className="mb-1.5 block text-sm font-medium">Kategori *</label><select name="kategori" value={form.kategori} onChange={handleChange} className={cn(inputCls, hatalar.kategori && 'border-red-500')}><option value="">Seçin</option>{Object.entries(MALZEME_KATEGORILERI).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+          <div><label className="mb-1.5 block text-sm font-medium">Birim</label><select name="birim" value={form.birim} onChange={handleChange} className={inputCls}>{BIRIMLER.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}</select></div>
+          <div><label className="mb-1.5 block text-sm font-medium">Stok Miktarı</label><input type="number" name="stok_miktari" value={form.stok_miktari} onChange={handleChange} className={inputCls} /></div>
+          <div><label className="mb-1.5 block text-sm font-medium">Kritik Seviye</label><input type="number" name="kritik_seviye" value={form.kritik_seviye} onChange={handleChange} className={inputCls} /></div>
+          <div><label className="mb-1.5 block text-sm font-medium">Birim Fiyat (TL)</label><input type="number" name="birim_fiyat" value={form.birim_fiyat} onChange={handleChange} className={inputCls} /></div>
+          <div><label className="mb-1.5 block text-sm font-medium">Depo Konumu</label><input name="depo_konumu" value={form.depo_konumu} onChange={handleChange} className={inputCls} /></div>
+        </div>
+        <div className="mt-6 flex justify-end gap-3 border-t border-input pt-4">
+          <button type="button" onClick={() => navigate('/depo')} className="rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-muted">İptal</button>
+          <button type="submit" disabled={malzemeGuncelle.isPending} className="flex items-center gap-2 rounded-md bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50">
+            {malzemeGuncelle.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Güncelle
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

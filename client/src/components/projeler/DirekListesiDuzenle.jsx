@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import useDropdownNav from '@/hooks/useDropdownNav'
 import { createPortal } from 'react-dom'
 import { Loader2, Plus, Trash2, Link2, Unlink, MapPin } from 'lucide-react'
 import api from '@/api/client'
@@ -60,7 +61,7 @@ function DirekSatirDuzenle({ kalem, index, onChange, onSil }) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const handleKatalogSec = (item) => {
+  const handleKatalogSec = useCallback((item) => {
     onChange(index, {
       ...kalem,
       katalog_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '',
@@ -68,7 +69,12 @@ function DirekSatirDuzenle({ kalem, index, onChange, onSil }) {
     })
     setFocused(false)
     setSonuclar([])
-  }
+  }, [kalem, index, onChange])
+
+  const gosterilen = sonuclar.slice(0, 20)
+  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, handleKatalogSec, () => setFocused(false))
+
+  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
 
   const handleKisaAdiDegistir = (e) => {
     onChange(index, { ...kalem, kisa_adi: e.target.value, katalog_adi: '', malzeme_kodu: '' })
@@ -118,7 +124,7 @@ function DirekSatirDuzenle({ kalem, index, onChange, onSil }) {
           value={kalem.kisa_adi}
           onChange={handleKisaAdiDegistir}
           onFocus={handleFocus}
-          onKeyDown={(e) => { if (e.key === 'Escape') setFocused(false) }}
+          onKeyDown={showDropdown ? handleKeyDown : (e) => { if (e.key === 'Escape') setFocused(false) }}
           className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium hover:border-input focus:border-primary focus:outline-none"
           placeholder="Direk numarasi..."
         />
@@ -140,8 +146,8 @@ function DirekSatirDuzenle({ kalem, index, onChange, onSil }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {sonuclar.slice(0, 20).map((item) => (
-                    <tr key={item.id} onMouseDown={() => handleKatalogSec(item)} className="cursor-pointer border-b border-input/30 hover:bg-primary/5">
+                  {gosterilen.map((item, i) => (
+                    <tr key={item.id} onMouseDown={() => handleKatalogSec(item)} className={cn('cursor-pointer border-b border-input/30', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
                       <td className="px-2 py-1 font-mono text-blue-600 whitespace-nowrap">{item.malzeme_kodu || item.poz_birlesik || '-'}</td>
                       <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
                       <td className="px-2 py-1 text-muted-foreground">{item.olcu || '-'}</td>

@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import useDropdownNav from '@/hooks/useDropdownNav'
 import { Plus, Trash2, Search, Package, Check, Clock, X, Columns3, ChevronDown, ChevronUp } from 'lucide-react'
 import { useProjeKesif, useProjeKesifEkle, useProjeKesifGuncelle, useProjeKesifSil, useProjeKesifOzet } from '@/hooks/useProjeKesif'
 import { useDepoKatalog } from '@/hooks/useDepoKatalog'
@@ -139,13 +140,18 @@ function KatalogSecici({ onSec, onKapat }) {
   const { data: katalog, isLoading } = useDepoKatalog(arama ? { arama } : {})
   const [secilen, setSecilen] = useState([])
 
-  const toggleSec = (item) => {
+  const toggleSec = useCallback((item) => {
     setSecilen(prev =>
       prev.find(s => s.id === item.id)
         ? prev.filter(s => s.id !== item.id)
         : [...prev, item]
     )
-  }
+  }, [])
+
+  const gosterilenKatalog = (katalog || []).slice(0, 100)
+  const { seciliIdx, setSeciliIdx, handleKeyDown: katalogKeyDown } = useDropdownNav(gosterilenKatalog, toggleSec, onKapat)
+
+  useEffect(() => { setSeciliIdx(-1) }, [katalog, setSeciliIdx])
 
   const handleEkle = () => {
     const kalemler = secilen.map(s => ({
@@ -169,15 +175,16 @@ function KatalogSecici({ onSec, onKapat }) {
 
         <div className="border-b border-input px-4 py-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               placeholder="Malzeme adi veya poz ara..."
               value={arama}
               onChange={(e) => setArama(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
+              onKeyDown={katalogKeyDown}
+              className="w-full rounded-lg border border-input bg-background py-2 pl-3 pr-9 text-sm focus:border-primary focus:outline-none"
               autoFocus
             />
+            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           </div>
           {secilen.length > 0 && (
             <p className="mt-2 text-xs text-primary font-medium">{secilen.length} malzeme secildi</p>
@@ -201,13 +208,13 @@ function KatalogSecici({ onSec, onKapat }) {
                 </tr>
               </thead>
               <tbody>
-                {katalog.slice(0, 100).map((item) => {
+                {gosterilenKatalog.map((item, i) => {
                   const secili = secilen.find(s => s.id === item.id)
                   return (
                     <tr
                       key={item.id}
                       onClick={() => toggleSec(item)}
-                      className={cn('border-b border-input/50 cursor-pointer transition-colors', secili ? 'bg-primary/5' : 'hover:bg-muted/30')}
+                      className={cn('border-b border-input/50 cursor-pointer transition-colors', secili ? 'bg-primary/5' : i === seciliIdx ? 'bg-primary/10' : 'hover:bg-muted/30')}
                     >
                       <td className="px-3 py-2">
                         <div className={cn('flex h-4 w-4 items-center justify-center rounded border', secili ? 'border-primary bg-primary text-white' : 'border-input')}>
@@ -387,18 +394,23 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
     }
   }
 
-  const handleSec = (item) => {
-    setForm({
-      ...form,
+  const handleSec = useCallback((item) => {
+    setForm(prev => ({
+      ...prev,
       malzeme_kodu: item.malzeme_kodu || '',
       poz_no: item.poz_birlesik || '',
       malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '',
       birim: item.olcu || 'Ad',
-    })
+    }))
     setArama(item.malzeme_cinsi || item.malzeme_tanimi_sap || '')
     setSecildi(true)
     setDropdownAcik(false)
-  }
+  }, [])
+
+  const gosterilen = (sonuclar || []).slice(0, 50)
+  const { seciliIdx, setSeciliIdx, handleKeyDown: dropdownKeyDown } = useDropdownNav(gosterilen, handleSec, () => setDropdownAcik(false))
+
+  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
 
   return (
     <tr className="border-b border-input bg-primary/5">
@@ -416,16 +428,17 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
         <td className="px-3 py-2">
           <div className="relative">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
               <input
                 ref={inputRef}
                 value={arama}
                 onChange={handleAramaChange}
                 onFocus={() => { if (arama.length >= 2 && !secildi) setDropdownAcik(true) }}
+                onKeyDown={dropdownAcik ? dropdownKeyDown : undefined}
                 placeholder="Malzeme ara (min 2 harf)..."
-                className="w-full rounded border border-input bg-background py-1 pl-7 pr-2 text-xs focus:border-primary focus:outline-none"
+                className="w-full rounded border border-input bg-background py-1 pl-2 pr-7 text-xs focus:border-primary focus:outline-none"
                 autoFocus
               />
+              <Search className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
             </div>
             {dropdownAcik && (
               <div ref={dropdownRef} className="absolute left-0 top-full z-50 mt-1 max-h-60 w-[500px] overflow-y-auto rounded-lg border border-input bg-card shadow-xl">
@@ -444,11 +457,11 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {sonuclar.slice(0, 50).map((item) => (
+                      {gosterilen.map((item, i) => (
                         <tr
                           key={item.id}
                           onClick={() => handleSec(item)}
-                          className="cursor-pointer border-b border-input/30 hover:bg-primary/5 transition-colors"
+                          className={cn('cursor-pointer border-b border-input/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}
                         >
                           <td className="px-2 py-1.5 font-mono text-blue-600 whitespace-nowrap">{item.poz_birlesik || '-'}</td>
                           <td className="px-2 py-1.5">{item.malzeme_cinsi || '-'}</td>

@@ -51,14 +51,14 @@ export default function OrganizasyonSemasi() {
           <h2 className="text-lg font-semibold">Organizasyon Şeması</h2>
         </div>
         <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             placeholder="İsim veya pozisyon ara..."
             value={aramaMetni}
             onChange={(e) => setAramaMetni(e.target.value)}
-            className="w-full rounded-md border border-border bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full rounded-md border border-border bg-background pl-3 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
+          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         </div>
       </div>
 

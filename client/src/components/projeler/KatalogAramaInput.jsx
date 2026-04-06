@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Loader2, Link2, X } from 'lucide-react'
 import api from '@/api/client'
+import { cn } from '@/lib/utils'
+import useDropdownNav from '@/hooks/useDropdownNav'
 
 // Malzeme katalogdan aranabilir input (abone kablosu vb. için)
 export default function KatalogAramaInput({ value, onChange, placeholder, className }) {
@@ -39,13 +41,18 @@ export default function KatalogAramaInput({ value, onChange, placeholder, classN
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const handleSec = (item) => {
+  const handleSec = useCallback((item) => {
     const adi = item.malzeme_cinsi || item.malzeme_tanimi_sap || ''
     onChange(adi)
     setEslesmis(adi)
     setFocused(false)
     setSonuclar([])
-  }
+  }, [onChange])
+
+  const gosterilen = sonuclar.slice(0, 15)
+  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, handleSec, () => setFocused(false))
+
+  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
 
   const handleInputChange = (e) => {
     const val = e.target.value
@@ -95,7 +102,7 @@ export default function KatalogAramaInput({ value, onChange, placeholder, classN
         value={value || ''}
         onChange={handleInputChange}
         onFocus={handleFocus}
-        onKeyDown={(e) => { if (e.key === 'Escape') setFocused(false) }}
+        onKeyDown={showDropdown ? handleKeyDown : (e) => { if (e.key === 'Escape') setFocused(false) }}
         className={className}
         placeholder={placeholder}
       />
@@ -127,8 +134,8 @@ export default function KatalogAramaInput({ value, onChange, placeholder, classN
                 </tr>
               </thead>
               <tbody>
-                {sonuclar.slice(0, 15).map((item) => (
-                  <tr key={item.id} onMouseDown={() => handleSec(item)} className="cursor-pointer border-b border-input/30 hover:bg-primary/5">
+                {gosterilen.map((item, i) => (
+                  <tr key={item.id} onMouseDown={() => handleSec(item)} className={cn('cursor-pointer border-b border-input/30', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
                     <td className="px-2 py-1 font-mono text-blue-600 whitespace-nowrap">{item.malzeme_kodu || item.poz_birlesik || '-'}</td>
                     <td className="px-2 py-1">{item.malzeme_cinsi || '-'}</td>
                     <td className="px-2 py-1 text-muted-foreground">{item.malzeme_tanimi_sap || '-'}</td>

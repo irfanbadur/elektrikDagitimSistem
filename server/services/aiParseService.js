@@ -1,11 +1,24 @@
 const config = require('../config');
 const { getDb } = require('../db/database');
+const sharp = require('sharp');
+
+// Görseli küçült — Ollama'ya daha hızlı gönderilir
+async function gorselKucult(buffer, maxBoyut = 1024) {
+  try {
+    const meta = await sharp(buffer).metadata();
+    if (meta.width <= maxBoyut && meta.height <= maxBoyut) return buffer;
+    return await sharp(buffer)
+      .resize(maxBoyut, maxBoyut, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  } catch { return buffer; }
+}
 
 // Ollama API ile görsel parse
 async function ollamaGorselParse(imageBase64, prompt, userMessage) {
   const baseUrl = config.ai.katman2.baseUrl();
   const model = config.ai.katman2.model();
-  const timeout = config.ai.katman2.timeout || 120000;
+  const timeout = config.ai.katman2.timeout || 300000;
 
   console.log(`[Ollama] Görsel parse: model=${model}, url=${baseUrl}`);
   const response = await fetch(`${baseUrl}/api/chat`, {
@@ -14,12 +27,11 @@ async function ollamaGorselParse(imageBase64, prompt, userMessage) {
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: userMessage || 'Bu görseli analiz et ve JSON olarak dön.', images: [imageBase64] }
+        { role: 'user', content: prompt + '\n\n' + (userMessage || 'Bu görseli analiz et ve SADECE JSON olarak dön. Başka hiçbir şey yazma.'), images: [imageBase64] }
       ],
       stream: false,
-      options: { temperature: 0.1, num_predict: 8192 },
-      format: 'json'
+      keep_alive: '30m',
+      options: { temperature: 0.1, num_predict: 16384 }
     }),
     signal: AbortSignal.timeout(timeout)
   });
@@ -33,7 +45,9 @@ async function ollamaGorselParse(imageBase64, prompt, userMessage) {
   const text = data.message?.content || '';
   console.log(`[Ollama] Yanıt uzunluğu: ${text.length} karakter`);
 
-  const cleaned = text.replace(/```json|```/g, '').trim();
+  // JSON bloğunu bul — yanıtta ekstra metin olabilir
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  const cleaned = jsonMatch ? jsonMatch[0] : text.replace(/```json|```/g, '').trim();
   try {
     return JSON.parse(cleaned);
   } catch {
@@ -45,8 +59,8 @@ async function ollamaGorselParse(imageBase64, prompt, userMessage) {
 // Ollama API ile metin tabanlı parse
 async function ollamaMetinParse(systemMsg, userMsg) {
   const baseUrl = config.ai.katman1.baseUrl();
-  const model = config.ai.katman1.model();
-  const timeout = config.ai.katman1.timeout || 60000;
+  const model = config.ai.katman2.model(); // vision model metin için de daha iyi
+  const timeout = config.ai.katman1.timeout || 120000;
 
   console.log(`[Ollama] Metin parse: model=${model}`);
   const response = await fetch(`${baseUrl}/api/chat`, {
@@ -55,12 +69,11 @@ async function ollamaMetinParse(systemMsg, userMsg) {
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: systemMsg },
-        { role: 'user', content: userMsg }
+        { role: 'user', content: systemMsg + '\n\n' + userMsg + '\n\nSADECE JSON olarak dön. Başka hiçbir şey yazma.' }
       ],
       stream: false,
-      options: { temperature: 0.1, num_predict: 8192 },
-      format: 'json'
+      keep_alive: '30m',
+      options: { temperature: 0.1, num_predict: 8192 }
     }),
     signal: AbortSignal.timeout(timeout)
   });
@@ -86,9 +99,13 @@ async function tekGorselParseEt(buffer, mimeType, prompt, userMessage) {
   const provider = config.ai.katman3.provider();
   let result = null;
 
-  // Önce Ollama (yerel) dene — ücretsiz ve hızlı
+  // Önce Ollama (yerel) dene — ücretsiz
   if (provider === 'ollama') {
-    return await ollamaGorselParse(imageBase64, prompt, userMessage);
+    // Görseli küçült — daha hızlı işlenir
+    const kucukBuffer = await gorselKucult(buffer, 1280);
+    const kucukBase64 = kucukBuffer.toString('base64');
+    console.log(`[Ollama] Görsel küçültüldü: ${(buffer.length/1024).toFixed(0)}KB → ${(kucukBuffer.length/1024).toFixed(0)}KB`);
+    return await ollamaGorselParse(kucukBase64, prompt, userMessage);
   }
 
   if (provider === 'claude') {

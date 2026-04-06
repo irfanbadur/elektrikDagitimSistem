@@ -108,6 +108,9 @@ app.get('*', (req, res) => {
 // Initialize DB and start server
 initDatabase();
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`ElektraTrack sunucu çalışıyor: http://0.0.0.0:${PORT}`);
 });
+// Ollama görsel analiz uzun sürebilir — timeout'u 5 dakikaya çıkar
+server.timeout = 300000;
+server.keepAliveTimeout = 300000;

@@ -25,7 +25,7 @@ module.exports = {
         ).get();
         return row?.deger || 'qwen2.5:7b';
       },
-      timeout: 30000
+      timeout: 120000
     },
     katman2: {
       provider: 'ollama',
@@ -35,9 +35,9 @@ module.exports = {
         const row = db.prepare(
           "SELECT deger FROM firma_ayarlari WHERE anahtar = 'ollama_vision_model'"
         ).get();
-        return row?.deger || 'gemma3:12b';
+        return row?.deger || 'gemma3:4b';
       },
-      timeout: 60000
+      timeout: 300000
     },
     katman3: {
       provider: () => {

@@ -262,10 +262,10 @@ export default function EvrakGiris({ onBasarili, hareketYon = 'giris', karsiTara
       irsaliyeDosyalar.forEach(f => formData.append('irsaliye_dosyalari', f))
 
       const toplamSayfa = bonoDosyalar.length + irsaliyeDosyalar.length
-      setAnalizDurum(`${toplamSayfa} sayfa AI ile analiz ediliyor... (sayfa basina ~15sn)`)
+      setAnalizDurum(`${toplamSayfa} sayfa AI ile analiz ediliyor... (ilk analiz uzun sürebilir)`)
 
-      // Her sayfa icin ~20sn + biraz tampon = min 5dk timeout
-      const timeoutMs = Math.max(toplamSayfa * 30000, 120000)
+      // Ollama yerel AI — ilk çağrı model yükleme dahil uzun sürebilir, min 5dk
+      const timeoutMs = Math.max(toplamSayfa * 120000, 300000)
       const res = await fetch('/api/hareketler/parse', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },

@@ -208,11 +208,25 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
   try {
     if (!req.file) return hata(res, 'Dosya yüklenmedi');
 
-    const imageBase64 = req.file.buffer.toString('base64');
+    let imgBuffer = req.file.buffer;
     const mimeType = req.file.mimetype || 'image/jpeg';
     const prompt = yerTeslimPrompt.buildPrompt();
 
-    console.log(`[YerTeslim] Dosya: ${req.file.originalname}, MIME: ${mimeType}, Boyut: ${(req.file.size / 1024).toFixed(0)}KB, Base64: ${(imageBase64.length / 1024).toFixed(0)}KB`);
+    // Ollama için görseli küçült — daha hızlı işlenir
+    const seciliProvider = config.ai.katman3.provider();
+    if (seciliProvider === 'ollama') {
+      try {
+        const sharp = require('sharp');
+        const meta = await sharp(imgBuffer).metadata();
+        if (meta.width > 1280 || meta.height > 1280) {
+          imgBuffer = await sharp(imgBuffer).resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+          console.log(`[YerTeslim] Görsel küçültüldü: ${(req.file.size/1024).toFixed(0)}KB → ${(imgBuffer.length/1024).toFixed(0)}KB`);
+        }
+      } catch {}
+    }
+    const imageBase64 = imgBuffer.toString('base64');
+
+    console.log(`[YerTeslim] Dosya: ${req.file.originalname}, MIME: ${mimeType}, Boyut: ${(imgBuffer.length / 1024).toFixed(0)}KB`);
 
     // Provider seçimi: ollama (yerel) veya cloud
     const provider = config.ai.katman3.provider();
@@ -229,14 +243,13 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
         body: JSON.stringify({
           model,
           messages: [
-            { role: 'system', content: prompt },
-            { role: 'user', content: 'Bu yer teslim tutanagi gorselini analiz et ve JSON olarak don.', images: [imageBase64] }
+            { role: 'user', content: prompt + '\n\nBu yer teslim tutanagi gorselini analiz et ve SADECE JSON olarak don. Baska hicbir sey yazma.', images: [imageBase64] }
           ],
           stream: false,
-          options: { temperature: 0.1, num_predict: 8192 },
-          format: 'json'
+          keep_alive: '30m',
+          options: { temperature: 0.1, num_predict: 16384 }
         }),
-        signal: AbortSignal.timeout(config.ai.katman2.timeout || 120000)
+        signal: AbortSignal.timeout(config.ai.katman2.timeout || 300000)
       });
       if (!response.ok) {
         const errText = await response.text();
@@ -245,7 +258,8 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
       const data = await response.json();
       const text = data.message?.content || '';
       console.log(`[YerTeslim] Ollama yanıt uzunluğu: ${text.length} karakter`);
-      const cleaned = text.replace(/```json|```/g, '').trim();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const cleaned = jsonMatch ? jsonMatch[0] : text.replace(/```json|```/g, '').trim();
       try {
         result = JSON.parse(cleaned);
         console.log(`[YerTeslim] JSON parse başarılı`);

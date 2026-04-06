@@ -27,14 +27,14 @@ export default function KatalogListesi() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Ekipman Katalogu</h2>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             placeholder="Ara..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="rounded-lg border border-gray-300 py-1.5 pl-9 pr-3 text-sm"
+            className="rounded-lg border border-gray-300 py-1.5 pl-3 pr-9 text-sm"
           />
+          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         </div>
       </div>
 

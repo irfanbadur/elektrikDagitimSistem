@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import useDropdownNav from '@/hooks/useDropdownNav'
 import { createPortal } from 'react-dom'
 import { Sparkles, Loader2, X, CheckCircle, AlertCircle, FileSpreadsheet, Search, Link2, Unlink, ChevronDown, Trash2 } from 'lucide-react'
 import api from '@/api/client'
@@ -69,10 +70,15 @@ function KatalogSecDropdown({ excelAdi, onSec }) {
     })
   }, [acik])
 
-  const handleSec = (item) => {
+  const handleSec = useCallback((item) => {
     onSec(item)
     setAcik(false)
-  }
+  }, [onSec])
+
+  const gosterilen = sonuclar.slice(0, 20)
+  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, handleSec, () => setAcik(false))
+
+  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
 
   return (
     <div className="inline-block">
@@ -94,6 +100,7 @@ function KatalogSecDropdown({ excelAdi, onSec }) {
               ref={aramaRef}
               value={arama}
               onChange={e => { setArama(e.target.value); aramaYap(e.target.value) }}
+              onKeyDown={acik ? handleKeyDown : undefined}
               placeholder="Katalogda ara..."
               className="w-full rounded border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
             />
@@ -118,11 +125,11 @@ function KatalogSecDropdown({ excelAdi, onSec }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {sonuclar.slice(0, 20).map(item => (
+                  {gosterilen.map((item, i) => (
                     <tr
                       key={item.id}
                       onMouseDown={() => handleSec(item)}
-                      className="cursor-pointer border-b border-input/30 hover:bg-primary/5 transition-colors"
+                      className={cn('cursor-pointer border-b border-input/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}
                     >
                       <td className="px-2 py-1.5 font-mono text-blue-600 whitespace-nowrap">{item.poz_birlesik || '-'}</td>
                       <td className="px-2 py-1.5">{item.malzeme_cinsi || '-'}</td>
