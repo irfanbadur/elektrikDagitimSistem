@@ -285,12 +285,11 @@ export default function PersonelForm() {
                 name="rol_id"
                 value={form.rol_id}
                 onChange={handleChange}
-                disabled={!form.departman_id}
-                className={cn(inputCls, !form.departman_id && 'opacity-50 cursor-not-allowed')}
+                className={inputCls}
               >
-                <option value="">{form.departman_id ? 'Seçiniz...' : 'Önce departman seçin'}</option>
+                <option value="">Seçiniz...</option>
                 {roller
-                  .filter(r => String(r.departman_id) === String(form.departman_id))
+                  .filter(r => !form.departman_id || String(r.departman_id) === String(form.departman_id) || !r.departman_id)
                   .map(r => <option key={r.id} value={r.id}>{r.rol_adi}</option>)
                 }
               </select>

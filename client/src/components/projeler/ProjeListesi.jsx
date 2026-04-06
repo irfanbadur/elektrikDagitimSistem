@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 import DataTable from '@/components/shared/DataTable'
 import { ProjeDurumBadge, OncelikBadge } from '@/components/shared/StatusBadge'
 import MalzemeTalepModal from './MalzemeTalepModal'
+import YerTeslimXlsxModal from './YerTeslimXlsxModal'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton'
 import { PROJE_DURUMLARI } from '@/utils/constants'
@@ -35,6 +36,7 @@ export default function ProjeListesi() {
   const [seciliIdler, setSeciliIdler] = useState(new Set())
   const [topluSilmeDialogAcik, setTopluSilmeDialogAcik] = useState(false)
   const [malzemeTalepModalAcik, setMalzemeTalepModalAcik] = useState(false)
+  const [yerTeslimXlsxModalAcik, setYerTeslimXlsxModalAcik] = useState(false)
 
   const secimDegistir = useCallback((id) => {
     setSeciliIdler((prev) => {
@@ -366,6 +368,13 @@ export default function ProjeListesi() {
               Secimi Temizle
             </button>
             <button
+              onClick={() => setYerTeslimXlsxModalAcik(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Yer Teslim XLSX ({seciliIdler.size})
+            </button>
+            <button
               onClick={() => setMalzemeTalepModalAcik(true)}
               className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
             >
@@ -400,6 +409,14 @@ export default function ProjeListesi() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Yer Teslim XLSX Modal */}
+      {yerTeslimXlsxModalAcik && (
+        <YerTeslimXlsxModal
+          projeler={(projeler || []).filter((p) => seciliIdler.has(p.id))}
+          onKapat={() => setYerTeslimXlsxModalAcik(false)}
+        />
       )}
 
       {/* Malzeme Talebi Modal */}

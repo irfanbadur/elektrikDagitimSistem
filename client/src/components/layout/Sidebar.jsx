@@ -166,7 +166,8 @@ export default function Sidebar({ firmaAdi = 'Firma Adı' }) {
 const S = {
   aside: {
     display: 'flex', flexDirection: 'column', width: '256px', height: '100%',
-    background: '#ffffff', borderRight: '1px solid #e5e7eb',
+    background: '#ffffff', borderRight: '1px solid #e2e8f0',
+    boxShadow: '2px 0 8px rgba(0,0,0,0.04)',
     fontFamily: 'Inter, system-ui, sans-serif',
   },
   brand: {

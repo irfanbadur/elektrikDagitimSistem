@@ -42,3 +42,19 @@ export function useDepoGuncelle() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['depolar'] }),
   })
 }
+
+export function useDepoSil() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/depolar/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['depolar'] }),
+  })
+}
+
+export function useDepoStokTopluSil(depoId) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids) => api.post(`/depolar/${depoId}/stok/toplu-sil`, { ids }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['depo-stok', depoId] }),
+  })
+}

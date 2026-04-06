@@ -35,7 +35,7 @@ module.exports = {
         const row = db.prepare(
           "SELECT deger FROM firma_ayarlari WHERE anahtar = 'ollama_vision_model'"
         ).get();
-        return row?.deger || 'llama3.2-vision:11b';
+        return row?.deger || 'gemma3:12b';
       },
       timeout: 60000
     },

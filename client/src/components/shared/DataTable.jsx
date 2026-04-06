@@ -47,7 +47,7 @@ function SutunSecici({ table }) {
       </button>
 
       {acik && (
-        <div className="absolute right-0 z-50 mt-1 w-56 rounded-lg border border-input bg-card shadow-lg">
+        <div className="absolute right-0 z-50 mt-2 w-56 rounded-lg border border-border bg-white shadow-xl ring-1 ring-black/5">
           <div className="flex items-center justify-between border-b border-input px-3 py-2">
             <span className="text-xs font-semibold text-muted-foreground uppercase">Gorunur Sutunlar</span>
             <div className="flex gap-1">
@@ -139,13 +139,13 @@ export default function DataTable({ columns, data = [], searchable = true, searc
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead>
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id} className="border-b border-border bg-muted/50">
+              <tr key={hg.id} className="border-b-2 border-border bg-muted/70">
                 {hg.headers.map((header) => (
-                  <th key={header.id} className="px-4 py-3 text-left font-medium text-muted-foreground">
+                  <th key={header.id} className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {header.isPlaceholder ? null : (
                       <div
                         className={header.column.getCanSort() ? 'flex cursor-pointer select-none items-center gap-1' : ''}
@@ -166,18 +166,18 @@ export default function DataTable({ columns, data = [], searchable = true, searc
           </thead>
           <tbody>
             {table.getRowModel().rows.length === 0 ? (
-              <tr><td colSpan={columns.length} className="px-4 py-8 text-center text-muted-foreground">Kayit bulunamadi</td></tr>
+              <tr><td colSpan={columns.length} className="px-4 py-12 text-center text-muted-foreground">Kayit bulunamadi</td></tr>
             ) : (
               table.getRowModel().rows.map((row, i) => (
                 <tr
                   key={row.id}
                   onDoubleClick={() => onRowDoubleClick?.(row.original)}
-                  className={`border-b border-border last:border-0 transition-colors ${
-                    i % 2 === 1 ? 'bg-muted/50' : 'bg-white'
-                  } hover:bg-primary/8 hover:shadow-[inset_3px_0_0_0_hsl(var(--primary))] ${onRowDoubleClick ? 'cursor-pointer' : ''}`}
+                  className={`border-b border-border/60 last:border-0 transition-colors ${
+                    i % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'
+                  } hover:bg-primary/5 ${onRowDoubleClick ? 'cursor-pointer' : ''}`}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3">
+                    <td key={cell.id} className="px-4 py-3.5">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -190,7 +190,7 @@ export default function DataTable({ columns, data = [], searchable = true, searc
 
       {/* Pagination */}
       {pagination && toplamKayit > 0 && (
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-between rounded-b-lg border-t border-border/50 bg-muted/30 px-4 py-2.5">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground">Sayfa basina:</span>

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Save, Loader2, X } from 'lucide-react'
 import { useDepoOlustur } from '@/hooks/useDepolar'
+import { useEkipler } from '@/hooks/useEkipler'
 
 const bosForm = {
   depo_adi: '',
@@ -9,11 +10,44 @@ const bosForm = {
   telefon: '',
   adres: '',
   notlar: '',
+  ekip_id: null,
 }
 
 export default function DepoForm({ onKapat, onBasarili }) {
   const [form, setForm] = useState(bosForm)
   const depoOlustur = useDepoOlustur()
+  const { data: ekipler } = useEkipler()
+
+  // Ekip arama autocomplete state
+  const [ekipArama, setEkipArama] = useState('')
+  const [ekipDropdownAcik, setEkipDropdownAcik] = useState(false)
+  const ekipInputRef = useRef(null)
+  const ekipDropdownRef = useRef(null)
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (ekipDropdownRef.current && !ekipDropdownRef.current.contains(e.target) &&
+          ekipInputRef.current && !ekipInputRef.current.contains(e.target)) {
+        setEkipDropdownAcik(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const filtrelenmisEkipler = (ekipler || []).filter(e => {
+    if (!ekipArama.trim()) return true
+    const q = ekipArama.toLowerCase()
+    return (e.ekip_adi || '').toLowerCase().includes(q) ||
+           (e.ekip_kodu || '').toLowerCase().includes(q) ||
+           (e.ekip_basi_adi || '').toLowerCase().includes(q)
+  })
+
+  const handleEkipSec = (ekip) => {
+    setForm(prev => ({ ...prev, depo_adi: ekip.ekip_adi, ekip_id: ekip.id, sorumlu: ekip.ekip_basi_adi || prev.sorumlu }))
+    setEkipArama(ekip.ekip_adi)
+    setEkipDropdownAcik(false)
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -34,7 +68,7 @@ export default function DepoForm({ onKapat, onBasarili }) {
   }
 
   return (
-    <div className="mb-6 rounded-lg border border-input bg-card p-6 shadow-sm">
+    <div className="mb-6 rounded-lg border border-input bg-card shadow-sm" style={{ padding: '24px 32px' }}>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Yeni Taseron/Depo Ekle</h2>
         <button onClick={onKapat} className="rounded p-1 hover:bg-muted">
@@ -47,15 +81,43 @@ export default function DepoForm({ onKapat, onBasarili }) {
             <label className="mb-1.5 block text-sm font-medium">
               Depo/Taseron Adi <span className="text-red-500">*</span>
             </label>
-            <input
-              type="text"
-              name="depo_adi"
-              value={form.depo_adi}
-              onChange={handleChange}
-              required
-              placeholder="orn: Taseron ABC"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+            <div className="relative">
+              <input
+                ref={ekipInputRef}
+                type="text"
+                value={ekipArama || form.depo_adi}
+                onChange={e => {
+                  const val = e.target.value
+                  setEkipArama(val)
+                  setForm(prev => ({ ...prev, depo_adi: val, ekip_id: null }))
+                  setEkipDropdownAcik(val.length > 0)
+                }}
+                onFocus={() => { if ((ekipArama || form.depo_adi).length > 0) setEkipDropdownAcik(true) }}
+                required
+                placeholder="Ekip adı yazarak arayın veya serbest girin..."
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              {ekipDropdownAcik && filtrelenmisEkipler.length > 0 && (
+                <div ref={ekipDropdownRef} className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-lg border border-input bg-card shadow-lg">
+                  {filtrelenmisEkipler.map(ekip => (
+                    <button
+                      key={ekip.id}
+                      type="button"
+                      onMouseDown={() => handleEkipSec(ekip)}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-primary/5"
+                    >
+                      <div>
+                        <span className="font-medium">{ekip.ekip_adi}</span>
+                        {ekip.ekip_kodu && <span className="ml-2 text-xs text-muted-foreground">{ekip.ekip_kodu}</span>}
+                      </div>
+                      {ekip.ekip_basi_adi && (
+                        <span className="text-xs text-muted-foreground">{ekip.ekip_basi_adi}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium">Tip</label>
@@ -66,6 +128,7 @@ export default function DepoForm({ onKapat, onBasarili }) {
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="taseron">Taseron</option>
+              <option value="oz_ekip">Öz Ekip</option>
               <option value="saha_depo">Saha Depo</option>
               <option value="ana_depo">Ana Depo</option>
             </select>

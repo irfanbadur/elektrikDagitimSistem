@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Save, ArrowLeft, Loader2, FileText, PenLine, ArrowRight } from 'lucide-react'
+import { Save, ArrowLeft, Loader2, FileText, PenLine, ArrowRight, Search } from 'lucide-react'
+import api from '@/api/client'
 import {
   useMalzeme,
   useMalzemeOlustur,
@@ -44,11 +45,56 @@ function ManuelGiris() {
   const [form, setForm] = useState(bosForm)
   const [hatalar, setHatalar] = useState({})
 
+  // Katalog arama autocomplete
+  const [katalogSonuclar, setKatalogSonuclar] = useState([])
+  const [katalogAcik, setKatalogAcik] = useState(false)
+  const [katalogAraniyor, setKatalogAraniyor] = useState(false)
+  const aramaTimer = useRef(null)
+  const katalogRef = useRef(null)
+  const inputRef = useRef(null)
+
+  const katalogAra = useCallback((text) => {
+    if (aramaTimer.current) clearTimeout(aramaTimer.current)
+    if (!text || text.length < 2) { setKatalogSonuclar([]); setKatalogAcik(false); return }
+    setKatalogAraniyor(true)
+    aramaTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.get('/malzeme-katalog', { params: { arama: text } })
+        setKatalogSonuclar(res?.data || [])
+        setKatalogAcik(true)
+      } catch { setKatalogSonuclar([]) }
+      setKatalogAraniyor(false)
+    }, 300)
+  }, [])
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (katalogRef.current && !katalogRef.current.contains(e.target) &&
+          inputRef.current && !inputRef.current.contains(e.target)) setKatalogAcik(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => { document.removeEventListener('mousedown', handleClick); if (aramaTimer.current) clearTimeout(aramaTimer.current) }
+  }, [])
+
+  const handleKatalogSec = (item) => {
+    setForm(prev => ({
+      ...prev,
+      malzeme_kodu: item.malzeme_kodu || prev.malzeme_kodu,
+      malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || prev.malzeme_adi,
+      birim: (item.olcu || 'adet').toLowerCase(),
+    }))
+    setKatalogAcik(false)
+  }
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
     if (hatalar[name]) {
       setHatalar((prev) => ({ ...prev, [name]: '' }))
+    }
+    // Malzeme adı veya kodu yazıldığında katalogda ara
+    if (name === 'malzeme_adi' || name === 'malzeme_kodu') {
+      katalogAra(value)
     }
   }
 
@@ -79,7 +125,7 @@ function ManuelGiris() {
   const kaydediliyor = malzemeOlustur.isPending
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-input bg-card p-6 shadow-sm">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-4xl rounded-lg border border-input bg-card shadow-sm" style={{ padding: '24px 32px' }}>
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label className="mb-1.5 block text-sm font-medium">
@@ -89,12 +135,48 @@ function ManuelGiris() {
             className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${hatalar.malzeme_kodu ? 'border-red-500' : 'border-input'} bg-background`} />
           {hatalar.malzeme_kodu && <p className="mt-1 text-xs text-red-500">{hatalar.malzeme_kodu}</p>}
         </div>
-        <div>
+        <div className="relative">
           <label className="mb-1.5 block text-sm font-medium">
             Malzeme Adi <span className="text-red-500">*</span>
           </label>
-          <input type="text" name="malzeme_adi" value={form.malzeme_adi} onChange={handleChange} placeholder="Malzeme adini girin"
-            className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${hatalar.malzeme_adi ? 'border-red-500' : 'border-input'} bg-background`} />
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input ref={inputRef} type="text" name="malzeme_adi" value={form.malzeme_adi} onChange={handleChange}
+              onFocus={() => { if (form.malzeme_adi.length >= 2) katalogAra(form.malzeme_adi) }}
+              placeholder="Katalogdan arayın veya serbest girin..."
+              className={`w-full rounded-md border pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${hatalar.malzeme_adi ? 'border-red-500' : 'border-input'} bg-background`} />
+          </div>
+          {katalogAcik && (katalogAraniyor || katalogSonuclar.length > 0) && (
+            <div ref={katalogRef} className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-white shadow-xl ring-1 ring-black/5">
+              {katalogAraniyor ? (
+                <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                  <Loader2 className="inline h-3 w-3 animate-spin mr-1" />Aranıyor...
+                </div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm">
+                    <tr className="border-b border-border">
+                      <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Kod</th>
+                      <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Malzeme</th>
+                      <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">SAP Tanım</th>
+                      <th className="px-2 py-1.5 text-center font-medium text-muted-foreground">Birim</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {katalogSonuclar.slice(0, 20).map(item => (
+                      <tr key={item.id} onMouseDown={() => handleKatalogSec(item)}
+                        className="cursor-pointer border-b border-border/30 hover:bg-primary/5 transition-colors">
+                        <td className="px-2 py-1.5 font-mono text-blue-600 whitespace-nowrap">{item.malzeme_kodu || '-'}</td>
+                        <td className="px-2 py-1.5">{item.malzeme_cinsi || '-'}</td>
+                        <td className="px-2 py-1.5 text-muted-foreground">{item.malzeme_tanimi_sap || '-'}</td>
+                        <td className="px-2 py-1.5 text-center text-muted-foreground">{item.olcu || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
           {hatalar.malzeme_adi && <p className="mt-1 text-xs text-red-500">{hatalar.malzeme_adi}</p>}
         </div>
         <div>
@@ -233,7 +315,7 @@ function MalzemeDuzenleForm() {
         <h1 className="text-2xl font-bold">Malzeme Duzenle</h1>
         <p className="mt-1 text-sm text-muted-foreground">Malzeme bilgilerini guncelleyin</p>
       </div>
-      <form onSubmit={handleSubmit} className="rounded-lg border border-input bg-card p-6 shadow-sm">
+      <form onSubmit={handleSubmit} className="mx-auto max-w-4xl rounded-lg border border-input bg-card shadow-sm" style={{ padding: '24px 32px' }}>
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-sm font-medium">Malzeme Kodu <span className="text-red-500">*</span></label>

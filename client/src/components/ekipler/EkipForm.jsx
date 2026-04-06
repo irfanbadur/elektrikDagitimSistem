@@ -49,10 +49,12 @@ export default function EkipForm() {
   const departmanlarAll = departmanlarRaw?.data || []
   const rollerAll = rollerRaw?.data || []
 
-  // Saha-Operasyon departmanındaki personelleri ekip başı olarak filtrele
+  // Ekip başı adayları: sadece Saha-Operasyon departmanındaki kullanıcılar
   const sahaDepId = departmanlarAll.find(d => d.departman_kodu === 'saha_operasyon')?.id
   const ekipBasiRolId = rollerAll.find(r => r.rol_kodu === 'ekip_basi')?.id
-  const ekipBasiAdaylari = personelListesi.filter(p => p.departman_id && p.departman_id === sahaDepId)
+  const ekipBasiAdaylari = sahaDepId
+    ? personelListesi.filter(p => Number(p.departman_id) === Number(sahaDepId))
+    : personelListesi
 
   const [form, setForm] = useState(bosForm)
   const [hatalar, setHatalar] = useState({})

@@ -231,7 +231,9 @@ export default function ProjeDemontaj({ projeId }) {
 
   const [yeniSatir, setYeniSatir] = useState(false)
   const [tutanakYukleniyor, setTutanakYukleniyor] = useState(false)
-  const [tutanakDosya, setTutanakDosya] = useState(null) // { dosya_id, dosya_yolu, guncellendi }
+  const [tutanakDosya, setTutanakDosya] = useState(null)
+  const [tutanakAyarAcik, setTutanakAyarAcik] = useState(false)
+  const [tutanakDosyaAdi, setTutanakDosyaAdi] = useState('')
 
   const handleKaydet = async (data) => {
     await ekle.mutateAsync(data)
@@ -242,12 +244,21 @@ export default function ProjeDemontaj({ projeId }) {
     guncelle.mutate({ id, ...kalem, durum: yeniDurum })
   }
 
+  const handleTutanakAc = () => {
+    if (!tutanakDosyaAdi) setTutanakDosyaAdi(`${projeId}_demontaj-tutanagi`)
+    setTutanakAyarAcik(true)
+  }
+
   const handleTutanakOlustur = async () => {
+    setTutanakAyarAcik(false)
     setTutanakYukleniyor(true)
     try {
-      const res = await api.post(`/proje-demontaj/${projeId}/tutanak-olustur`)
+      const res = await api.post(`/proje-demontaj/${projeId}/tutanak-olustur`, {
+        dosya_adi: tutanakDosyaAdi || undefined
+      })
       const data = res?.data || res
       setTutanakDosya(data)
+      if (data.dosya_adi) setTutanakDosyaAdi(data.dosya_adi.replace(/\.xlsx$/i, ''))
     } catch (err) {
       console.error('Tutanak oluşturma hatası:', err)
     } finally {
@@ -264,23 +275,52 @@ export default function ProjeDemontaj({ projeId }) {
         </div>
         <div className="flex items-center gap-2">
           {/* Tutanak Oluştur/Güncelle */}
-          <button
-            onClick={handleTutanakOlustur}
-            disabled={tutanakYukleniyor}
-            className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
-          >
-            {tutanakYukleniyor ? (
-              <><Loader2 className="h-4 w-4 animate-spin" />Oluşturuluyor...</>
-            ) : tutanakDosya ? (
-              <><RefreshCw className="h-4 w-4" />Tutanağı Güncelle</>
-            ) : (
-              <><FileSpreadsheet className="h-4 w-4" />Tutanak Oluştur</>
+          <div className="relative">
+            <button
+              onClick={tutanakYukleniyor ? undefined : handleTutanakAc}
+              disabled={tutanakYukleniyor}
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+            >
+              {tutanakYukleniyor ? (
+                <><Loader2 className="h-4 w-4 animate-spin" />Oluşturuluyor...</>
+              ) : tutanakDosya ? (
+                <><RefreshCw className="h-4 w-4" />Tutanağı Güncelle</>
+              ) : (
+                <><FileSpreadsheet className="h-4 w-4" />Tutanak Oluştur</>
+              )}
+            </button>
+            {/* Dosya adı ayar paneli */}
+            {tutanakAyarAcik && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setTutanakAyarAcik(false)} />
+                <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-lg border border-input bg-card p-4 shadow-xl">
+                  <h4 className="mb-3 text-sm font-semibold">Tutanak Ayarları</h4>
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">Dosya Adı</label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        value={tutanakDosyaAdi}
+                        onChange={e => setTutanakDosyaAdi(e.target.value)}
+                        className="flex-1 rounded border border-input px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                        placeholder="dosya-adi"
+                      />
+                      <span className="text-xs text-muted-foreground">.xlsx</span>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button onClick={() => setTutanakAyarAcik(false)} className="rounded px-3 py-1.5 text-xs hover:bg-muted">İptal</button>
+                    <button onClick={handleTutanakOlustur} className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
+                      {tutanakDosya ? 'Güncelle' : 'Oluştur'}
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
-          </button>
+          </div>
           {/* Tutanak dosya linki */}
           {tutanakDosya && (
             <a
-              href={`/api/dosya/indir/${tutanakDosya.dosya_id}`}
+              href={`/api/dosya/${tutanakDosya.dosya_id}/indir`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 rounded-lg border border-input px-3 py-2 text-sm text-primary hover:bg-primary/5 transition-colors"

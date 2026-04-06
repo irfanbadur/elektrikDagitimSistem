@@ -8,7 +8,7 @@ export default function Header({ title = 'Dashboard', onMenuToggle }) {
   const [kesintPanelAcik, setKesintPanelAcik] = useState(false)
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-white px-5 sm:px-8 lg:px-12 shadow-sm">
+    <header className="flex h-16 items-center justify-between border-b border-border bg-white shadow-sm" style={{ paddingLeft: 36, paddingRight: 36 }}>
       {/* Left side */}
       <div className="flex items-center gap-4">
         <button

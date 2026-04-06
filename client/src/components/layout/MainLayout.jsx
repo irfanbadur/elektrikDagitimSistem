@@ -43,8 +43,8 @@ export default function MainLayout({ children, title = 'Dashboard', noPadding = 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header title={title} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
-        <main className={`flex-1 min-h-0 ${noPadding ? 'flex flex-col' : 'overflow-y-auto px-5 py-8 sm:px-8 lg:px-12'}`}>
-          <div className={noPadding ? 'flex flex-1 flex-col min-h-0' : 'mx-auto w-full max-w-7xl'}>
+        <main className={`flex-1 min-h-0 ${noPadding ? 'flex flex-col' : 'overflow-y-auto'}`} style={noPadding ? undefined : { padding: '28px 36px 40px' }}>
+          <div className={noPadding ? 'flex flex-1 flex-col min-h-0' : 'mx-auto w-full max-w-[1400px]'}>
             {children}
           </div>
         </main>

@@ -332,7 +332,7 @@ export default function ProjeDetay() {
 
       {/* Tabs */}
       <div className="border-b border-border overflow-x-auto">
-        <div className="flex gap-0 min-w-max">
+        <div className="flex gap-3 min-w-max">
           {TABS.map((tab) => {
             const Icon = tab.icon
             return (

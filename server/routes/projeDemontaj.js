@@ -130,6 +130,7 @@ router.post('/:projeId/tutanak-olustur', async (req, res) => {
   try {
     const db = getDb();
     const projeId = req.params.projeId;
+    const kullaniciDosyaAdi = req.body?.dosya_adi; // kullanıcı özel dosya adı
 
     // 1) Proje bilgilerini al
     const proje = db.prepare(`
@@ -148,10 +149,13 @@ router.post('/:projeId/tutanak-olustur', async (req, res) => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(SABLON_YOLU);
 
-    // Hücre değerini stil/biçim koruyarak güncelle
-    const setCellVal = (ws, addr, val) => {
+    // Hücre değerini stil/biçim koruyarak güncelle, opsiyonel referans font uygula
+    const setCellVal = (ws, addr, val, refFont) => {
       if (val == null || val === '') return;
-      ws.getCell(addr).value = val;
+      const cell = ws.getCell(addr);
+      cell.value = val;
+      if (refFont) cell.font = { ...cell.font, size: refFont.size };
+      cell.alignment = { ...cell.alignment, horizontal: 'left', vertical: 'middle' };
     };
 
     // ── "Tutanak Yeni Durum Yapım İşleri" sayfasını doldur ──
@@ -195,11 +199,16 @@ router.post('/:projeId/tutanak-olustur', async (req, res) => {
       for (let i = 0; i < kalemler.length && i < (satirlar.bitis - satirlar.baslangic + 1); i++) {
         const r = satirlar.baslangic + i;
         const k = kalemler[i];
-        setCellVal(ws, `D${r}`, k.malzeme_kodu || '');  // MALZEME KODU
-        setCellVal(ws, `E${r}`, k.malzeme_adi);          // MALZEME TANIMI
-        setCellVal(ws, `G${r}`, k.birim || 'Ad');         // ÖLÇÜ BİRİMİ
-        ws.getCell(`I${r}`).value = k.miktar || 0;        // MİKTAR (sayı)
-        setCellVal(ws, `J${r}`, k.notlar || '');          // AÇIKLAMA
+        // Sıra no (C sütunu) fontunu referans al — veri hücrelerine aynı punto uygula
+        const refFont = ws.getCell(`C${r}`).font;
+        setCellVal(ws, `D${r}`, k.malzeme_kodu || '', refFont);  // MALZEME KODU
+        setCellVal(ws, `E${r}`, k.malzeme_adi, refFont);          // MALZEME TANIMI
+        setCellVal(ws, `G${r}`, k.birim || 'Ad', refFont);        // ÖLÇÜ BİRİMİ
+        const miktarCell = ws.getCell(`I${r}`);
+        miktarCell.value = k.miktar || 0;                          // MİKTAR (sayı)
+        if (refFont) miktarCell.font = { ...miktarCell.font, size: refFont.size };
+        miktarCell.alignment = { ...miktarCell.alignment, horizontal: 'left', vertical: 'middle' };
+        setCellVal(ws, `J${r}`, k.notlar || '', refFont);          // AÇIKLAMA
       }
     }
 
@@ -220,7 +229,10 @@ router.post('/:projeId/tutanak-olustur', async (req, res) => {
 
     // 4) Dosya yolunu belirle ve kaydet
     const isTipi = (proje.proje_tipi || 'PROJE').toUpperCase();
-    const dosyaAdi = `${proje.proje_no}_demontaj-tutanagi.xlsx`;
+    const varsayilanAd = `${proje.proje_no}_demontaj-tutanagi.xlsx`;
+    const dosyaAdi = (kullaniciDosyaAdi && kullaniciDosyaAdi.trim())
+      ? (kullaniciDosyaAdi.trim().endsWith('.xlsx') ? kullaniciDosyaAdi.trim() : kullaniciDosyaAdi.trim() + '.xlsx')
+      : varsayilanAd;
     const relDir = `projeler/${isTipi}/${proje.proje_no}`;
     const absDir = path.join(UPLOADS_ROOT, relDir);
     if (!fs.existsSync(absDir)) fs.mkdirSync(absDir, { recursive: true });

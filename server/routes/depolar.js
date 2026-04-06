@@ -1,6 +1,21 @@
 const router = require('express').Router();
 const { getDb } = require('../db/database');
 const { aktiviteLogla, basarili, hata } = require('../utils/helpers');
+const { authMiddleware } = require('../middleware/auth');
+
+// Admin kontrolü: admin kullanıcı veya malzeme silme izni olan kullanıcı
+function adminGerekli(req, res, next) {
+  if (!req.kullanici) {
+    return res.status(403).json({ success: false, error: 'Bu işlem için yetki gerekli' });
+  }
+  // admin kullanıcı adı veya Genel Müdür / Koordinatör rolü (id 1,2)
+  const yetkilendirmeService = require('../services/yetkilendirmeService');
+  const { izinVar } = yetkilendirmeService.izinKontrol(req.kullanici.id, 'malzeme', 'silme');
+  if (req.kullanici.kullanici_adi === 'admin' || izinVar) {
+    return next();
+  }
+  return res.status(403).json({ success: false, error: 'Bu işlem için admin yetkisi gerekli' });
+}
 
 // GET / - tüm depolar
 router.get('/', (req, res) => {
@@ -83,6 +98,49 @@ router.put('/:id', (req, res) => {
     ).run(depo_adi, depo_tipi, sorumlu, telefon, adres, aktif ?? 1, notlar, req.params.id);
     const guncellenen = db.prepare('SELECT * FROM depolar WHERE id = ?').get(req.params.id);
     basarili(res, guncellenen);
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// DELETE /:id - Depo sil (stokları ile birlikte) — sadece admin
+router.delete('/:id', authMiddleware, adminGerekli, (req, res) => {
+  try {
+    const db = getDb();
+    const depo = db.prepare('SELECT * FROM depolar WHERE id = ?').get(req.params.id);
+    if (!depo) return hata(res, 'Depo bulunamadı', 404);
+
+    db.transaction(() => {
+      db.prepare('DELETE FROM depo_stok WHERE depo_id = ?').run(req.params.id);
+      db.prepare('UPDATE hareketler SET kaynak_depo_id = NULL WHERE kaynak_depo_id = ?').run(req.params.id);
+      db.prepare('UPDATE hareketler SET hedef_depo_id = NULL WHERE hedef_depo_id = ?').run(req.params.id);
+      db.prepare('DELETE FROM depolar WHERE id = ?').run(req.params.id);
+    })();
+
+    basarili(res, { message: `${depo.depo_adi} silindi` });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// DELETE /:depoId/stok/toplu - Toplu stok satırı silme — sadece admin
+router.post('/:depoId/stok/toplu-sil', authMiddleware, adminGerekli, (req, res) => {
+  try {
+    const db = getDb();
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return hata(res, 'Silinecek stok ID listesi gerekli');
+
+    const stmt = db.prepare('DELETE FROM depo_stok WHERE id = ? AND depo_id = ?');
+    const silinen = db.transaction(() => {
+      let count = 0;
+      for (const id of ids) {
+        const r = stmt.run(id, req.params.depoId);
+        count += r.changes;
+      }
+      return count;
+    })();
+
+    basarili(res, { silinen_sayi: silinen });
   } catch (err) {
     hata(res, err.message, 500);
   }

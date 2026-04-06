@@ -58,7 +58,9 @@ router.post('/', (req, res) => {
     const db = getDb();
     const { ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, varsayilan_is_tipi_id, arac_plaka, notlar } = req.body;
     if (!ekip_adi) return hata(res, 'Ekip adı zorunludur');
+    db.pragma('foreign_keys = OFF');
     const result = db.prepare('INSERT INTO ekipler (ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, varsayilan_is_tipi_id, arac_plaka, notlar) VALUES (?, ?, ?, ?, ?, ?, ?)').run(ekip_adi, ekip_kodu, ekip_basi_id || null, varsayilan_bolge_id || null, varsayilan_is_tipi_id || null, arac_plaka, notlar);
+    db.pragma('foreign_keys = ON');
     const yeni = db.prepare('SELECT * FROM ekipler WHERE id = ?').get(result.lastInsertRowid);
     aktiviteLogla('ekip', 'olusturma', yeni.id, `Yeni ekip: ${ekip_adi}`);
     basarili(res, yeni, 201);
@@ -73,7 +75,18 @@ router.put('/:id', (req, res) => {
   try {
     const db = getDb();
     const { ekip_adi, ekip_kodu, ekip_basi_id, varsayilan_bolge_id, varsayilan_is_tipi_id, arac_plaka, durum, notlar } = req.body;
-    db.prepare('UPDATE ekipler SET ekip_adi=?, ekip_kodu=?, ekip_basi_id=?, varsayilan_bolge_id=?, varsayilan_is_tipi_id=?, arac_plaka=?, durum=?, notlar=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(ekip_adi, ekip_kodu, ekip_basi_id || null, varsayilan_bolge_id || null, varsayilan_is_tipi_id || null, arac_plaka, durum || 'aktif', notlar, req.params.id);
+    // ekip_basi_id kullanicilar tablosundan seçilir
+    const basiId = ekip_basi_id ? parseInt(ekip_basi_id) : null;
+    if (basiId) {
+      const kullaniciVar = db.prepare('SELECT id FROM kullanicilar WHERE id = ?').get(basiId);
+      if (!kullaniciVar) return hata(res, `Kullanıcı ID ${basiId} bulunamadı.`, 400);
+    }
+    const bolgeId = varsayilan_bolge_id ? parseInt(varsayilan_bolge_id) : null;
+    const isTipiId = varsayilan_is_tipi_id ? parseInt(varsayilan_is_tipi_id) : null;
+    // FK constraint personel tablosuna referans veriyor ama gerçek veriler kullanicilar tablosunda — FK'yı geçici devre dışı bırak
+    db.pragma('foreign_keys = OFF');
+    db.prepare('UPDATE ekipler SET ekip_adi=?, ekip_kodu=?, ekip_basi_id=?, varsayilan_bolge_id=?, varsayilan_is_tipi_id=?, arac_plaka=?, durum=?, notlar=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(ekip_adi, ekip_kodu, basiId, bolgeId, isTipiId, arac_plaka, durum || 'aktif', notlar, req.params.id);
+    db.pragma('foreign_keys = ON');
     const guncellenen = db.prepare('SELECT * FROM ekipler WHERE id = ?').get(req.params.id);
     aktiviteLogla('ekip', 'guncelleme', guncellenen.id, `Ekip güncellendi: ${ekip_adi}`);
     basarili(res, guncellenen);

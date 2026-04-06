@@ -1,11 +1,95 @@
 const config = require('../config');
 const { getDb } = require('../db/database');
 
+// Ollama API ile görsel parse
+async function ollamaGorselParse(imageBase64, prompt, userMessage) {
+  const baseUrl = config.ai.katman2.baseUrl();
+  const model = config.ai.katman2.model();
+  const timeout = config.ai.katman2.timeout || 120000;
+
+  console.log(`[Ollama] Görsel parse: model=${model}, url=${baseUrl}`);
+  const response = await fetch(`${baseUrl}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: userMessage || 'Bu görseli analiz et ve JSON olarak dön.', images: [imageBase64] }
+      ],
+      stream: false,
+      options: { temperature: 0.1, num_predict: 8192 },
+      format: 'json'
+    }),
+    signal: AbortSignal.timeout(timeout)
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Ollama API hata (${response.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const text = data.message?.content || '';
+  console.log(`[Ollama] Yanıt uzunluğu: ${text.length} karakter`);
+
+  const cleaned = text.replace(/```json|```/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    console.error('[Ollama] JSON parse hatası. Ham yanıt:', text.slice(0, 500));
+    return { raw_text: text, parse_error: true };
+  }
+}
+
+// Ollama API ile metin tabanlı parse
+async function ollamaMetinParse(systemMsg, userMsg) {
+  const baseUrl = config.ai.katman1.baseUrl();
+  const model = config.ai.katman1.model();
+  const timeout = config.ai.katman1.timeout || 60000;
+
+  console.log(`[Ollama] Metin parse: model=${model}`);
+  const response = await fetch(`${baseUrl}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemMsg },
+        { role: 'user', content: userMsg }
+      ],
+      stream: false,
+      options: { temperature: 0.1, num_predict: 8192 },
+      format: 'json'
+    }),
+    signal: AbortSignal.timeout(timeout)
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Ollama API hata (${response.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const text = data.message?.content || '';
+  const cleaned = text.replace(/```json|```/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    return { raw_text: text, parse_error: true };
+  }
+}
+
 // Tek bir görseli AI ile parse et (buffer + mimeType alır, sonucu döner)
 async function tekGorselParseEt(buffer, mimeType, prompt, userMessage) {
   const imageBase64 = buffer.toString('base64');
   const provider = config.ai.katman3.provider();
   let result = null;
+
+  // Önce Ollama (yerel) dene — ücretsiz ve hızlı
+  if (provider === 'ollama') {
+    return await ollamaGorselParse(imageBase64, prompt, userMessage);
+  }
 
   if (provider === 'claude') {
     const apiKey = config.ai.katman3.claude.apiKey();
@@ -94,6 +178,10 @@ async function tekGorselParseEt(buffer, mimeType, prompt, userMessage) {
 async function metinTabanliAI(systemMsg, userMsg) {
   const provider = config.ai.katman3.provider();
   let result = null;
+
+  if (provider === 'ollama') {
+    return await ollamaMetinParse(systemMsg, userMsg);
+  }
 
   if (provider === 'claude') {
     const apiKey = config.ai.katman3.claude.apiKey();

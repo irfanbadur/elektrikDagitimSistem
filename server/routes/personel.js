@@ -29,9 +29,9 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   try {
     const db = getDb();
-    const { ad_soyad, telefon, email, rol, uzmanlik, ekip_id, notlar } = req.body;
+    const { ad_soyad, telefon, email, rol, uzmanlik, ekip_id, notlar, rol_id, departman_id, pozisyon_id, ust_kullanici_id, acil_kisi, acil_telefon } = req.body;
     if (!ad_soyad) return hata(res, 'Ad soyad zorunludur');
-    const result = db.prepare('INSERT INTO personel (ad_soyad, telefon, email, rol, uzmanlik, ekip_id, notlar) VALUES (?,?,?,?,?,?,?)').run(ad_soyad, telefon, email, rol || 'teknisyen', uzmanlik, ekip_id || null, notlar);
+    const result = db.prepare('INSERT INTO personel (ad_soyad, telefon, email, rol, uzmanlik, ekip_id, notlar, rol_id, departman_id, pozisyon_id, ust_kullanici_id, acil_kisi, acil_telefon) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(ad_soyad, telefon, email, rol || 'teknisyen', uzmanlik, ekip_id || null, notlar, rol_id || null, departman_id || null, pozisyon_id || null, ust_kullanici_id || null, acil_kisi || null, acil_telefon || null);
     const yeni = db.prepare('SELECT * FROM personel WHERE id = ?').get(result.lastInsertRowid);
     aktiviteLogla('personel', 'olusturma', yeni.id, `Yeni personel: ${ad_soyad}`);
     basarili(res, yeni, 201);
@@ -44,10 +44,10 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const db = getDb();
-    const { ad_soyad, telefon, email, rol, uzmanlik, ekip_id, notlar } = req.body;
+    const { ad_soyad, telefon, email, rol, uzmanlik, ekip_id, notlar, rol_id, departman_id, pozisyon_id, ust_kullanici_id, acil_kisi, acil_telefon } = req.body;
     const mevcut = db.prepare('SELECT * FROM personel WHERE id = ?').get(req.params.id);
     if (!mevcut) return hata(res, 'Personel bulunamadı', 404);
-    db.prepare('UPDATE personel SET ad_soyad=?, telefon=?, email=?, rol=?, uzmanlik=?, ekip_id=?, notlar=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(ad_soyad, telefon, email, rol, uzmanlik, ekip_id || null, notlar, req.params.id);
+    db.prepare('UPDATE personel SET ad_soyad=?, telefon=?, email=?, rol=?, uzmanlik=?, ekip_id=?, notlar=?, rol_id=?, departman_id=?, pozisyon_id=?, ust_kullanici_id=?, acil_kisi=?, acil_telefon=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?').run(ad_soyad, telefon, email, rol, uzmanlik, ekip_id || null, notlar, rol_id || null, departman_id || null, pozisyon_id || null, ust_kullanici_id || null, acil_kisi || null, acil_telefon || null, req.params.id);
     const guncellenen = db.prepare('SELECT * FROM personel WHERE id = ?').get(req.params.id);
     aktiviteLogla('personel', 'guncelleme', guncellenen.id, `Personel güncellendi: ${ad_soyad}`);
     basarili(res, guncellenen);

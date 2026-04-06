@@ -319,4 +319,110 @@ router.get('/:id/durum-gecmisi', (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════
+// POST /yer-teslim-xlsx — Seçili projelerden Yer Teslim Tutanağı XLSX oluştur
+// ════════════════════════════════════════════════════════════════
+const fs = require('fs');
+const path = require('path');
+const ExcelJS = require('exceljs');
+const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
+const YER_TESLIM_SABLON = path.join(__dirname, '../../doc/tutanaklar/F.411_4 YER TESLİM TUTANAĞI.xlsx');
+
+router.post('/yer-teslim-xlsx', async (req, res) => {
+  try {
+    const db = getDb();
+    const { satirlar, dosya_adi: kullaniciDosyaAdi } = req.body;
+    if (!satirlar || !satirlar.length) return hata(res, 'En az bir proje satırı gerekli');
+
+    // Şablon dosyasını oku (biçim korunur)
+    if (!fs.existsSync(YER_TESLIM_SABLON)) return hata(res, 'Yer teslim tutanağı şablonu bulunamadı', 500);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(YER_TESLIM_SABLON);
+
+    const ws = wb.getWorksheet('YER TESLİM TUTANAĞI');
+    if (!ws) return hata(res, 'Şablonda "YER TESLİM TUTANAĞI" sayfası bulunamadı', 500);
+
+    // Veri satırları: Row 11-30 (max 20 proje)
+    const MAX_SATIR = 20;
+    const BASLANGIC = 11;
+
+    // Referans font: sıra no hücresi (B sütunu) fontunu al, veri hücrelerine uygula
+    const setWithFont = (cell, val, refFont) => {
+      cell.value = val;
+      if (refFont?.size) cell.font = { ...cell.font, size: refFont.size };
+    };
+
+    for (let i = 0; i < Math.min(satirlar.length, MAX_SATIR); i++) {
+      const r = BASLANGIC + i;
+      const s = satirlar[i];
+      const refFont = ws.getCell(`B${r}`).font; // sıra no referans font
+      setWithFont(ws.getCell(`B${r}`), i + 1, refFont);                  // SIRA NO
+      setWithFont(ws.getCell(`C${r}`), s.il || '', refFont);              // İL
+      setWithFont(ws.getCell(`D${r}`), s.ilce || '', refFont);            // İLÇE
+      setWithFont(ws.getCell(`E${r}`), s.mahalle || '', refFont);         // MAHALLE
+      setWithFont(ws.getCell(`F${r}`), s.proje_adi || '', refFont);       // PROJE ADI
+      setWithFont(ws.getCell(`G${r}`), s.teknik_birim || '', refFont);    // TEKNİK BİRİM
+      setWithFont(ws.getCell(`H${r}`), s.pyp_id || '', refFont);          // PYP ID
+      setWithFont(ws.getCell(`I${r}`), s.kesinti || '', refFont);         // KESİNTİ SAYISI
+      setWithFont(ws.getCell(`J${r}`), s.yer_teslim_tarihi || '', refFont);  // YER TESLİM TARİHİ
+      setWithFont(ws.getCell(`K${r}`), s.ise_baslama_tarihi || '', refFont); // İŞE BAŞLAMA TARİHİ
+      setWithFont(ws.getCell(`L${r}`), s.is_bitirme_tarihi || '', refFont);  // İŞ BİTİRME TARİHİ
+    }
+
+    // Dosya yolunu belirle
+    const tarih = new Date().toISOString().slice(0, 10);
+    const varsayilanAd = `Yer_Teslim_Tutanagi_${tarih}.xlsx`;
+    const dosyaAdi = (kullaniciDosyaAdi && kullaniciDosyaAdi.trim())
+      ? (kullaniciDosyaAdi.trim().endsWith('.xlsx') ? kullaniciDosyaAdi.trim() : kullaniciDosyaAdi.trim() + '.xlsx')
+      : varsayilanAd;
+    const relDir = 'projeler/teslim-tutanaklari';
+    const absDir = path.join(UPLOADS_ROOT, relDir);
+    if (!fs.existsSync(absDir)) fs.mkdirSync(absDir, { recursive: true });
+
+    const dosyaYolu = `${relDir}/${dosyaAdi}`;
+    const absYol = path.join(UPLOADS_ROOT, dosyaYolu);
+
+    await wb.xlsx.writeFile(absYol);
+    const stat = fs.statSync(absYol);
+
+    // dosyalar tablosunda oluştur veya güncelle
+    const mevcutDosya = db.prepare(`
+      SELECT id FROM dosyalar WHERE dosya_adi = ? AND alan = 'proje' AND alt_alan = 'teslim-tutanaklari' AND durum = 'aktif'
+    `).get(dosyaAdi);
+
+    let dosyaId;
+    if (mevcutDosya) {
+      db.prepare('UPDATE dosyalar SET dosya_boyutu = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?').run(stat.size, mevcutDosya.id);
+      dosyaId = mevcutDosya.id;
+    } else {
+      const result = db.prepare(`
+        INSERT INTO dosyalar (dosya_adi, orijinal_adi, dosya_yolu, dosya_boyutu, mime_tipi, kategori, alan, alt_alan, kaynak, baslik)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        dosyaAdi,
+        'F.411_4 YER TESLİM TUTANAĞI.xlsx',
+        dosyaYolu,
+        stat.size,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'tablo',
+        'proje',
+        'teslim-tutanaklari',
+        'sistem',
+        'Yer Teslim Tutanağı'
+      );
+      dosyaId = result.lastInsertRowid;
+    }
+
+    basarili(res, {
+      dosya_id: dosyaId,
+      dosya_adi: dosyaAdi,
+      dosya_yolu: dosyaYolu,
+      proje_sayisi: satirlar.length,
+    });
+  } catch (err) {
+    console.error('[YerTeslimXLSX] HATA:', err.message);
+    hata(res, err.message, 500);
+  }
+});
+
 module.exports = router;

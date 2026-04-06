@@ -214,12 +214,46 @@ router.post('/parse', upload.single('dosya'), async (req, res) => {
 
     console.log(`[YerTeslim] Dosya: ${req.file.originalname}, MIME: ${mimeType}, Boyut: ${(req.file.size / 1024).toFixed(0)}KB, Base64: ${(imageBase64.length / 1024).toFixed(0)}KB`);
 
-    // Önce katman3 (cloud) dene - görsel analiz için en iyi
+    // Provider seçimi: ollama (yerel) veya cloud
     const provider = config.ai.katman3.provider();
     console.log(`[YerTeslim] Provider: ${provider}`);
     let result = null;
 
-    if (provider === 'claude') {
+    if (provider === 'ollama') {
+      const baseUrl = config.ai.katman2.baseUrl();
+      const model = config.ai.katman2.model();
+      console.log(`[YerTeslim] Ollama model: ${model}, url: ${baseUrl}`);
+      const response = await fetch(`${baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: 'Bu yer teslim tutanagi gorselini analiz et ve JSON olarak don.', images: [imageBase64] }
+          ],
+          stream: false,
+          options: { temperature: 0.1, num_predict: 8192 },
+          format: 'json'
+        }),
+        signal: AbortSignal.timeout(config.ai.katman2.timeout || 120000)
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        return hata(res, `Ollama API hata (${response.status}): ${errText.slice(0, 200)}`, 500);
+      }
+      const data = await response.json();
+      const text = data.message?.content || '';
+      console.log(`[YerTeslim] Ollama yanıt uzunluğu: ${text.length} karakter`);
+      const cleaned = text.replace(/```json|```/g, '').trim();
+      try {
+        result = JSON.parse(cleaned);
+        console.log(`[YerTeslim] JSON parse başarılı`);
+      } catch (parseErr) {
+        console.error(`[YerTeslim] JSON parse hatası:`, parseErr.message);
+        result = { raw_text: text, parse_error: true };
+      }
+    } else if (provider === 'claude') {
       const apiKey = config.ai.katman3.claude.apiKey();
       if (!apiKey) return hata(res, 'Claude API anahtarı ayarlanmamış. Ayarlar > AI bölümünden ekleyin.', 400);
 

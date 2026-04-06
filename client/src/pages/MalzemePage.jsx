@@ -6,6 +6,8 @@ import {
   ArrowRightLeft,
   Plus,
   Package,
+  Users,
+  Trash2,
 } from 'lucide-react'
 import MainLayout from '@/components/layout/MainLayout'
 import DepoStok from '@/components/malzeme/DepoStok'
@@ -15,12 +17,14 @@ import MalzemeHareketleri from '@/components/malzeme/MalzemeHareketleri'
 import HareketListesi from '@/components/malzeme/HareketListesi'
 import MalzemeForm from '@/components/malzeme/MalzemeForm'
 import StokListesi from '@/components/malzeme/StokListesi'
-import { useDepolar } from '@/hooks/useDepolar'
+import { useDepolar, useDepoSil } from '@/hooks/useDepolar'
+import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 
 const DEPO_TIP_IKON = {
   ana_depo: Warehouse,
   taseron: HardHat,
+  oz_ekip: Users,
   saha_depo: Package,
 }
 
@@ -29,6 +33,9 @@ function MalzemeTabView() {
   const [aktifTab, setAktifTab] = useState(null)
   const [depoFormAcik, setDepoFormAcik] = useState(false)
   const [transferBilgi, setTransferBilgi] = useState(null)
+  const depoSil = useDepoSil()
+  const { kullanici, izinVar } = useAuth()
+  const isAdmin = kullanici?.kullanici_adi === 'admin' || izinVar('malzeme', 'silme')
   const navigate = useNavigate()
 
   // ilk yuklemede ilk depoyu sec
@@ -58,6 +65,19 @@ function MalzemeTabView() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && aktifDepo && (
+            <button
+              onClick={() => {
+                if (!window.confirm(`"${aktifDepo.depo_adi}" deposunu ve tüm stoklarını silmek istediğinize emin misiniz?`)) return
+                depoSil.mutate(aktifDepo.id, { onSuccess: () => setAktifTab(null) })
+              }}
+              disabled={depoSil.isPending}
+              className="flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              {depoSil.isPending ? 'Siliniyor...' : 'Depoyu Sil'}
+            </button>
+          )}
           <button
             onClick={() => setDepoFormAcik(true)}
             className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
@@ -88,7 +108,7 @@ function MalzemeTabView() {
           ))}
         </div>
       ) : (
-        <div className="mb-6 flex gap-1 overflow-x-auto border-b border-border">
+        <div className="mb-6 flex gap-1 overflow-x-auto border-b border-border mt-2 pt-2">
           {sekmeler.map((s) => {
             const aktif =
               aktifTab === 'hareketler'

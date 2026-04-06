@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { AlertTriangle, Package, ArrowRightLeft } from 'lucide-react'
-import { useDepoStok } from '@/hooks/useDepolar'
+import { useState, useCallback, useEffect } from 'react'
+import { AlertTriangle, Package, ArrowRightLeft, Trash2, CheckSquare } from 'lucide-react'
+import { useDepoStok, useDepoStokTopluSil } from '@/hooks/useDepolar'
+import { useAuth } from '@/context/AuthContext'
 import DataTable from '@/components/shared/DataTable'
 import { MALZEME_KATEGORILERI } from '@/utils/constants'
 import { formatSayi, formatParaBirimi } from '@/utils/formatters'
@@ -9,6 +10,36 @@ import { cn } from '@/lib/utils'
 export default function DepoStok({ depoId, depoAdi, onTransfer }) {
   const [kategori, setKategori] = useState('')
   const { data: stoklar, isLoading } = useDepoStok(depoId)
+  const topluSil = useDepoStokTopluSil(depoId)
+  const { kullanici, izinVar } = useAuth()
+  const isAdmin = kullanici?.kullanici_adi === 'admin' || izinVar('malzeme', 'silme')
+  const [seciliIdler, setSeciliIdler] = useState(new Set())
+
+  // Depo değişince seçimi temizle
+  useEffect(() => { setSeciliIdler(new Set()) }, [depoId])
+
+  const secimDegistir = useCallback((id) => {
+    setSeciliIdler(prev => {
+      const yeni = new Set(prev)
+      yeni.has(id) ? yeni.delete(id) : yeni.add(id)
+      return yeni
+    })
+  }, [])
+
+  const tumunuSec = useCallback(() => {
+    const gosterilen = (kategori ? stoklar?.filter(s => s.kategori === kategori) : stoklar) || []
+    if (seciliIdler.size === gosterilen.length && gosterilen.length > 0) {
+      setSeciliIdler(new Set())
+    } else {
+      setSeciliIdler(new Set(gosterilen.map(s => s.id)))
+    }
+  }, [stoklar, kategori, seciliIdler.size])
+
+  const handleTopluSil = () => {
+    if (seciliIdler.size === 0) return
+    if (!window.confirm(`${seciliIdler.size} stok satırını silmek istediğinize emin misiniz?`)) return
+    topluSil.mutate([...seciliIdler], { onSuccess: () => setSeciliIdler(new Set()) })
+  }
 
   const filtrelenmis = kategori
     ? stoklar?.filter((s) => s.kategori === kategori)
@@ -27,6 +58,27 @@ export default function DepoStok({ depoId, depoAdi, onTransfer }) {
   ).length
 
   const columns = [
+    ...(isAdmin ? [{
+      id: 'secim',
+      header: () => (
+        <input
+          type="checkbox"
+          checked={gosterilecek.length > 0 && seciliIdler.size === gosterilecek.length}
+          ref={el => { if (el) el.indeterminate = seciliIdler.size > 0 && seciliIdler.size < gosterilecek.length }}
+          onChange={tumunuSec}
+          className="rounded border-input accent-primary"
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          checked={seciliIdler.has(row.original.id)}
+          onChange={() => secimDegistir(row.original.id)}
+          className="rounded border-input accent-primary"
+        />
+      ),
+      size: 40,
+    }] : []),
     {
       accessorKey: 'malzeme_kodu',
       header: 'Kod',
@@ -119,7 +171,7 @@ export default function DepoStok({ depoId, depoAdi, onTransfer }) {
   return (
     <div>
       {/* Ozet Kartlari */}
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className="mb-4 mt-2 grid grid-cols-3 gap-3">
         <div className="rounded-lg border border-input bg-card p-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Package className="h-4 w-4" />
@@ -142,7 +194,7 @@ export default function DepoStok({ depoId, depoAdi, onTransfer }) {
         </div>
       </div>
 
-      {/* Filtreler */}
+      {/* Filtreler ve toplu işlem */}
       <div className="mb-4 flex items-center gap-3">
         <select
           value={kategori}
@@ -163,6 +215,28 @@ export default function DepoStok({ depoId, depoAdi, onTransfer }) {
           >
             Filtreyi Temizle
           </button>
+        )}
+        {isAdmin && seciliIdler.size > 0 && (
+          <div className="ml-auto flex items-center gap-2">
+            <span className="flex items-center gap-1 text-sm font-medium text-primary">
+              <CheckSquare className="h-4 w-4" />
+              {seciliIdler.size} satir secildi
+            </span>
+            <button
+              onClick={() => setSeciliIdler(new Set())}
+              className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+            >
+              Temizle
+            </button>
+            <button
+              onClick={handleTopluSil}
+              disabled={topluSil.isPending}
+              className="inline-flex items-center gap-1 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {topluSil.isPending ? 'Siliniyor...' : `Sil (${seciliIdler.size})`}
+            </button>
+          </div>
         )}
       </div>
 
