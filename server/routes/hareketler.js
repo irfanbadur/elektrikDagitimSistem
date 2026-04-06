@@ -165,7 +165,7 @@ router.get('/:id', (req, res) => {
       LEFT JOIN malzemeler m ON hk.malzeme_id = m.id
       WHERE hk.hareket_id = ? ORDER BY hk.sira_no`).all(hareket.id);
 
-    hareket.dokumanlar = db.prepare(`SELECT hd.*, d.dosya_adi, d.dosya_yolu, d.boyut, d.mime_tipi
+    hareket.dokumanlar = db.prepare(`SELECT hd.*, d.dosya_adi, d.dosya_yolu, d.dosya_boyutu, d.mime_tipi
       FROM hareket_dokumanlari hd
       LEFT JOIN dosyalar d ON hd.dosya_id = d.id
       WHERE hd.hareket_id = ?`).all(hareket.id);
@@ -509,6 +509,50 @@ router.post('/:id/iptal', (req, res) => {
     basarili(res, { iptal_edilen: orijinal.id, ters_hareket: tersHareketId });
   } catch (err) {
     console.error('Hareket iptal hatası:', err);
+    hata(res, err.message, 500);
+  }
+});
+
+// PUT /:id — Hareket güncelle (irsaliye bilgileri + kalemler)
+router.put('/:id', async (req, res) => {
+  try {
+    const db = getDb();
+    const { irsaliye_bilgi, kalemler } = req.body;
+    const hareket = db.prepare('SELECT * FROM hareketler WHERE id = ?').get(req.params.id);
+    if (!hareket) return hata(res, 'Hareket bulunamadı', 404);
+
+    db.transaction(() => {
+      // İrsaliye meta güncelle
+      if (irsaliye_bilgi) {
+        const mevcutMeta = db.prepare("SELECT id FROM hareket_meta WHERE hareket_id = ? AND meta_tipi = 'irsaliye_bilgi'").get(req.params.id);
+        if (mevcutMeta) {
+          db.prepare('UPDATE hareket_meta SET veri = ? WHERE id = ?').run(JSON.stringify(irsaliye_bilgi), mevcutMeta.id);
+        } else {
+          db.prepare("INSERT INTO hareket_meta (hareket_id, meta_tipi, veri) VALUES (?, 'irsaliye_bilgi', ?)").run(req.params.id, JSON.stringify(irsaliye_bilgi));
+        }
+        // Belge no güncelle
+        if (irsaliye_bilgi.irsaliye_no) {
+          db.prepare('UPDATE hareketler SET belge_no = ?, tarih = COALESCE(?, tarih) WHERE id = ?').run(
+            irsaliye_bilgi.irsaliye_no, irsaliye_bilgi.irsaliye_tarihi || null, req.params.id);
+        }
+      }
+
+      // Kalemler güncelle
+      if (kalemler && kalemler.length > 0) {
+        const kalemStmt = db.prepare(`
+          UPDATE hareket_kalemleri SET malzeme_kodu = ?, malzeme_adi = ?, birim = ?, miktar = ?
+          WHERE id = ? AND hareket_id = ?
+        `);
+        for (const k of kalemler) {
+          if (k.id) {
+            kalemStmt.run(k.malzeme_kodu || null, k.malzeme_adi || '', k.birim || 'Ad', k.miktar || 0, k.id, req.params.id);
+          }
+        }
+      }
+    })();
+
+    basarili(res, { message: 'Hareket güncellendi' });
+  } catch (err) {
     hata(res, err.message, 500);
   }
 });
