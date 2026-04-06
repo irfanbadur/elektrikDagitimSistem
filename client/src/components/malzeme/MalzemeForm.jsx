@@ -199,11 +199,47 @@ export default function MalzemeForm() {
   }
 
   // Kaydet
+  const [kaydediliyor, setKaydediliyor] = useState(false)
   const handleKaydet = async () => {
     const gecerliKalemler = kalemler.filter(k => k.malzeme_adi?.trim())
     if (gecerliKalemler.length === 0) return
-    // TODO: hareketler API'ye kaydet
-    navigate('/depo')
+    setKaydediliyor(true)
+    try {
+      const formData = new FormData()
+      const hareketData = {
+        hareket_tipi: hareketYon,
+        kaynak_depo_id: verenSec?.depoId || null,
+        hedef_depo_id: alanSec?.depoId || null,
+        irsaliye_bilgi: (irsaliye.irsaliye_no || irsaliye.irsaliye_tarihi) ? irsaliye : null,
+        kalemler: gecerliKalemler.map((k, i) => ({
+          sira_no: i + 1,
+          malzeme_kodu: k.malzeme_kodu || null,
+          malzeme_adi: k.malzeme_adi,
+          birim: k.birim || 'Ad',
+          miktar: k.miktar || 0,
+          miktar_irsaliye: k.miktar || 0,
+          poz_no: k.poz_no || null,
+        })),
+        teslim_eden: tarafLabel(secenekler, veren, firmaAdi),
+        teslim_alan: tarafLabel(secenekler, alan, firmaAdi),
+      }
+      formData.append('hareket_data', JSON.stringify(hareketData))
+      if (irsaliyeDosya) formData.append('irsaliye_dosyalari', irsaliyeDosya)
+      if (bonoDosya) formData.append('bono_dosyalari', bonoDosya)
+
+      const res = await fetch('/api/hareketler/kaydet', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        body: formData,
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Kaydetme hatası')
+      navigate('/depo')
+    } catch (err) {
+      alert(err.message || 'Kaydetme hatası')
+    } finally {
+      setKaydediliyor(false)
+    }
   }
 
   return (
@@ -356,10 +392,10 @@ export default function MalzemeForm() {
           {/* ─── Kaydet ─── */}
           <div className="mt-6 flex justify-end gap-3">
             <button onClick={() => navigate('/depo')} className="rounded-lg border border-input px-4 py-2.5 text-sm font-medium hover:bg-muted">İptal</button>
-            <button onClick={handleKaydet} disabled={kalemler.filter(k => k.malzeme_adi?.trim()).length === 0}
+            <button onClick={handleKaydet} disabled={kaydediliyor || kalemler.filter(k => k.malzeme_adi?.trim()).length === 0}
               className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-              <Save className="h-4 w-4" />
-              {kalemler.filter(k => k.malzeme_adi?.trim()).length} Kalemi Kaydet
+              {kaydediliyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {kaydediliyor ? 'Kaydediliyor...' : `${kalemler.filter(k => k.malzeme_adi?.trim()).length} Kalemi Kaydet`}
             </button>
           </div>
         </>
