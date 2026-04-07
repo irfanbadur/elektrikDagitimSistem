@@ -42,6 +42,18 @@ export function useHareketKaydet() {
   })
 }
 
+export function useHareketSil() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => api.delete(`/hareketler/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hareketler'] })
+      qc.invalidateQueries({ queryKey: ['depo-stok'] })
+      qc.invalidateQueries({ queryKey: ['depolar'] })
+    },
+  })
+}
+
 export function useHareketIptal() {
   const qc = useQueryClient()
   return useMutation({

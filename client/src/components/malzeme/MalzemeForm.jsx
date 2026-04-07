@@ -51,7 +51,7 @@ function tarafLabel(secenekler, key, firma) {
 }
 
 // ─── Satır: malzeme adı ile katalog arama ───
-function MalzemeSatiri({ kalem, index, onDegistir, onSil, verenTipi, verenLabel }) {
+function MalzemeSatiri({ kalem, index, onDegistir, onSil, verenTipi, verenLabel, onEnterSonrakiSatir }) {
   const [katalogAcik, setKatalogAcik] = useState(false)
   const [katalogSonuc, setKatalogSonuc] = useState([])
   const [araniyor, setAraniyor] = useState(false)
@@ -103,18 +103,25 @@ function MalzemeSatiri({ kalem, index, onDegistir, onSil, verenTipi, verenLabel 
   // Arama değiştiğinde seçimi sıfırla
   useEffect(() => { setSeciliIdx(-1) }, [katalogSonuc, setSeciliIdx])
 
+  const handleEnter = (e) => {
+    if (e.key === 'Enter' && !katalogAcik) {
+      e.preventDefault()
+      onEnterSonrakiSatir?.(index, e.target.getAttribute('data-col'))
+    }
+  }
+
   const inputCls = 'w-full rounded border border-transparent bg-transparent px-2 py-1.5 text-xs hover:border-input focus:border-primary focus:outline-none'
 
   return (
     <tr className="border-b border-input/50 group hover:bg-muted/20 transition-colors">
       <td className="w-8 px-2 py-1.5 text-center text-xs text-muted-foreground">{index + 1}</td>
       <td className="w-24 px-1 py-1.5">
-        <input value={kalem.malzeme_kodu || ''} onChange={e => onDegistir(index, { ...kalem, malzeme_kodu: e.target.value })} className={inputCls} placeholder="-" />
+        <input data-col="kod" value={kalem.malzeme_kodu || ''} onChange={e => onDegistir(index, { ...kalem, malzeme_kodu: e.target.value })} onKeyDown={handleEnter} className={inputCls} placeholder="-" />
       </td>
       <td className="px-1 py-1.5 relative" style={{ overflow: 'visible' }}>
-        <input ref={inputRef} value={kalem.malzeme_adi || ''} onChange={e => { onDegistir(index, { ...kalem, malzeme_adi: e.target.value }); ara(e.target.value) }}
+        <input ref={inputRef} data-col="adi" value={kalem.malzeme_adi || ''} onChange={e => { onDegistir(index, { ...kalem, malzeme_adi: e.target.value }); ara(e.target.value) }}
           onFocus={() => { if ((kalem.malzeme_adi || '').length >= 2) ara(kalem.malzeme_adi) }}
-          onKeyDown={katalogAcik ? handleKeyDown : undefined}
+          onKeyDown={katalogAcik ? handleKeyDown : handleEnter}
           className={inputCls} placeholder="Malzeme adı..." />
         {katalogAcik && (araniyor || gosterilen.length > 0) && (
           <div ref={dropRef} className="absolute left-0 top-full z-50 mt-1 max-h-48 w-[650px] overflow-y-auto rounded-lg border border-border bg-white shadow-xl ring-1 ring-black/5">
@@ -142,10 +149,10 @@ function MalzemeSatiri({ kalem, index, onDegistir, onSil, verenTipi, verenLabel 
         )}
       </td>
       <td className="w-16 px-1 py-1.5">
-        <input value={kalem.birim || 'Ad'} onChange={e => onDegistir(index, { ...kalem, birim: e.target.value })} className={cn(inputCls, 'text-center w-14')} />
+        <input data-col="birim" value={kalem.birim || 'Ad'} onChange={e => onDegistir(index, { ...kalem, birim: e.target.value })} onKeyDown={handleEnter} className={cn(inputCls, 'text-center w-14')} />
       </td>
       <td className="w-20 px-1 py-1.5">
-        <input type="number" value={kalem.miktar || ''} onChange={e => onDegistir(index, { ...kalem, miktar: Number(e.target.value) || 0 })} className={cn(inputCls, 'text-center w-16')} />
+        <input data-col="miktar" type="number" value={kalem.miktar || ''} onChange={e => onDegistir(index, { ...kalem, miktar: Number(e.target.value) || 0 })} onKeyDown={handleEnter} className={cn(inputCls, 'text-center w-16')} />
       </td>
       {/* Veren Depo */}
       <td className="w-32 px-1 py-1.5">
@@ -188,7 +195,9 @@ function MalzemeSatiri({ kalem, index, onDegistir, onSil, verenTipi, verenLabel 
 export default function MalzemeForm() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const duzenlemeModu = Boolean(id)
+  const duzenleHareketId = searchParams.get('duzenle')
 
   if (duzenlemeModu) return <MalzemeDuzenleForm />
 
@@ -207,6 +216,55 @@ export default function MalzemeForm() {
 
   // Malzeme listesi
   const [kalemler, setKalemler] = useState([])
+  const [hareketYuklendi, setHareketYuklendi] = useState(false)
+
+  // Düzenleme modunda hareket verilerini yükle
+  useEffect(() => {
+    if (!duzenleHareketId || hareketYuklendi) return
+    const yukle = async () => {
+      try {
+        const r = await api.get(`/hareketler/${duzenleHareketId}`)
+        const h = r?.data || r
+        if (!h) return
+
+        // Taraf seçimi
+        const secenekler = tarafListesiOlustur(depolar)
+        if (h.kaynak_depo_id) setVeren(`depo_${h.kaynak_depo_id}`)
+        else if (h.teslim_eden) { setVeren('ambar'); }
+        if (h.hedef_depo_id) setAlan(`depo_${h.hedef_depo_id}`)
+
+        // İrsaliye meta
+        const irsMeta = (h.meta || []).find(m => m.meta_tipi === 'irsaliye_bilgi')
+        if (irsMeta) {
+          const v = JSON.parse(irsMeta.veri)
+          setIrsaliye(prev => ({ ...prev, ...v, irsaliye_no: v.irsaliye_no || h.belge_no || '' }))
+        } else if (h.belge_no) {
+          setIrsaliye(prev => ({ ...prev, irsaliye_no: h.belge_no, irsaliye_tarihi: h.tarih || '' }))
+        }
+
+        // Bono meta
+        const bonoMeta = (h.meta || []).find(m => m.meta_tipi === 'bono_bilgi')
+        if (bonoMeta) setBono(prev => ({ ...prev, ...JSON.parse(bonoMeta.veri) }))
+
+        // Ambar meta
+        const ambarMeta = (h.meta || []).find(m => m.meta_tipi === 'ambar_bilgi')
+        if (ambarMeta) setAmbar(prev => ({ ...prev, ...JSON.parse(ambarMeta.veri) }))
+
+        // Kalemler
+        const yeniKalemler = (h.kalemler || []).map((k, i) => ({
+          _id: Date.now() + i,
+          malzeme_kodu: k.malzeme_kodu || '',
+          malzeme_adi: k.malzeme_cinsi || k.malzeme_tanimi_sap || k.malzeme_adi || '',
+          birim: k.birim || 'Ad',
+          miktar: k.miktar || 0,
+          poz_no: k.poz_no || '',
+        }))
+        if (yeniKalemler.length > 0) setKalemler(yeniKalemler)
+        setHareketYuklendi(true)
+      } catch {}
+    }
+    if (depolar) yukle()
+  }, [duzenleHareketId, depolar, hareketYuklendi])
 
   // Belge dosyaları
   const [irsaliyeDosya, setIrsaliyeDosya] = useState(null)
@@ -243,6 +301,23 @@ export default function MalzemeForm() {
   const handleKalemDegistir = (idx, yeni) => setKalemler(prev => prev.map((k, i) => i === idx ? yeni : k))
   const handleKalemSil = (idx) => setKalemler(prev => prev.filter((_, i) => i !== idx))
   const handleKalemEkle = () => setKalemler(prev => [...prev, { _id: Date.now(), malzeme_kodu: '', malzeme_adi: '', birim: 'Ad', miktar: 0, poz_no: '' }])
+  const tabloRef = useRef(null)
+  const handleEnterSonrakiSatir = useCallback((satir, col) => {
+    if (!tabloRef.current) return
+    const sonrakiSatir = satir + 1
+    // Son satırdaysa yeni satır ekle
+    if (sonrakiSatir >= kalemler.length) {
+      handleKalemEkle()
+      setTimeout(() => {
+        const input = tabloRef.current?.querySelector(`tr:last-child input[data-col="${col}"]`)
+        input?.focus()
+      }, 50)
+    } else {
+      const rows = tabloRef.current.querySelectorAll('tbody tr')
+      const input = rows[sonrakiSatir]?.querySelector(`input[data-col="${col}"]`)
+      input?.focus()
+    }
+  }, [kalemler.length])
 
   const handleBelgeSec = (e, tip) => {
     const file = e.target.files?.[0]
@@ -268,6 +343,26 @@ export default function MalzemeForm() {
     if (gecerliKalemler.length === 0) return
     setKaydediliyor(true)
     try {
+      if (duzenleHareketId) {
+        // Güncelleme modu — PUT
+        await api.put(`/hareketler/${duzenleHareketId}`, {
+          irsaliye_bilgi: (irsaliye.irsaliye_no || irsaliye.irsaliye_tarihi) ? irsaliye : null,
+          bono_bilgi: (bono.belge_no || bono.belge_tarihi) ? bono : null,
+          ambar_bilgi: (ambar.kocan_no || ambar.fis_no) ? ambar : null,
+          kalemler: gecerliKalemler.map((k, i) => ({
+            id: k.id || null,
+            sira_no: i + 1,
+            malzeme_kodu: k.malzeme_kodu || null,
+            malzeme_adi: k.malzeme_adi,
+            birim: k.birim || 'Ad',
+            miktar: k.miktar || 0,
+          })),
+        })
+        navigate('/depo')
+        return
+      }
+
+      // Yeni hareket — POST
       const formData = new FormData()
       const hareketData = {
         hareket_tipi: hareketYon,
@@ -313,8 +408,8 @@ export default function MalzemeForm() {
         <button onClick={() => navigate('/depo')} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />Depoya Dön
         </button>
-        <h1 className="text-2xl font-bold">Yeni Hareket</h1>
-        <p className="mt-1 text-sm text-muted-foreground">İrsaliye belgesi ile malzeme girişi/çıkışı yapın</p>
+        <h1 className="text-2xl font-bold">{duzenleHareketId ? `Hareket #${duzenleHareketId} Düzenle` : 'Yeni Hareket'}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{duzenleHareketId ? 'Hareket bilgilerini güncelleyin' : 'İrsaliye belgesi ile malzeme girişi/çıkışı yapın'}</p>
       </div>
 
       {/* ─── Veren → Alan Seçimi ─── */}
@@ -343,6 +438,20 @@ export default function MalzemeForm() {
             <label className="mb-1 block text-xs text-muted-foreground">Firma Adı</label>
             <input value={firmaAdi} onChange={e => setFirmaAdi(e.target.value)} placeholder="Tedarikçi / alıcı firma adı"
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+          </div>
+        )}
+        {veren === 'ambar' && (
+          <div className="flex items-center gap-4">
+            <div className="flex-1 flex items-center gap-2">
+              <label className="shrink-0 text-xs text-muted-foreground">Depo Kodu</label>
+              <input value={irsaliye.ambar_depo_kodu || ''} onChange={e => setIrsaliye(prev => ({ ...prev, ambar_depo_kodu: e.target.value }))}
+                placeholder="Ör: Y101" className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+            </div>
+            <div className="flex-1 flex items-center gap-2">
+              <label className="shrink-0 text-xs text-muted-foreground">Depo Tanımı</label>
+              <input value={irsaliye.ambar_depo_tanimi || ''} onChange={e => setIrsaliye(prev => ({ ...prev, ambar_depo_tanimi: e.target.value }))}
+                placeholder="Ör: 25/016 H.Güner" className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+            </div>
           </div>
         )}
         {secimTamam && (
@@ -485,6 +594,16 @@ export default function MalzemeForm() {
             </div>
           </div>
 
+          {/* ─── Notlar ─── */}
+          <div className="mt-6 rounded-lg border border-input bg-card shadow-sm" style={{ padding: '16px 20px' }}>
+            <div className="flex items-center gap-2">
+              <label className="w-24 shrink-0 text-xs text-muted-foreground text-right">Notlar</label>
+              <textarea value={irsaliye.notlar || ''} onChange={e => setIrsaliye(prev => ({ ...prev, notlar: e.target.value }))}
+                rows={2} placeholder="Ek açıklama veya not..."
+                className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" />
+            </div>
+          </div>
+
           {/* ─── Malzeme Listesi ─── */}
           <div className="mt-6 rounded-lg border border-input bg-card p-5 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
@@ -493,7 +612,7 @@ export default function MalzemeForm() {
                 <Plus className="h-3.5 w-3.5" />Ekle
               </button>
             </div>
-            <div className="rounded-lg border border-input" style={{ overflow: 'visible' }}>
+            <div ref={tabloRef} className="rounded-lg border border-input" style={{ overflow: 'visible' }}>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b-2 border-border bg-muted/70">
@@ -513,7 +632,7 @@ export default function MalzemeForm() {
                       Henüz malzeme eklenmedi. AI ile analiz edin veya manuel ekleyin.
                     </td></tr>
                   ) : kalemler.map((k, i) => (
-                    <MalzemeSatiri key={k._id || i} kalem={k} index={i} onDegistir={handleKalemDegistir} onSil={handleKalemSil} verenTipi={verenSec?.depoTipi || veren} verenLabel={tarafLabel(secenekler, veren, firmaAdi)} />
+                    <MalzemeSatiri key={k._id || i} kalem={k} index={i} onDegistir={handleKalemDegistir} onSil={handleKalemSil} verenTipi={verenSec?.depoTipi || veren} verenLabel={tarafLabel(secenekler, veren, firmaAdi)} onEnterSonrakiSatir={handleEnterSonrakiSatir} />
                   ))}
                 </tbody>
               </table>
@@ -526,7 +645,7 @@ export default function MalzemeForm() {
             <button onClick={handleKaydet} disabled={kaydediliyor || kalemler.filter(k => k.malzeme_adi?.trim()).length === 0}
               className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
               {kaydediliyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {kaydediliyor ? 'Kaydediliyor...' : `${kalemler.filter(k => k.malzeme_adi?.trim()).length} Kalemi Kaydet`}
+              {kaydediliyor ? 'Kaydediliyor...' : duzenleHareketId ? 'Güncelle' : `${kalemler.filter(k => k.malzeme_adi?.trim()).length} Kalemi Kaydet`}
             </button>
           </div>
         </>

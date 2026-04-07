@@ -517,7 +517,7 @@ router.post('/:id/iptal', (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const db = getDb();
-    const { irsaliye_bilgi, kalemler, silinen_dokuman_ids } = req.body;
+    const { irsaliye_bilgi, bono_bilgi, ambar_bilgi, kalemler, silinen_dokuman_ids } = req.body;
     const hareket = db.prepare('SELECT * FROM hareketler WHERE id = ?').get(req.params.id);
     if (!hareket) return hata(res, 'Hareket bulunamadı', 404);
 
@@ -541,6 +541,20 @@ router.put('/:id', async (req, res) => {
           db.prepare('UPDATE hareketler SET belge_no = ?, tarih = COALESCE(?, tarih) WHERE id = ?').run(
             irsaliye_bilgi.irsaliye_no, irsaliye_bilgi.irsaliye_tarihi || null, req.params.id);
         }
+      }
+
+      // Bono meta güncelle
+      if (bono_bilgi) {
+        const mevcutBono = db.prepare("SELECT id FROM hareket_meta WHERE hareket_id = ? AND meta_tipi = 'bono_bilgi'").get(req.params.id);
+        if (mevcutBono) db.prepare('UPDATE hareket_meta SET veri = ? WHERE id = ?').run(JSON.stringify(bono_bilgi), mevcutBono.id);
+        else db.prepare("INSERT INTO hareket_meta (hareket_id, meta_tipi, veri) VALUES (?, 'bono_bilgi', ?)").run(req.params.id, JSON.stringify(bono_bilgi));
+      }
+
+      // Ambar meta güncelle
+      if (ambar_bilgi) {
+        const mevcutAmbar = db.prepare("SELECT id FROM hareket_meta WHERE hareket_id = ? AND meta_tipi = 'ambar_bilgi'").get(req.params.id);
+        if (mevcutAmbar) db.prepare('UPDATE hareket_meta SET veri = ? WHERE id = ?').run(JSON.stringify(ambar_bilgi), mevcutAmbar.id);
+        else db.prepare("INSERT INTO hareket_meta (hareket_id, meta_tipi, veri) VALUES (?, 'ambar_bilgi', ?)").run(req.params.id, JSON.stringify(ambar_bilgi));
       }
 
       // Kalemler güncelle
@@ -586,6 +600,28 @@ router.post('/:id/dokuman-ekle', dokumanUpload, async (req, res) => {
       eklenen.push(dosya.id);
     }
     basarili(res, { eklenen_sayisi: eklenen.length });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// DELETE /:id — Hareket sil (kalemler, meta, dokümanlar dahil)
+router.delete('/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const hareket = db.prepare('SELECT * FROM hareketler WHERE id = ?').get(req.params.id);
+    if (!hareket) return hata(res, 'Hareket bulunamadı', 404);
+
+    db.transaction(() => {
+      db.prepare('DELETE FROM hareket_kalemleri WHERE hareket_id = ?').run(req.params.id);
+      db.prepare('DELETE FROM hareket_meta WHERE hareket_id = ?').run(req.params.id);
+      db.prepare('DELETE FROM hareket_dokumanlari WHERE hareket_id = ?').run(req.params.id);
+      // İptal referanslarını temizle (bu harekete referans veren diğer hareketler)
+      db.prepare('UPDATE hareketler SET iptal_referans_id = NULL WHERE iptal_referans_id = ?').run(req.params.id);
+      db.prepare('DELETE FROM hareketler WHERE id = ?').run(req.params.id);
+    })();
+
+    basarili(res, { message: 'Hareket silindi' });
   } catch (err) {
     hata(res, err.message, 500);
   }
