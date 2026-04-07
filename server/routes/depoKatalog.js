@@ -366,4 +366,49 @@ SADECE JSON döndür.`,
   }
 });
 
+// GET /stoklu-ara — Katalog araması + ana depo stok bilgileri
+router.get('/stoklu-ara', (req, res) => {
+  try {
+    const db = getDb();
+    const { arama, veren_tipi } = req.query;
+    if (!arama || arama.length < 2) return basarili(res, []);
+
+    const q = `%${arama}%`;
+    const katalog = db.prepare(`
+      SELECT * FROM depo_malzeme_katalogu
+      WHERE is_category = 0 AND (malzeme_cinsi LIKE ? OR malzeme_tanimi_sap LIKE ? OR poz_birlesik LIKE ? OR malzeme_kodu LIKE ?)
+      ORDER BY malzeme_cinsi LIMIT 30
+    `).all(q, q, q, q);
+
+    // Ana depo stok bilgilerini ekle
+    if (veren_tipi === 'ana_depo' || !veren_tipi) {
+      const anaDepolar = db.prepare("SELECT id, depo_adi FROM depolar WHERE depo_tipi = 'ana_depo' AND aktif = 1").all();
+
+      const sonuc = katalog.map(k => {
+        // Bu malzeme kodu ile tüm ana depolardaki stokları bul
+        const stoklar = [];
+        if (k.malzeme_kodu) {
+          for (const depo of anaDepolar) {
+            const stok = db.prepare(`
+              SELECT ds.miktar FROM depo_stok ds
+              JOIN malzemeler m ON m.id = ds.malzeme_id
+              WHERE ds.depo_id = ? AND m.malzeme_kodu = ? AND ds.miktar > 0
+            `).get(depo.id, k.malzeme_kodu);
+            if (stok) {
+              stoklar.push({ depo_id: depo.id, depo_adi: depo.depo_adi, miktar: stok.miktar });
+            }
+          }
+        }
+        return { ...k, depo_stoklar: stoklar, toplam_stok: stoklar.reduce((t, s) => t + s.miktar, 0) };
+      });
+
+      return basarili(res, sonuc);
+    }
+
+    basarili(res, katalog.map(k => ({ ...k, depo_stoklar: [], toplam_stok: 0 })));
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
 module.exports = router;

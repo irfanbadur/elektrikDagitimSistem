@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
-import { AlertTriangle, Package, ArrowRightLeft, Trash2, CheckSquare } from 'lucide-react'
+import { AlertTriangle, Package, ArrowRightLeft, Trash2, CheckSquare, FileSpreadsheet, Loader2, ExternalLink } from 'lucide-react'
+import api from '@/api/client'
 import { useDepoStok, useDepoStokTopluSil } from '@/hooks/useDepolar'
 import { useAuth } from '@/context/AuthContext'
 import DataTable from '@/components/shared/DataTable'
@@ -14,6 +15,20 @@ export default function DepoStok({ depoId, depoAdi, onTransfer }) {
   const { kullanici, izinVar } = useAuth()
   const isAdmin = kullanici?.kullanici_adi === 'admin' || izinVar('malzeme', 'silme')
   const [seciliIdler, setSeciliIdler] = useState(new Set())
+  const [excelYukleniyor, setExcelYukleniyor] = useState(false)
+  const [excelSonuc, setExcelSonuc] = useState(null)
+
+  const handleExcelAktar = async () => {
+    setExcelYukleniyor(true)
+    try {
+      const r = await api.post(`/depolar/${depoId}/excel-aktar`)
+      setExcelSonuc(r?.data || r)
+    } catch (err) {
+      alert(err.message || 'Excel oluşturma hatası')
+    } finally {
+      setExcelYukleniyor(false)
+    }
+  }
 
   // Depo değişince seçimi temizle
   useEffect(() => { setSeciliIdler(new Set()) }, [depoId])
@@ -215,6 +230,17 @@ export default function DepoStok({ depoId, depoAdi, onTransfer }) {
           >
             Filtreyi Temizle
           </button>
+        )}
+        <button onClick={handleExcelAktar} disabled={excelYukleniyor}
+          className="flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors">
+          {excelYukleniyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+          {excelYukleniyor ? 'Oluşturuluyor...' : 'Excel Aktar'}
+        </button>
+        {excelSonuc && (
+          <a href={`/api/dosya/${excelSonuc.dosya_id}/indir`} target="_blank" rel="noreferrer"
+            className="flex items-center gap-1 rounded-md border border-input px-3 py-2 text-sm text-primary hover:bg-primary/5">
+            <ExternalLink className="h-4 w-4" />İndir
+          </a>
         )}
         {isAdmin && seciliIdler.size > 0 && (
           <div className="ml-auto flex items-center gap-2">

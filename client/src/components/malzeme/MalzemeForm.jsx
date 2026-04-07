@@ -24,6 +24,15 @@ const bosIrsaliye = {
   sevk_zamani: '', referans_belge: '', irsaliye_tipi: '', tasiyici_firma: '', arac_plakasi: '',
 }
 
+const bosBono = {
+  belge_no: '', belge_tarihi: '', giris_tarihi: '', teslim_fisi_no: '',
+  tutanak_no: '', teslim_eden: '', teslim_alan: '',
+}
+
+const bosAmbar = {
+  kocan_etiketi: '', kocan_no: '', teslim_eden: '', teslim_alan: '', fis_no: '',
+}
+
 // ─── Taraf seçenekleri ───
 const SABIT_TARAFLAR = [
   { key: 'ambar', label: 'Ambar (Kurum)' },
@@ -42,7 +51,7 @@ function tarafLabel(secenekler, key, firma) {
 }
 
 // ─── Satır: malzeme adı ile katalog arama ───
-function MalzemeSatiri({ kalem, index, onDegistir, onSil }) {
+function MalzemeSatiri({ kalem, index, onDegistir, onSil, verenTipi, verenLabel }) {
   const [katalogAcik, setKatalogAcik] = useState(false)
   const [katalogSonuc, setKatalogSonuc] = useState([])
   const [araniyor, setAraniyor] = useState(false)
@@ -62,7 +71,7 @@ function MalzemeSatiri({ kalem, index, onDegistir, onSil }) {
     setAraniyor(true)
     timer.current = setTimeout(async () => {
       try {
-        const r = await api.get('/malzeme-katalog', { params: { arama: text } })
+        const r = await api.get('/malzeme-katalog/stoklu-ara', { params: { arama: text, veren_tipi: verenTipi || '' } })
         const liste = Array.isArray(r) ? r : (r?.data || [])
         setKatalogSonuc(liste)
         setKatalogAcik(liste.length > 0)
@@ -72,12 +81,18 @@ function MalzemeSatiri({ kalem, index, onDegistir, onSil }) {
   }
 
   const sec = useCallback((item) => {
+    const stoklar = item.depo_stoklar || []
+    const ilkDepo = stoklar[0] || null
     onDegistir(index, {
       ...kalem,
       malzeme_kodu: item.malzeme_kodu || kalem.malzeme_kodu,
       malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || kalem.malzeme_adi,
       birim: item.olcu || kalem.birim,
       poz_no: item.poz_birlesik || kalem.poz_no,
+      depo_stoklar: stoklar,
+      secili_depo_id: ilkDepo?.depo_id || null,
+      secili_depo_adi: ilkDepo?.depo_adi || '',
+      depo_miktar: ilkDepo?.miktar || 0,
     })
     setKatalogAcik(false)
   }, [index, kalem, onDegistir])
@@ -102,19 +117,23 @@ function MalzemeSatiri({ kalem, index, onDegistir, onSil }) {
           onKeyDown={katalogAcik ? handleKeyDown : undefined}
           className={inputCls} placeholder="Malzeme adı..." />
         {katalogAcik && (araniyor || gosterilen.length > 0) && (
-          <div ref={dropRef} className="absolute left-0 top-full z-50 mt-1 max-h-48 w-[500px] overflow-y-auto rounded-lg border border-border bg-white shadow-xl ring-1 ring-black/5">
+          <div ref={dropRef} className="absolute left-0 top-full z-50 mt-1 max-h-48 w-[650px] overflow-y-auto rounded-lg border border-border bg-white shadow-xl ring-1 ring-black/5">
             {araniyor ? <div className="px-3 py-3 text-center text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Aranıyor...</div> : (
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-muted/90"><tr className="border-b border-border">
                   <th className="px-2 py-1 text-left font-medium text-muted-foreground">Kod</th>
                   <th className="px-2 py-1 text-left font-medium text-muted-foreground">Malzeme</th>
                   <th className="px-2 py-1 text-center font-medium text-muted-foreground">Birim</th>
+                  <th className="px-2 py-1 text-left font-medium text-muted-foreground">Depo</th>
+                  <th className="px-2 py-1 text-right font-medium text-muted-foreground">Stok</th>
                 </tr></thead>
                 <tbody>{gosterilen.map((item, i) => (
                   <tr key={item.id} onMouseDown={() => sec(item)} className={cn('cursor-pointer border-b border-border/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
                     <td className="px-2 py-1 font-mono text-blue-600">{item.malzeme_kodu || '-'}</td>
                     <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
                     <td className="px-2 py-1 text-center text-muted-foreground">{item.olcu || '-'}</td>
+                    <td className="px-2 py-1 text-muted-foreground">{(item.depo_stoklar || []).map(s => s.depo_adi).join(', ') || '-'}</td>
+                    <td className="px-2 py-1 text-right font-semibold">{item.toplam_stok || 0}</td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -127,6 +146,34 @@ function MalzemeSatiri({ kalem, index, onDegistir, onSil }) {
       </td>
       <td className="w-20 px-1 py-1.5">
         <input type="number" value={kalem.miktar || ''} onChange={e => onDegistir(index, { ...kalem, miktar: Number(e.target.value) || 0 })} className={cn(inputCls, 'text-center w-16')} />
+      </td>
+      {/* Veren Depo */}
+      <td className="w-32 px-1 py-1.5">
+        {verenTipi === 'ana_depo' ? (
+          (kalem.depo_stoklar || []).length > 1 ? (
+            <select value={kalem.secili_depo_id || ''} onChange={e => {
+              const depoId = Number(e.target.value)
+              const secilen = kalem.depo_stoklar.find(s => s.depo_id === depoId)
+              onDegistir(index, { ...kalem, secili_depo_id: depoId, secili_depo_adi: secilen?.depo_adi || '', depo_miktar: secilen?.miktar || 0 })
+            }} className="w-full rounded border border-input bg-background px-1 py-1 text-xs">
+              {kalem.depo_stoklar.map(s => <option key={s.depo_id} value={s.depo_id}>{s.depo_adi} ({s.miktar})</option>)}
+            </select>
+          ) : (
+            <span className="px-2 text-xs text-muted-foreground">{kalem.secili_depo_adi || '-'}</span>
+          )
+        ) : (
+          <span className="px-2 text-xs text-muted-foreground">{verenLabel || '-'}</span>
+        )}
+      </td>
+      {/* Depo Stok Miktarı */}
+      <td className="w-16 px-1 py-1.5 text-center">
+        {verenTipi === 'ana_depo' ? (
+          <span className={cn('text-xs font-medium', (kalem.depo_miktar || 0) > 0 ? 'text-emerald-600' : 'text-muted-foreground')}>
+            {kalem.depo_miktar || 0}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">----</span>
+        )}
       </td>
       <td className="w-8 px-1 py-1.5 text-center">
         <button onClick={() => onSil(index)} className="rounded p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-opacity">
@@ -153,8 +200,10 @@ export default function MalzemeForm() {
   const [alan, setAlan] = useState('')
   const [firmaAdi, setFirmaAdi] = useState('')
 
-  // İrsaliye bilgileri
+  // Belge bilgileri
   const [irsaliye, setIrsaliye] = useState(bosIrsaliye)
+  const [bono, setBono] = useState(bosBono)
+  const [ambar, setAmbar] = useState(bosAmbar)
 
   // Malzeme listesi
   const [kalemler, setKalemler] = useState([])
@@ -164,8 +213,11 @@ export default function MalzemeForm() {
   const [irsaliyeOnizleme, setIrsaliyeOnizleme] = useState(null)
   const [bonoDosya, setBonoDosya] = useState(null)
   const [bonoOnizleme, setBonoOnizleme] = useState(null)
+  const [ambarDosya, setAmbarDosya] = useState(null)
+  const [ambarOnizleme, setAmbarOnizleme] = useState(null)
   const irsaliyeRef = useRef(null)
   const bonoRef = useRef(null)
+  const ambarRef = useRef(null)
 
   const secenekler = tarafListesiOlustur(depolar)
   const secimTamam = veren && alan && veren !== alan
@@ -183,6 +235,11 @@ export default function MalzemeForm() {
     setIrsaliye(prev => ({ ...prev, [name]: value }))
   }
 
+  const handleBonoDegistir = (e) => {
+    const { name, value } = e.target
+    setBono(prev => ({ ...prev, [name]: value }))
+  }
+
   const handleKalemDegistir = (idx, yeni) => setKalemler(prev => prev.map((k, i) => i === idx ? yeni : k))
   const handleKalemSil = (idx) => setKalemler(prev => prev.filter((_, i) => i !== idx))
   const handleKalemEkle = () => setKalemler(prev => [...prev, { _id: Date.now(), malzeme_kodu: '', malzeme_adi: '', birim: 'Ad', miktar: 0, poz_no: '' }])
@@ -193,9 +250,15 @@ export default function MalzemeForm() {
     const reader = new FileReader()
     reader.onload = (ev) => {
       if (tip === 'irsaliye') { setIrsaliyeDosya(file); setIrsaliyeOnizleme(ev.target.result) }
+      else if (tip === 'ambar') { setAmbarDosya(file); setAmbarOnizleme(ev.target.result) }
       else { setBonoDosya(file); setBonoOnizleme(ev.target.result) }
     }
     reader.readAsDataURL(file)
+  }
+
+  const handleAmbarDegistir = (e) => {
+    const { name, value } = e.target
+    setAmbar(prev => ({ ...prev, [name]: value }))
   }
 
   // Kaydet
@@ -211,6 +274,8 @@ export default function MalzemeForm() {
         kaynak_depo_id: verenSec?.depoId || null,
         hedef_depo_id: alanSec?.depoId || null,
         irsaliye_bilgi: (irsaliye.irsaliye_no || irsaliye.irsaliye_tarihi) ? irsaliye : null,
+        bono_bilgi: (bono.belge_no || bono.belge_tarihi) ? bono : null,
+        ambar_bilgi: (ambar.kocan_no || ambar.fis_no) ? ambar : null,
         kalemler: gecerliKalemler.map((k, i) => ({
           sira_no: i + 1,
           malzeme_kodu: k.malzeme_kodu || null,
@@ -253,8 +318,8 @@ export default function MalzemeForm() {
       </div>
 
       {/* ─── Veren → Alan Seçimi ─── */}
-      <div className="space-y-4 rounded-lg border border-input bg-card p-5 shadow-sm">
-        <div className="flex items-end gap-3">
+      <div className="space-y-4 rounded-lg border border-input bg-card shadow-sm" style={{ padding: '24px 32px' }}>
+        <div className="flex items-end gap-4">
           <div className="flex-1">
             <label className="mb-1.5 block text-sm font-medium">Veren</label>
             <select value={veren} onChange={e => { setVeren(e.target.value); if (e.target.value === alan) setAlan('') }}
@@ -291,68 +356,132 @@ export default function MalzemeForm() {
 
       {secimTamam && (
         <>
-          {/* ─── Belge Yükleme: İrsaliye + Bono ─── */}
-          <div className="mt-6 grid grid-cols-2 gap-4">
+          {/* ─── Belge Yükleme: İrsaliye + Bono + Ambar ─── */}
+          <div className="mt-6 grid grid-cols-3 gap-4">
             {/* İrsaliye Belgesi */}
-            <div className="rounded-lg border border-input bg-card p-5 shadow-sm">
-              <h3 className="mb-3 text-sm font-semibold">İrsaliye Belgesi</h3>
+            <div className="rounded-lg border border-input bg-card p-4 shadow-sm">
+              <h3 className="mb-2 text-sm font-semibold">İrsaliye Belgesi</h3>
               {irsaliyeOnizleme ? (
                 <div className="relative inline-block">
-                  <img src={irsaliyeOnizleme} alt="İrsaliye" className="max-h-36 rounded-lg border border-input object-contain" />
+                  <img src={irsaliyeOnizleme} alt="İrsaliye" className="max-h-28 rounded-lg border border-input object-contain" />
                   <button onClick={() => { setIrsaliyeDosya(null); setIrsaliyeOnizleme(null) }}
                     className="absolute -right-2 -top-2 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"><X className="h-3.5 w-3.5" /></button>
                 </div>
               ) : (
                 <div onClick={() => irsaliyeRef.current?.click()}
-                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-input p-6 hover:border-primary hover:bg-primary/5 transition-colors">
-                  <Image className="mb-2 h-8 w-8 text-muted-foreground/40" />
-                  <p className="text-xs text-muted-foreground">İrsaliye görseli yükleyin</p>
+                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-input p-4 hover:border-primary hover:bg-primary/5 transition-colors">
+                  <Image className="mb-1 h-6 w-6 text-muted-foreground/40" />
+                  <p className="text-[10px] text-muted-foreground">İrsaliye yükle</p>
                 </div>
               )}
               <input ref={irsaliyeRef} type="file" accept="image/*" onChange={e => handleBelgeSec(e, 'irsaliye')} className="hidden" />
             </div>
 
             {/* Bono Belgesi */}
-            <div className="rounded-lg border border-input bg-card p-5 shadow-sm">
-              <h3 className="mb-3 text-sm font-semibold">Bono Belgesi</h3>
+            <div className="rounded-lg border border-input bg-card p-4 shadow-sm">
+              <h3 className="mb-2 text-sm font-semibold">Bono Belgesi</h3>
               {bonoOnizleme ? (
                 <div className="relative inline-block">
-                  <img src={bonoOnizleme} alt="Bono" className="max-h-36 rounded-lg border border-input object-contain" />
+                  <img src={bonoOnizleme} alt="Bono" className="max-h-28 rounded-lg border border-input object-contain" />
                   <button onClick={() => { setBonoDosya(null); setBonoOnizleme(null) }}
                     className="absolute -right-2 -top-2 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"><X className="h-3.5 w-3.5" /></button>
                 </div>
               ) : (
                 <div onClick={() => bonoRef.current?.click()}
-                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-input p-6 hover:border-primary hover:bg-primary/5 transition-colors">
-                  <Image className="mb-2 h-8 w-8 text-muted-foreground/40" />
-                  <p className="text-xs text-muted-foreground">Bono görseli yükleyin</p>
+                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-input p-4 hover:border-primary hover:bg-primary/5 transition-colors">
+                  <Image className="mb-1 h-6 w-6 text-muted-foreground/40" />
+                  <p className="text-[10px] text-muted-foreground">Bono yükle</p>
                 </div>
               )}
               <input ref={bonoRef} type="file" accept="image/*" onChange={e => handleBelgeSec(e, 'bono')} className="hidden" />
             </div>
+
+            {/* Ambar Teslim Tesellüm Formu */}
+            <div className="rounded-lg border border-input bg-card p-4 shadow-sm">
+              <h3 className="mb-2 text-sm font-semibold">Ambar T.T. Formu</h3>
+              {ambarOnizleme ? (
+                <div className="relative inline-block">
+                  <img src={ambarOnizleme} alt="Ambar" className="max-h-28 rounded-lg border border-input object-contain" />
+                  <button onClick={() => { setAmbarDosya(null); setAmbarOnizleme(null) }}
+                    className="absolute -right-2 -top-2 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ) : (
+                <div onClick={() => ambarRef.current?.click()}
+                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-input p-4 hover:border-primary hover:bg-primary/5 transition-colors">
+                  <Image className="mb-1 h-6 w-6 text-muted-foreground/40" />
+                  <p className="text-[10px] text-muted-foreground">Ambar formu yükle</p>
+                </div>
+              )}
+              <input ref={ambarRef} type="file" accept="image/*" onChange={e => handleBelgeSec(e, 'ambar')} className="hidden" />
+            </div>
           </div>
 
-          {/* ─── İrsaliye Temel Bilgiler ─── */}
-          <div className="mt-6 rounded-lg border border-input bg-card p-5 shadow-sm">
-            <h3 className="mb-3 text-sm font-semibold">İrsaliye Bilgileri</h3>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {[
-                { name: 'irsaliye_no', label: 'İrsaliye No' },
-                { name: 'irsaliye_tarihi', label: 'İrsaliye Tarihi', type: 'date' },
-                { name: 'sevk_tarihi', label: 'Sevk Tarihi', type: 'date' },
-                { name: 'irsaliye_zamani', label: 'İrsaliye Zamanı', type: 'time' },
-                { name: 'sevk_zamani', label: 'Sevk Zamanı', type: 'time' },
-                { name: 'referans_belge', label: 'Referans Belge' },
-                { name: 'irsaliye_tipi', label: 'İrsaliye Tipi' },
-                { name: 'tasiyici_firma', label: 'Taşıyıcı Firma' },
-                { name: 'arac_plakasi', label: 'Araç Plakası' },
-              ].map(f => (
-                <div key={f.name}>
-                  <label className="mb-1 block text-xs text-muted-foreground">{f.label}</label>
-                  <input type={f.type || 'text'} name={f.name} value={irsaliye[f.name] || ''} onChange={handleIrsaliyeDegistir}
-                    className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm focus:border-primary focus:outline-none" />
-                </div>
-              ))}
+          {/* ─── İrsaliye + Bono + Ambar Bilgileri ─── */}
+          <div className="mt-6 grid grid-cols-3 gap-4">
+            {/* İrsaliye Bilgileri (sol) */}
+            <div className="rounded-lg border border-input bg-card shadow-sm" style={{ padding: '16px 20px' }}>
+              <h3 className="mb-3 text-sm font-semibold">İrsaliye Bilgileri</h3>
+              <div className="space-y-4">
+                {[
+                  { name: 'irsaliye_no', label: 'İrsaliye No' },
+                  { name: 'irsaliye_tarihi', label: 'İrs. Tarihi', type: 'date' },
+                  { name: 'sevk_tarihi', label: 'Sevk Tarihi', type: 'date' },
+                  { name: 'irsaliye_zamani', label: 'İrs. Zamanı', type: 'time' },
+                  { name: 'sevk_zamani', label: 'Sevk Zamanı', type: 'time' },
+                  { name: 'referans_belge', label: 'Ref. Belge' },
+                  { name: 'irsaliye_tipi', label: 'İrs. Tipi' },
+                  { name: 'tasiyici_firma', label: 'Taşıyıcı' },
+                  { name: 'arac_plakasi', label: 'Araç Plaka' },
+                ].map(f => (
+                  <div key={f.name} className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+                    <label className="w-24 shrink-0 text-xs text-muted-foreground text-right">{f.label}</label>
+                    <input type={f.type || 'text'} name={f.name} value={irsaliye[f.name] || ''} onChange={handleIrsaliyeDegistir}
+                      className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bono Bilgileri (sağ) */}
+            <div className="rounded-lg border border-input bg-card shadow-sm" style={{ padding: '16px 20px' }}>
+              <h3 className="mb-3 text-sm font-semibold">Bono Bilgileri</h3>
+              <div className="space-y-4">
+                {[
+                  { name: 'belge_no', label: 'Belge No' },
+                  { name: 'belge_tarihi', label: 'Belge Tarihi', type: 'date' },
+                  { name: 'giris_tarihi', label: 'Giriş Tarihi', type: 'date' },
+                  { name: 'teslim_fisi_no', label: 'Teslim Fişi No' },
+                  { name: 'tutanak_no', label: 'Tutanak No' },
+                  { name: 'teslim_eden', label: 'Teslim Eden' },
+                  { name: 'teslim_alan', label: 'Teslim Alan' },
+                ].map(f => (
+                  <div key={f.name} className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+                    <label className="w-24 shrink-0 text-xs text-muted-foreground text-right">{f.label}</label>
+                    <input type={f.type || 'text'} name={f.name} value={bono[f.name] || ''} onChange={handleBonoDegistir}
+                      className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Ambar T.T. Bilgileri */}
+            <div className="rounded-lg border border-input bg-card shadow-sm" style={{ padding: '16px 20px' }}>
+              <h3 className="mb-3 text-sm font-semibold">Ambar T.T. Bilgileri</h3>
+              <div className="space-y-4">
+                {[
+                  { name: 'kocan_etiketi', label: 'Koçan Etiketi' },
+                  { name: 'kocan_no', label: 'Koçan No' },
+                  { name: 'teslim_eden', label: 'Teslim Eden' },
+                  { name: 'teslim_alan', label: 'Teslim Alan' },
+                  { name: 'fis_no', label: 'Fiş No' },
+                ].map(f => (
+                  <div key={f.name} className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+                    <label className="w-24 shrink-0 text-xs text-muted-foreground text-right">{f.label}</label>
+                    <input type="text" name={f.name} value={ambar[f.name] || ''} onChange={handleAmbarDegistir}
+                      className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -373,16 +502,18 @@ export default function MalzemeForm() {
                     <th className="px-2 py-2.5 text-left font-semibold text-muted-foreground">Malzeme</th>
                     <th className="w-16 px-2 py-2.5 text-center font-semibold text-muted-foreground">Birim</th>
                     <th className="w-20 px-2 py-2.5 text-center font-semibold text-muted-foreground">Miktar</th>
+                    <th className="w-32 px-2 py-2.5 text-left font-semibold text-muted-foreground">Veren Depo</th>
+                    <th className="w-16 px-2 py-2.5 text-center font-semibold text-muted-foreground">Stok</th>
                     <th className="w-8 px-1 py-2.5" />
                   </tr>
                 </thead>
                 <tbody>
                   {kalemler.length === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-xs">
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground text-xs">
                       Henüz malzeme eklenmedi. AI ile analiz edin veya manuel ekleyin.
                     </td></tr>
                   ) : kalemler.map((k, i) => (
-                    <MalzemeSatiri key={k._id || i} kalem={k} index={i} onDegistir={handleKalemDegistir} onSil={handleKalemSil} />
+                    <MalzemeSatiri key={k._id || i} kalem={k} index={i} onDegistir={handleKalemDegistir} onSil={handleKalemSil} verenTipi={verenSec?.depoTipi || veren} verenLabel={tarafLabel(secenekler, veren, firmaAdi)} />
                   ))}
                 </tbody>
               </table>
