@@ -1,0 +1,190 @@
+diff --git a/node_modules/dxf-viewer/src/DxfScene.js b/node_modules/dxf-viewer/src/DxfScene.js
+index 852184e..ae8532b 100644
+--- a/node_modules/dxf-viewer/src/DxfScene.js
++++ b/node_modules/dxf-viewer/src/DxfScene.js
+@@ -106,7 +106,7 @@ export class DxfScene {
+      *  loaded font object (opentype.js). They are invoked only when necessary. Each glyph is being
+      *  searched sequentially in each provided font.
+      */
+-    async Build(dxf, fontFetchers) {
++    async Build(dxf, fontFetchers, fontUrls = null, fontStyleUrlMap = null) {
+         const header = dxf.header || {}
+ 
+         for (const [name, value] of Object.entries(header)) {
+@@ -149,9 +149,41 @@ export class DxfScene {
+         }
+ 
+         this.textRenderer = new TextRenderer(fontFetchers, this.options.textOptions)
++        /* Store font URL to name mapping and style mapping for style-based font selection */
++        this._fontUrls = fontUrls || []
++        this._fontStyleUrlMap = fontStyleUrlMap || {}
+         this.hasMissingChars = false
+         await this._FetchFonts(dxf)
+ 
++        /* Force-load ALL fonts and register style-specific fonts */
++        if (fontUrls && this.textRenderer.fontFetchers) {
++            /* Force load all remaining fonts */
++            while (this.textRenderer.fontFetchers.length > 0) {
++                const fetcher = this.textRenderer.fontFetchers.shift()
++                try {
++                    const font = await this.textRenderer._FetchFont(fetcher)
++                    this.textRenderer.fonts.push(font)
++                } catch (e) { /* skip failed font */ }
++            }
++
++            /* Build URL→font mapping */
++            if (fontStyleUrlMap) {
++                const urlFontMap = new Map()
++                for (let i = 0; i < fontUrls.length && i < this.textRenderer.fonts.length; i++) {
++                    const urlName = fontUrls[i].split('/').pop().toLowerCase().replace(/\.(ttf|otf|woff)$/i, '')
++                    urlFontMap.set(urlName, this.textRenderer.fonts[i])
++                }
++                /* Register style fonts */
++                for (const [styleName, dxfFontName] of Object.entries(fontStyleUrlMap)) {
++                    for (const [urlName, font] of urlFontMap) {
++                        if (urlName === dxfFontName || urlName.includes(dxfFontName) || dxfFontName.includes(urlName)) {
++                            this.textRenderer.RegisterStyleFont(dxfFontName, font)
++                        }
++                    }
++                }
++            }
++        }
++
+         /* Scan all entities to analyze block usage statistics. */
+         for (const entity of dxf.entities) {
+             if (!this._FilterEntity(entity)) {
+@@ -669,7 +701,9 @@ export class DxfScene {
+         const layer = this._GetEntityLayer(insertEntity ?? entity, blockCtx)
+         const color = this._GetEntityColor(insertEntity ?? entity, blockCtx)
+ 
+-        //XXX lookup font style attributes
++        const attrStyle = this._GetEntityTextStyle(entity)
++        const attrRawFont = attrStyle?.font || attrStyle?.primaryFontFileName || attrStyle?.fontFamily || null
++        const attrStyleFont = attrRawFont ? attrRawFont.toLowerCase().replace(/\.(shx|ttf|otf)$/i, '') : null
+ 
+         yield* this.textRenderer.Render({
+             text: ParseSpecialChars(entity.text),
+@@ -680,7 +714,8 @@ export class DxfScene {
+             hAlign: entity.horizontalJustification,
+             vAlign: entity.verticalJustification,
+             color,
+-            layer
++            layer,
++            styleFontName: attrStyleFont
+         })
+     }
+ 
+@@ -871,6 +906,9 @@ export class DxfScene {
+         const color = this._GetEntityColor(entity, blockCtx)
+         const style = this._GetEntityTextStyle(entity)
+         const fixedHeight = style?.fixedTextHeight === 0 ? null : style?.fixedTextHeight
++        /* Pass style font name so TextRenderer can use style-specific font */
++        const rawFontName = style?.font || style?.primaryFontFileName || style?.fontFamily || null
++        const styleFontName = rawFontName ? rawFontName.toLowerCase().replace(/\.(shx|ttf|otf)$/i, '') : null
+         yield* this.textRenderer.Render({
+             text: ParseSpecialChars(entity.text),
+             fontSize: entity.textHeight ?? (fixedHeight ?? 1),
+@@ -880,7 +918,8 @@ export class DxfScene {
+             hAlign: entity.halign,
+             vAlign: entity.valign,
+             widthFactor: entity.xScale,
+-            color, layer
++            color, layer,
++            styleFontName
+         })
+     }
+ 
+diff --git a/node_modules/dxf-viewer/src/DxfWorker.js b/node_modules/dxf-viewer/src/DxfWorker.js
+index f263181..ef6fea9 100644
+--- a/node_modules/dxf-viewer/src/DxfWorker.js
++++ b/node_modules/dxf-viewer/src/DxfWorker.js
+@@ -158,7 +158,17 @@ export class DxfWorker {
+             progressCbk("prepare", 0, null)
+         }
+         const dxfScene = new DxfScene(options)
+-        await dxfScene.Build(dxf, fontFetchers)
++        /* Extract font-style mapping from DXF and pass font URLs for style-based lookup */
++        const fontStyleUrlMap = {}
++        if (dxf.tables && dxf.tables.style && fonts) {
++            for (const [, style] of Object.entries(dxf.tables.style.styles)) {
++                const dxfFontName = (style.font || '').toLowerCase().replace(/\.(shx|ttf|otf)$/i, '')
++                if (dxfFontName) {
++                    fontStyleUrlMap[style.styleName] = dxfFontName
++                }
++            }
++        }
++        await dxfScene.Build(dxf, fontFetchers, fonts, fontStyleUrlMap)
+         return {scene: dxfScene.scene, dxf: options.retainParsedDxf === true ? dxf : undefined }
+     }
+ 
+diff --git a/node_modules/dxf-viewer/src/TextRenderer.js b/node_modules/dxf-viewer/src/TextRenderer.js
+index 4e3d9ef..af3dd32 100644
+--- a/node_modules/dxf-viewer/src/TextRenderer.js
++++ b/node_modules/dxf-viewer/src/TextRenderer.js
+@@ -61,6 +61,10 @@ export class TextRenderer {
+     constructor(fontFetchers, options = null) {
+         this.fontFetchers = fontFetchers
+         this.fonts = []
++        /* Style-specific font lists: Map<fontFileName, Font[]> */
++        this.styleFonts = new Map()
++        /* Style-specific char shapes: Map<styleFontKey+char, CharShape> */
++        this.styleShapes = new Map()
+ 
+         this.options = Object.create(TextRenderer.DefaultOptions)
+         if (options) {
+@@ -161,10 +165,12 @@ export class TextRenderer {
+      *  glyph.
+      */
+     *Render({text, startPos, endPos, rotation = 0, widthFactor = 1, hAlign = 0, vAlign = 0,
+-             color, layer = null, fontSize}) {
++             color, layer = null, fontSize, styleFontName = null}) {
+         const block = new TextBlock(fontSize)
+         for (const char of text) {
+-            const shape = this._GetCharShape(char)
++            const shape = styleFontName
++                ? this._GetStyledCharShape(char, styleFontName)
++                : this._GetCharShape(char)
+             if (!shape) {
+                 continue
+             }
+@@ -214,6 +220,40 @@ export class TextRenderer {
+         return shape
+     }
+ 
++    /** Register a font for a specific style font name */
++    RegisterStyleFont(fontName, font) {
++        const key = fontName.toLowerCase().replace(/\.(ttf|shx|otf)$/i, '')
++        if (!this.styleFonts.has(key)) {
++            this.styleFonts.set(key, [])
++        }
++        this.styleFonts.get(key).push(font)
++    }
++
++    /** Get char shape using style-specific font first, fallback to default */
++    _GetStyledCharShape(char, styleFontName) {
++        const key = styleFontName.toLowerCase().replace(/\.(ttf|shx|otf)$/i, '')
++        const cacheKey = key + ':' + char
++        let shape = this.styleShapes.get(cacheKey)
++        if (shape !== undefined) {
++            return shape
++        }
++        const styleFontList = this.styleFonts.get(key)
++        if (styleFontList) {
++            for (const font of styleFontList) {
++                const path = font.GetCharPath(char)
++                if (path) {
++                    shape = new CharShape(font, path, this.options)
++                    this.styleShapes.set(cacheKey, shape)
++                    return shape
++                }
++            }
++        }
++        // Fallback to default font chain
++        shape = this._GetCharShape(char)
++        this.styleShapes.set(cacheKey, shape)
++        return shape
++    }
++
+     _CreateCharShape(char) {
+         for (const font of this.fonts) {
+             const path = font.GetCharPath(char)

@@ -7,7 +7,7 @@ import { useProjeFazIlerleme, useAdimMetaGuncelle } from '@/hooks/useDongu'
 import {
   FileText, Image, File, Upload, MapPin, Zap, X, Navigation, Clock,
   CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus, Sparkles,
-  ZoomIn, ZoomOut, RotateCcw
+  ZoomIn, ZoomOut, RotateCcw, Loader2
 } from 'lucide-react'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -130,6 +130,149 @@ function PanZoomResim({ src, alt }) {
   )
 }
 
+// DXF Viewer — fontlar: NotoSans (text) + B_CAD (semboller) — stil bazlı seçim otomatik
+const DXF_FONTS = ['/fonts/NotoSans.ttf', '/fonts/B_CAD.ttf', '/fonts/T_ROMANS.ttf']
+
+function DxfOnizleme({ src }) {
+  const containerRef = useRef(null)
+  const viewerRef = useRef(null)
+  const rendererRef = useRef(null)
+  const [yukleniyor, setYukleniyor] = useState(true)
+  const [hata, setHata] = useState('')
+  const [ilerleme, setIlerleme] = useState('')
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    let cancelled = false
+
+    const yukle = async () => {
+      setYukleniyor(true)
+      setHata('')
+      setIlerleme('Modüller yükleniyor...')
+      try {
+        const [{ DxfViewer }, three] = await Promise.all([
+          import('dxf-viewer'),
+          import('three')
+        ])
+
+        // Önceki viewer'ı temizle (renderer'ı koru)
+        if (viewerRef.current) {
+          try { viewerRef.current.Clear() } catch {}
+          viewerRef.current = null
+        }
+
+        if (cancelled) return
+
+        // Renderer'ı yeniden kullan veya oluştur
+        if (!rendererRef.current) {
+          rendererRef.current = new three.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
+          containerRef.current.innerHTML = ''
+          containerRef.current.appendChild(rendererRef.current.domElement)
+          rendererRef.current.domElement.style.width = '100%'
+          rendererRef.current.domElement.style.height = '100%'
+        }
+
+        setIlerleme('Viewer başlatılıyor...')
+        const viewer = new DxfViewer(containerRef.current, {
+          clearColor: new three.Color('#f8fafc'),
+          autoResize: true,
+          colorCorrection: true,
+          renderer: rendererRef.current,
+        })
+        viewerRef.current = viewer
+
+        setIlerleme('DXF dosyası indiriliyor...')
+        const response = await fetch(src)
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+
+        setIlerleme('DXF parse ediliyor ve çiziliyor...')
+        console.log('[DXF] Fontlar:', DXF_FONTS)
+        await viewer.Load({
+          url,
+          fonts: DXF_FONTS,
+          progressCbk: (phase, processed, total) => {
+            console.log('[DXF] Progress:', phase, processed, total)
+            if (phase === 'font') setIlerleme(`Font yükleniyor... (${processed}/${total})`)
+            else if (phase === 'fetch') setIlerleme('Dosya alınıyor...')
+            else if (phase === 'parse') setIlerleme(`Parse ediliyor... ${total ? Math.round(processed/total*100) + '%' : ''}`)
+            else if (phase === 'prepare') setIlerleme('Sahne hazırlanıyor...')
+          }
+        })
+        console.log('[DXF] hasMissingChars:', viewer.hasMissingChars)
+        URL.revokeObjectURL(url)
+
+        // Tüm sahneye fit et
+        if (viewer.bounds && viewer.origin) {
+          const b = viewer.bounds, o = viewer.origin
+          viewer.FitView(b.minX - o.x, b.maxX - o.x, b.minY - o.y, b.maxY - o.y)
+        }
+      } catch (err) {
+        console.error('[DXF] Hata:', err)
+        if (!cancelled) setHata(err.message || 'DXF dosyası yüklenemedi')
+      } finally {
+        if (!cancelled) setYukleniyor(false)
+      }
+    }
+
+    yukle()
+
+    return () => {
+      cancelled = true
+      if (viewerRef.current) {
+        try { viewerRef.current.Clear() } catch {}
+        viewerRef.current = null
+      }
+    }
+  }, [src])
+
+  // Bileşen unmount olduğunda renderer'ı temizle
+  useEffect(() => {
+    return () => {
+      if (rendererRef.current) {
+        rendererRef.current.dispose()
+        rendererRef.current = null
+      }
+    }
+  }, [])
+
+  return (
+    <div className="relative w-full">
+      {yukleniyor && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80 z-10">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <span className="text-xs text-muted-foreground">{ilerleme || 'DXF yükleniyor...'}</span>
+          </div>
+        </div>
+      )}
+      {hata && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+          <div className="text-center text-sm text-red-600">
+            <p className="font-medium">DXF yüklenemedi</p>
+            <p className="text-xs text-muted-foreground mt-1">{hata}</p>
+          </div>
+        </div>
+      )}
+      {/* Kontroller */}
+      {!yukleniyor && !hata && (
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+          {/* Zoom */}
+          <div className="flex items-center gap-1 rounded-lg bg-white/90 px-1.5 py-1 shadow-sm border border-border">
+            <button onClick={() => { const v = viewerRef.current; if (v) { v.GetCamera().zoom *= 1.3; v.GetCamera().updateProjectionMatrix(); v.Render() } }}
+              className="rounded p-1 hover:bg-muted" title="Yakınlaştır"><ZoomIn className="h-3.5 w-3.5" /></button>
+            <button onClick={() => { const v = viewerRef.current; if (v) { v.GetCamera().zoom /= 1.3; v.GetCamera().updateProjectionMatrix(); v.Render() } }}
+              className="rounded p-1 hover:bg-muted" title="Uzaklaştır"><ZoomOut className="h-3.5 w-3.5" /></button>
+            <button onClick={() => { const v = viewerRef.current; if (v && v.bounds) { const b = v.bounds, o = v.origin || {x:0,y:0}; v.FitView(b.minX-o.x, b.maxX-o.x, b.minY-o.y, b.maxY-o.y) } }}
+              className="rounded p-1 hover:bg-muted" title="Tümünü Göster"><RotateCcw className="h-3.5 w-3.5" /></button>
+          </div>
+        </div>
+      )}
+      <div ref={containerRef} style={{ height: 400, width: '100%' }} />
+    </div>
+  )
+}
+
 function DosyaYuklemeIcerik({ adim, projeId, onDosyaSec }) {
   const [dragOver, setDragOver] = useState(false)
   const [yukleniyor, setYukleniyor] = useState(false)
@@ -214,7 +357,8 @@ function DosyaYuklemeIcerik({ adim, projeId, onDosyaSec }) {
               )
               const handleDosyaTikla = (e) => {
                 e.stopPropagation()
-                onDosyaSec?.({ id: dosya.id, adi, adimAdi: adim.adim_adi, gorsel, xls: xlsMi(adi) })
+                const ext = adi.split('.').pop().toLowerCase()
+                onDosyaSec?.({ id: dosya.id, adi, adimAdi: adim.adim_adi, gorsel, xls: xlsMi(adi), dxf: ext === 'dxf' || ext === 'dwg' })
               }
               if (gorsel) return (
                 <div key={dosya.id} className="relative group" onClick={handleDosyaTikla}>
@@ -827,6 +971,8 @@ export default function ProjeDonguBar({ projeId }) {
           <div className="bg-gray-50 p-4" style={{ minHeight: 200 }}>
             {seciliDosya.gorsel ? (
               <PanZoomResim src={`/api/dosya/${seciliDosya.id}/dosya`} alt={seciliDosya.adi} />
+            ) : seciliDosya.dxf ? (
+              <DxfOnizleme src={`/api/dosya/${seciliDosya.id}/dosya`} />
             ) : (
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 {dosyaIkonu(seciliDosya.adi, 'h-12 w-12')}
