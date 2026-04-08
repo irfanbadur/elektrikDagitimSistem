@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
+import useDropdownNav from '@/hooks/useDropdownNav'
 import { createPortal } from 'react-dom'
 import { PhotoProvider, PhotoView } from 'react-photo-view'
 import 'react-photo-view/dist/react-photo-view.css'
@@ -130,13 +131,128 @@ function PanZoomResim({ src, alt }) {
   )
 }
 
+// Direk malzeme popup — DXF'te direğe tıklanınca açılır
+function DirekMalzemePopup({ direk, projeId, onKapat }) {
+  const [arama, setArama] = useState(direk.etiket || '')
+  const [sonuclar, setSonuclar] = useState([])
+  const [araniyor, setAraniyor] = useState(false)
+  const [eklenenler, setEklenenler] = useState([])
+  const timer = useRef(null)
+  const inputRef = useRef(null)
+
+  const ara = (text) => {
+    if (timer.current) clearTimeout(timer.current)
+    if (!text || text.length < 2) { setSonuclar([]); return }
+    setAraniyor(true)
+    timer.current = setTimeout(async () => {
+      try {
+        const r = await api.get('/malzeme-katalog', { params: { arama: text } })
+        setSonuclar(Array.isArray(r) ? r : (r?.data || []))
+      } catch { setSonuclar([]) }
+      setAraniyor(false)
+    }, 300)
+  }
+
+  useEffect(() => { if (direk.etiket) ara(direk.etiket); setTimeout(() => inputRef.current?.focus(), 100) }, [])
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
+
+  const handleMalzemeEkleNav = useCallback((item) => {
+    if (!item) return
+    setEklenenler(prev => [...prev, { malzeme_kodu: item.malzeme_kodu || '', malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '', birim: item.olcu || 'Ad', miktar: 1 }])
+  }, [])
+
+  const gosterilen = sonuclar.slice(0, 10)
+  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, handleMalzemeEkleNav, onKapat)
+  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
+
+
+  const handleMiktarDegistir = (idx, miktar) => {
+    setEklenenler(prev => prev.map((e, i) => i === idx ? { ...e, miktar: Number(miktar) || 0 } : e))
+  }
+
+  const handleKaydet = async () => {
+    if (eklenenler.length === 0) return
+    try {
+      await api.post(`/proje-kesif/${projeId}/toplu`, {
+        kalemler: eklenenler.map(k => ({
+          malzeme_kodu: k.malzeme_kodu || null,
+          malzeme_adi: k.malzeme_adi,
+          birim: k.birim || 'Ad',
+          miktar: k.miktar || 1,
+          birim_fiyat: 0,
+          notlar: `Direk: ${direk.etiket || direk.sembolAdi}`,
+        }))
+      })
+      onKapat()
+    } catch (err) { alert(err.message) }
+  }
+
+  return (
+    <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 380, maxHeight: 420, overflow: 'auto' }}>
+      <div className="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/30">
+        <div>
+          <span className="text-xs font-bold">{direk.sembolAdi}</span>
+          {direk.etiket && <span className="ml-2 text-xs text-muted-foreground">{direk.etiket}</span>}
+        </div>
+        <button onClick={onKapat} className="rounded p-0.5 hover:bg-muted"><X className="h-3.5 w-3.5" /></button>
+      </div>
+
+      {/* Arama */}
+      <div className="p-2 border-b border-border">
+        <input ref={inputRef} value={arama} onChange={e => { setArama(e.target.value); ara(e.target.value) }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onKapat() } else if (gosterilen.length > 0) handleKeyDown(e) }}
+          placeholder="Malzeme katalogda ara..."
+          className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" />
+      </div>
+
+      {/* Arama sonuçları */}
+      {(araniyor || sonuclar.length > 0) && (
+        <div className="max-h-32 overflow-y-auto border-b border-border">
+          {araniyor ? <div className="px-3 py-2 text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Aranıyor...</div> : (
+            gosterilen.map((item, i) => (
+              <button key={item.id} onClick={() => handleMalzemeEkleNav(item)}
+                className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs border-b border-border/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
+                <span className="font-mono text-blue-600 w-20 shrink-0">{item.malzeme_kodu || '-'}</span>
+                <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
+                <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Eklenen malzemeler */}
+      {eklenenler.length > 0 && (
+        <div className="p-2">
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Eklenen Malzemeler</div>
+          {eklenenler.map((e, i) => (
+            <div key={i} className="flex items-center gap-2 py-1 border-b border-border/30">
+              <span className="flex-1 text-xs truncate">{e.malzeme_adi}</span>
+              <input type="number" value={e.miktar} onChange={ev => handleMiktarDegistir(i, ev.target.value)} min="1"
+                className="w-14 rounded border border-input px-1 py-0.5 text-center text-xs" />
+              <span className="text-[10px] text-muted-foreground w-6">{e.birim}</span>
+              <button onClick={() => setEklenenler(prev => prev.filter((_,j) => j !== i))} className="text-red-400 hover:text-red-600">
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+          <button onClick={handleKaydet} className="mt-2 w-full rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
+            Keşife Ekle ({eklenenler.length})
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // DXF Viewer — fontlar: NotoSans (text) + B_CAD (semboller) — stil bazlı seçim otomatik
 const DXF_FONTS = ['/fonts/NotoSans.ttf', '/fonts/B_CAD.ttf', '/fonts/T_ROMANS.ttf']
 
-function DxfOnizleme({ src }) {
+function DxfOnizleme({ src, dosyaId, onDirekTikla }) {
   const containerRef = useRef(null)
   const viewerRef = useRef(null)
   const rendererRef = useRef(null)
+  const direklerRef = useRef([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [hata, setHata] = useState('')
   const [ilerleme, setIlerleme] = useState('')
@@ -206,6 +322,39 @@ function DxfOnizleme({ src }) {
         if (viewer.bounds && viewer.origin) {
           const b = viewer.bounds, o = viewer.origin
           viewer.FitView(b.minX - o.x, b.maxX - o.x, b.minY - o.y, b.maxY - o.y)
+        }
+
+        // Direk listesini yükle ve tıklama event'i ekle
+        if (dosyaId) {
+          try {
+            const elemanRes = await api.get(`/dosya/${dosyaId}/dxf-elemanlar`)
+            const elemanData = elemanRes?.data || elemanRes
+            direklerRef.current = elemanData?.elemanlar || []
+          } catch {}
+
+          viewer.Subscribe('pointerup', (evt) => {
+            const e = evt.detail || evt
+            if (!direklerRef.current.length || !e.position) return
+            const px = e.position.x + (viewer.origin?.x || 0)
+            const py = e.position.y + (viewer.origin?.y || 0)
+            console.log('[DXF-CLICK] scene:', px.toFixed(0), py.toFixed(0), 'direk sayısı:', direklerRef.current.length)
+            // En yakın direği bul
+            let enYakin = null, enYakinMesafe = Infinity
+            for (const d of direklerRef.current) {
+              const dx = d.x - px, dy = d.y - py
+              const mesafe = Math.sqrt(dx*dx + dy*dy)
+              if (mesafe < enYakinMesafe) { enYakinMesafe = mesafe; enYakin = d }
+            }
+            console.log('[DXF-CLICK] en yakın:', enYakin?.sembolAdi, enYakin?.etiket, 'mesafe:', enYakinMesafe.toFixed(1))
+            // 15 birim yakınlık eşiği
+            if (enYakin && enYakinMesafe < 15) {
+              const domEvt = e.domEvent || evt
+              onDirekTikla?.({
+                ...enYakin,
+                mesafe: enYakinMesafe,
+              })
+            }
+          })
         }
       } catch (err) {
         console.error('[DXF] Hata:', err)
@@ -803,6 +952,7 @@ export default function ProjeDonguBar({ projeId }) {
   const scrollRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
   const [seciliDosya, setSeciliDosya] = useState(null) // { id, adi, adimAdi }
+  const [seciliDirek, setSeciliDirek] = useState(null) // { sembol, sembolAdi, etiket, ekranX, ekranY }
   const dragState = useRef({ startX: 0, scrollLeft: 0 })
 
   const handleWheel = useCallback((e) => {
@@ -972,7 +1122,13 @@ export default function ProjeDonguBar({ projeId }) {
             {seciliDosya.gorsel ? (
               <PanZoomResim src={`/api/dosya/${seciliDosya.id}/dosya`} alt={seciliDosya.adi} />
             ) : seciliDosya.dxf ? (
-              <DxfOnizleme src={`/api/dosya/${seciliDosya.id}/dosya`} />
+              <div className="relative">
+                <DxfOnizleme src={`/api/dosya/${seciliDosya.id}/dosya`} dosyaId={seciliDosya.id} onDirekTikla={setSeciliDirek} />
+                {/* Direk popup */}
+                {seciliDirek && (
+                  <DirekMalzemePopup direk={seciliDirek} projeId={projeId} onKapat={() => setSeciliDirek(null)} />
+                )}
+              </div>
             ) : (
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 {dosyaIkonu(seciliDosya.adi, 'h-12 w-12')}

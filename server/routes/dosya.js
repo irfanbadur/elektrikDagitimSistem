@@ -480,4 +480,74 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+// GET /:id/dxf-elemanlar — DXF'ten direkler ve diğer öğeleri çıkar
+router.get('/:id/dxf-elemanlar', (req, res) => {
+  try {
+    const dosya = dosyaService.dosyaGetir(parseInt(req.params.id));
+    if (!dosya) return res.status(404).json({ success: false, error: 'Dosya bulunamadı' });
+    const tamYol = dosyaService.dosyaYoluCozumle(dosya.dosya_yolu);
+    const fs = require('fs');
+    const content = fs.readFileSync(tamYol, 'utf-8');
+    const lines = content.split('\n');
+
+    // TEXT entity'lerini parse et — group code pairs
+    const elemanlar = [];
+    let inText = false, entity = {};
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      const code = parseInt(lines[i].trim());
+      const val = lines[i+1].trim();
+
+      if (code === 0) {
+        // Önceki entity'yi kaydet
+        if (inText && entity.text && entity.x !== undefined) elemanlar.push(entity);
+        inText = val === 'TEXT';
+        entity = inText ? { tip: 'TEXT' } : {};
+        continue;
+      }
+      if (!inText) continue;
+
+      switch (code) {
+        case 7: entity.stil = val; break;       // Style name
+        case 1: entity.text = val; break;        // Text content
+        case 10: entity.x = parseFloat(val); break;  // X
+        case 20: entity.y = parseFloat(val); break;  // Y
+        case 40: entity.yukseklik = parseFloat(val); break;
+        case 8: entity.katman = val; break;      // Layer
+      }
+    }
+    if (inText && entity.text && entity.x !== undefined) elemanlar.push(entity);
+
+    // Direk stilindeki elemanları ayır
+    const SEMBOL_MAP = { 'E': 'Direk', 'C': 'Armatür', '4': 'Koruma Topraklama', '5': 'İşletme Topraklama', 'A': 'Ağaç Direk', '2': 'Beton Direk' };
+    const direkler = elemanlar.filter(e => e.stil === 'Direk').map(e => ({
+      ...e, sembolAdi: SEMBOL_MAP[e.text] || e.text
+    }));
+    // Normal textler (etiketler — direk adları vb.)
+    const etiketler = elemanlar.filter(e => e.stil !== 'Direk' && e.text);
+
+    // Direk + yakınındaki etiket eşleştirmesi
+    const sonuc = direkler.map(d => {
+      // En yakın etiketi bul (direk adı)
+      let enYakinEtiket = null, enYakinMesafe = Infinity;
+      for (const et of etiketler) {
+        const dx = (et.x||0) - (d.x||0), dy = (et.y||0) - (d.y||0);
+        const mesafe = Math.sqrt(dx*dx + dy*dy);
+        if (mesafe < enYakinMesafe && mesafe < 20) { // Max 20 birim yakınlık
+          enYakinMesafe = mesafe;
+          enYakinEtiket = et;
+        }
+      }
+      return {
+        sembol: d.text,
+        sembolAdi: d.sembolAdi,
+        x: d.x, y: d.y,
+        katman: d.katman,
+        etiket: enYakinEtiket?.text || null,
+      };
+    });
+
+    res.json({ success: true, data: { elemanlar: sonuc, toplamDirek: direkler.length, toplamEtiket: etiketler.length } });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 module.exports = router;
