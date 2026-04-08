@@ -6,7 +6,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useProjeFazIlerleme, useAdimMetaGuncelle } from '@/hooks/useDongu'
 import {
   FileText, Image, File, Upload, MapPin, Zap, X, Navigation, Clock,
-  CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus, Sparkles
+  CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus, Sparkles,
+  ZoomIn, ZoomOut, RotateCcw
 } from 'lucide-react'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -61,7 +62,75 @@ function xlsMi(adi) {
   return ['xls', 'xlsx'].includes(adi.split('.').pop().toLowerCase())
 }
 
-function DosyaYuklemeIcerik({ adim, projeId }) {
+// Pan + Zoom destekli resim görüntüleyici
+function PanZoomResim({ src, alt }) {
+  const [scale, setScale] = useState(1)
+  const [pos, setPos] = useState({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
+  const dragStart = useRef({ x: 0, y: 0, px: 0, py: 0 })
+  const containerRef = useRef(null)
+
+  const handleWheel = useCallback((e) => {
+    e.preventDefault()
+    setScale(prev => Math.min(5, Math.max(0.5, prev + (e.deltaY < 0 ? 0.2 : -0.2))))
+  }, [])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [handleWheel])
+
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return
+    setDragging(true)
+    dragStart.current = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y }
+  }
+
+  useEffect(() => {
+    if (!dragging) return
+    const handleMove = (e) => {
+      setPos({
+        x: dragStart.current.px + (e.clientX - dragStart.current.x),
+        y: dragStart.current.py + (e.clientY - dragStart.current.y),
+      })
+    }
+    const handleUp = () => setDragging(false)
+    document.addEventListener('mousemove', handleMove)
+    document.addEventListener('mouseup', handleUp)
+    return () => { document.removeEventListener('mousemove', handleMove); document.removeEventListener('mouseup', handleUp) }
+  }, [dragging])
+
+  const reset = () => { setScale(1); setPos({ x: 0, y: 0 }) }
+
+  return (
+    <div className="relative w-full">
+      {/* Zoom kontrolleri */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-lg bg-white/90 px-1.5 py-1 shadow-sm border border-border">
+        <button onClick={() => setScale(s => Math.min(5, s + 0.3))} className="rounded p-1 hover:bg-muted" title="Yakınlaştır">
+          <ZoomIn className="h-3.5 w-3.5" />
+        </button>
+        <span className="text-[10px] font-mono w-10 text-center">{Math.round(scale * 100)}%</span>
+        <button onClick={() => setScale(s => Math.max(0.5, s - 0.3))} className="rounded p-1 hover:bg-muted" title="Uzaklaştır">
+          <ZoomOut className="h-3.5 w-3.5" />
+        </button>
+        <button onClick={reset} className="rounded p-1 hover:bg-muted" title="Sıfırla">
+          <RotateCcw className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {/* Resim alanı */}
+      <div ref={containerRef} className="overflow-hidden rounded-lg" style={{ height: 380, cursor: dragging ? 'grabbing' : 'grab' }}
+        onMouseDown={handleMouseDown}>
+        <img src={src} alt={alt}
+          style={{ transform: `translate(${pos.x}px, ${pos.y}px) scale(${scale})`, transformOrigin: 'center center', transition: dragging ? 'none' : 'transform 0.15s', maxHeight: 380, width: '100%', objectFit: 'contain', userSelect: 'none', pointerEvents: 'none' }}
+          draggable={false} />
+      </div>
+    </div>
+  )
+}
+
+function DosyaYuklemeIcerik({ adim, projeId, onDosyaSec }) {
   const [dragOver, setDragOver] = useState(false)
   const [yukleniyor, setYukleniyor] = useState(false)
   const [parseModal, setParseModal] = useState(null)
@@ -143,20 +212,24 @@ function DosyaYuklemeIcerik({ adim, projeId }) {
                   </button>
                 </div>
               )
+              const handleDosyaTikla = (e) => {
+                e.stopPropagation()
+                onDosyaSec?.({ id: dosya.id, adi, adimAdi: adim.adim_adi, gorsel, xls: xlsMi(adi) })
+              }
               if (gorsel) return (
-                <PhotoView key={dosya.id} src={`/api/dosya/${dosya.id}/dosya`}>
+                <div key={dosya.id} className="relative group" onClick={handleDosyaTikla}>
                   {thumb}
-                </PhotoView>
+                </div>
               )
               if (xlsMi(adi)) return (
-                <div key={dosya.id} className="relative group" onClick={(e) => { e.stopPropagation(); setParseModal({ dosyaId: dosya.id, dosyaAdi: adi }) }}>
+                <div key={dosya.id} className="relative group" onClick={handleDosyaTikla}>
                   {thumb}
                 </div>
               )
               return (
-                <a key={dosya.id} href={`/api/dosya/${dosya.id}/dosya`} download={adi} onClick={e => e.stopPropagation()}>
+                <div key={dosya.id} className="relative group" onClick={handleDosyaTikla}>
                   {thumb}
-                </a>
+                </div>
               )
             })}
             {liste.length > 6 && (
@@ -535,7 +608,7 @@ const KOMPONENT_CFG = {
 }
 
 // ─── Adım Kartı ──────────────────────────────
-function AdimKarti({ adim, projeId }) {
+function AdimKarti({ adim, projeId, onDosyaSec }) {
   const komponent = adim.komponent_tipi || 'dosya_yukleme'
   const cfg = KOMPONENT_CFG[komponent] || KOMPONENT_CFG.dosya_yukleme
 
@@ -572,7 +645,7 @@ function AdimKarti({ adim, projeId }) {
 
       {/* Komponent icerigi */}
       <div className="flex-1 flex flex-col p-2">
-        {komponent === 'dosya_yukleme' && <DosyaYuklemeIcerik adim={adim} projeId={projeId} />}
+        {komponent === 'dosya_yukleme' && <DosyaYuklemeIcerik adim={adim} projeId={projeId} onDosyaSec={onDosyaSec} />}
         {komponent === 'koordinat' && <KoordinatIcerik adim={adim} />}
         {komponent === 'kesinti' && <KesintiIcerik adim={adim} />}
       </div>
@@ -585,6 +658,7 @@ export default function ProjeDonguBar({ projeId }) {
   const { data: ilerleme } = useProjeFazIlerleme(projeId)
   const scrollRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [seciliDosya, setSeciliDosya] = useState(null) // { id, adi, adimAdi }
   const dragState = useRef({ startX: 0, scrollLeft: 0 })
 
   const handleWheel = useCallback((e) => {
@@ -711,7 +785,7 @@ export default function ProjeDonguBar({ projeId }) {
                 {/* Adimlar */}
                 <div className="flex gap-2 px-1 items-stretch">
                   {faz.adimlar.map((adim) => (
-                    <AdimKarti key={adim.id} adim={adim} projeId={projeId} />
+                    <AdimKarti key={adim.id} adim={adim} projeId={projeId} onDosyaSec={setSeciliDosya} />
                   ))}
                 </div>
               </div>
@@ -730,6 +804,43 @@ export default function ProjeDonguBar({ projeId }) {
           )
         })}
       </div>
+
+      {/* ─── Dosya Ön İzleme Paneli ─── */}
+      {seciliDosya && (
+        <div className="border-t border-border">
+          <div className="flex items-center justify-between px-5 py-2 bg-muted/30">
+            <div className="flex items-center gap-2">
+              {dosyaIkonu(seciliDosya.adi, 'h-4 w-4')}
+              <span className="text-xs font-semibold">{seciliDosya.adi}</span>
+              <span className="text-[10px] text-muted-foreground">— {seciliDosya.adimAdi}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a href={`/api/dosya/${seciliDosya.id}/dosya`} download={seciliDosya.adi} onClick={e => e.stopPropagation()}
+                className="rounded px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/10">
+                İndir
+              </a>
+              <button onClick={() => setSeciliDosya(null)} className="rounded p-1 hover:bg-muted">
+                <X className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            </div>
+          </div>
+          <div className="bg-gray-50 p-4" style={{ minHeight: 200 }}>
+            {seciliDosya.gorsel ? (
+              <PanZoomResim src={`/api/dosya/${seciliDosya.id}/dosya`} alt={seciliDosya.adi} />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                {dosyaIkonu(seciliDosya.adi, 'h-12 w-12')}
+                <span className="text-sm font-medium">{seciliDosya.adi}</span>
+                <span className="text-xs">Bu dosya türü için ön izleme mevcut değil</span>
+                <a href={`/api/dosya/${seciliDosya.id}/dosya`} download={seciliDosya.adi}
+                  className="mt-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90">
+                  Dosyayı İndir
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Plus, Eye, Pencil, Trash2 } from 'lucide-react'
 import { usePersonelListesi, usePersonelSil } from '@/hooks/usePersonel'
+import api from '@/api/client'
 import DataTable from '@/components/shared/DataTable'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton'
@@ -11,8 +13,23 @@ export default function PersonelListesi() {
   const { data: personeller, isLoading } = usePersonelListesi()
   const personelSil = usePersonelSil()
 
+  const { data: departmanlarRaw } = useQuery({ queryKey: ['departmanlar'], queryFn: () => api.get('/departmanlar') })
+  const { data: rollerRaw } = useQuery({ queryKey: ['yonetim', 'roller'], queryFn: () => api.get('/yonetim/roller') })
+  const departmanlar = departmanlarRaw?.data || []
+  const roller = rollerRaw?.data || []
+
+  const [filtreDepartman, setFiltreDepartman] = useState('')
+  const [filtreRol, setFiltreRol] = useState('')
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [silinecekPersonel, setSilinecekPersonel] = useState(null)
+
+  // Filtrelenmiş personeller
+  const filtrelenmisPersoneller = useMemo(() => {
+    let liste = personeller || []
+    if (filtreDepartman) liste = liste.filter(p => String(p.departman_id) === filtreDepartman)
+    if (filtreRol) liste = liste.filter(p => String(p.rol_id) === filtreRol)
+    return liste
+  }, [personeller, filtreDepartman, filtreRol])
 
   const handleSil = () => {
     if (!silinecekPersonel) return
@@ -128,7 +145,8 @@ export default function PersonelListesi() {
         <div>
           <h1 className="text-2xl font-bold">Personel</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Toplam {personeller?.length || 0} personel
+            Toplam {filtrelenmisPersoneller.length} personel
+            {(filtreDepartman || filtreRol) && ` (${personeller?.length || 0} toplam)`}
           </p>
         </div>
         <button
@@ -140,9 +158,27 @@ export default function PersonelListesi() {
         </button>
       </div>
 
+      {/* Filtreler */}
+      <div className="flex flex-wrap items-center gap-3">
+        <select value={filtreDepartman} onChange={e => setFiltreDepartman(e.target.value)}
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+          <option value="">Tüm Departmanlar</option>
+          {departmanlar.map(d => <option key={d.id} value={d.id}>{d.departman_adi}</option>)}
+        </select>
+        <select value={filtreRol} onChange={e => setFiltreRol(e.target.value)}
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+          <option value="">Tüm Roller</option>
+          {roller.filter(r => !filtreDepartman || String(r.departman_id) === filtreDepartman || !r.departman_id).map(r => <option key={r.id} value={r.id}>{r.rol_adi}</option>)}
+        </select>
+        {(filtreDepartman || filtreRol) && (
+          <button onClick={() => { setFiltreDepartman(''); setFiltreRol('') }}
+            className="text-sm text-muted-foreground hover:text-foreground">Filtreleri Temizle</button>
+        )}
+      </div>
+
       <DataTable
         columns={columns}
-        data={personeller || []}
+        data={filtrelenmisPersoneller}
         searchPlaceholder="Personel ara..."
         pageSize={25}
         onRowDoubleClick={(row) => navigate(`/personel/${row.id}/duzenle`)}

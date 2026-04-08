@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import useDropdownNav from '@/hooks/useDropdownNav'
-import { Plus, Trash2, Search, Package, Check, Clock, X, Columns3, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, Search, Package, Check, Clock, X, Columns3, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { useProjeKesif, useProjeKesifEkle, useProjeKesifGuncelle, useProjeKesifSil, useProjeKesifOzet } from '@/hooks/useProjeKesif'
 import { useDepoKatalog } from '@/hooks/useDepoKatalog'
+import api from '@/api/client'
 import { cn } from '@/lib/utils'
 
 const DURUM_MAP = {
@@ -286,6 +287,120 @@ function DuzenlenebilirHucre({ deger, onKaydet, type = 'number', className: cls 
   )
 }
 
+// Malzeme adı hücresi — tıklanınca arama moduna geçer, tooltip ile mevcut değer gösterilir
+function MalzemeAdiHucre({ deger, onKaydet }) {
+  const [duzenle, setDuzenle] = useState(false)
+  const [arama, setArama] = useState('')
+  const [sonuclar, setSonuclar] = useState([])
+  const [araniyor, setAraniyor] = useState(false)
+  const inputRef = useRef(null)
+  const dropRef = useRef(null)
+  const timer = useRef(null)
+
+  useEffect(() => {
+    if (duzenle && inputRef.current) inputRef.current.focus()
+  }, [duzenle])
+
+  useEffect(() => {
+    const h = (e) => {
+      if (dropRef.current && !dropRef.current.contains(e.target) && inputRef.current && !inputRef.current.contains(e.target)) {
+        setDuzenle(false)
+        setSonuclar([])
+      }
+    }
+    document.addEventListener('mousedown', h)
+    return () => { document.removeEventListener('mousedown', h); if (timer.current) clearTimeout(timer.current) }
+  }, [])
+
+  const ara = (text) => {
+    if (timer.current) clearTimeout(timer.current)
+    if (!text || text.length < 2) { setSonuclar([]); return }
+    setAraniyor(true)
+    timer.current = setTimeout(async () => {
+      try {
+        const r = await api.get('/malzeme-katalog', { params: { arama: text } })
+        setSonuclar(Array.isArray(r) ? r : (r?.data || []))
+      } catch { setSonuclar([]) }
+      setAraniyor(false)
+    }, 300)
+  }
+
+  const handleSec = useCallback((item) => {
+    onKaydet({
+      malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || deger,
+      malzeme_kodu: item.malzeme_kodu || '',
+      poz_no: item.poz_birlesik || '',
+      birim: item.olcu || '',
+    })
+    setDuzenle(false)
+    setSonuclar([])
+  }, [deger, onKaydet])
+
+  const gosterilen = sonuclar.slice(0, 15)
+  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, handleSec, () => { setDuzenle(false); setSonuclar([]) })
+  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
+
+  const handleAc = () => {
+    setArama(deger || '')
+    setDuzenle(true)
+    ara(deger || '')
+  }
+
+  if (!duzenle) {
+    return (
+      <div onClick={handleAc} className="cursor-pointer rounded px-1 py-0.5 hover:bg-primary/10 hover:ring-1 hover:ring-primary/30 min-h-[24px]" title="Düzenlemek için tıkla">
+        {deger || '-'}
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative">
+      {/* Mevcut değer tooltip */}
+      <div className="absolute bottom-full left-0 mb-1 max-w-[400px] rounded bg-slate-800 px-2 py-1 text-[10px] text-white shadow-lg z-50 whitespace-nowrap overflow-hidden text-ellipsis">
+        Mevcut: {deger || '-'}
+      </div>
+      <input
+        ref={inputRef}
+        value={arama}
+        onChange={e => { setArama(e.target.value); ara(e.target.value) }}
+        onKeyDown={gosterilen.length > 0 ? handleKeyDown : (e) => { if (e.key === 'Escape') { setDuzenle(false); setSonuclar([]) } }}
+        className="w-full rounded border border-primary bg-background px-2 py-0.5 text-xs focus:outline-none"
+        placeholder="Katalogda ara..."
+      />
+      {(araniyor || gosterilen.length > 0) && (
+        <div ref={dropRef} className="absolute left-0 top-full z-50 mt-1 max-h-48 w-[550px] overflow-y-auto rounded-lg border border-border bg-white shadow-xl ring-1 ring-black/5">
+          {araniyor ? (
+            <div className="px-3 py-3 text-center text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Aranıyor...</div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-muted/90">
+                <tr className="border-b border-border">
+                  <th className="px-2 py-1 text-left font-medium text-muted-foreground">Poz</th>
+                  <th className="px-2 py-1 text-left font-medium text-muted-foreground">Kod</th>
+                  <th className="px-2 py-1 text-left font-medium text-muted-foreground">Malzeme</th>
+                  <th className="px-2 py-1 text-center font-medium text-muted-foreground">Birim</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gosterilen.map((item, i) => (
+                  <tr key={item.id} onMouseDown={() => handleSec(item)}
+                    className={cn('cursor-pointer border-b border-border/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
+                    <td className="px-2 py-1 font-mono text-blue-600 whitespace-nowrap">{item.poz_birlesik || '-'}</td>
+                    <td className="px-2 py-1 font-mono text-muted-foreground">{item.malzeme_kodu || '-'}</td>
+                    <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
+                    <td className="px-2 py-1 text-center text-muted-foreground">{item.olcu || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function KesifSatiri({ kalem: k, durum, onGuncelle, onDurumDegistir, onSil, gorSutun }) {
   return (
     <tr className="border-b border-input/50 hover:bg-muted/30 transition-colors">
@@ -296,7 +411,9 @@ function KesifSatiri({ kalem: k, durum, onGuncelle, onDurumDegistir, onSil, gorS
         <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{k.malzeme_kodu || '-'}</td>
       )}
       {gorSutun('malzeme_adi') && (
-        <td className="px-3 py-2 text-xs font-medium">{k.malzeme_adi}</td>
+        <td className="px-3 py-2 text-xs font-medium relative" style={{ overflow: 'visible' }}>
+          <MalzemeAdiHucre deger={k.malzeme_adi} onKaydet={(data) => onGuncelle(data)} />
+        </td>
       )}
       {gorSutun('birim') && (
         <td className="px-3 py-2 text-xs text-muted-foreground">{k.birim}</td>
