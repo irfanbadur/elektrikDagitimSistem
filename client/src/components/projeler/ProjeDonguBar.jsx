@@ -190,9 +190,11 @@ function DirekMalzemePopup({ direk, projeId, onKapat }) {
   return (
     <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 380, maxHeight: 420, overflow: 'auto' }}>
       <div className="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/30">
-        <div>
+        <div className="flex items-center gap-2">
+          {direk.numara && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-bold text-primary">{direk.numara}</span>}
           <span className="text-xs font-bold">{direk.sembolAdi}</span>
-          {direk.etiket && <span className="ml-2 text-xs text-muted-foreground">{direk.etiket}</span>}
+          {direk.tip && <span className="text-xs text-emerald-600 font-medium">{direk.tip}</span>}
+          {!direk.numara && !direk.tip && direk.etiket && <span className="text-xs text-muted-foreground">{direk.etiket}</span>}
         </div>
         <button onClick={onKapat} className="rounded p-0.5 hover:bg-muted"><X className="h-3.5 w-3.5" /></button>
       </div>
