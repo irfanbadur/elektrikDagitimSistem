@@ -29,13 +29,31 @@ function excelOku(tamYol) {
 router.get('/:projeId', (req, res) => {
   try {
     const db = getDb();
-    const kesifler = db.prepare(`
-      SELECT pk.*,
-        (SELECT SUM(bk.miktar) FROM bono_kalemleri bk WHERE bk.proje_kesif_id = pk.id) as alinan_miktar
-      FROM proje_kesif pk
-      WHERE pk.proje_id = ?
-      ORDER BY pk.id
-    `).all(req.params.projeId);
+    const { depo_id } = req.query;
+    let sql, params;
+    if (depo_id) {
+      sql = `
+        SELECT pk.*,
+          (SELECT SUM(bk.miktar) FROM bono_kalemleri bk WHERE bk.proje_kesif_id = pk.id) as alinan_miktar,
+          COALESCE(ds.miktar, 0) as depo_stok
+        FROM proje_kesif pk
+        LEFT JOIN malzemeler m ON m.malzeme_kodu = pk.malzeme_kodu AND pk.malzeme_kodu IS NOT NULL AND pk.malzeme_kodu != ''
+        LEFT JOIN depo_stok ds ON ds.malzeme_id = m.id AND ds.depo_id = ?
+        WHERE pk.proje_id = ?
+        ORDER BY pk.id
+      `;
+      params = [depo_id, req.params.projeId];
+    } else {
+      sql = `
+        SELECT pk.*,
+          (SELECT SUM(bk.miktar) FROM bono_kalemleri bk WHERE bk.proje_kesif_id = pk.id) as alinan_miktar
+        FROM proje_kesif pk
+        WHERE pk.proje_id = ?
+        ORDER BY pk.id
+      `;
+      params = [req.params.projeId];
+    }
+    const kesifler = db.prepare(sql).all(...params);
     basarili(res, kesifler);
   } catch (err) {
     hata(res, err.message, 500);
@@ -181,13 +199,13 @@ router.post('/:projeId/parse-xls', async (req, res) => {
 router.post('/:projeId', (req, res) => {
   try {
     const db = getDb();
-    const { malzeme_kodu, poz_no, malzeme_adi, birim, miktar, birim_fiyat, notlar } = req.body;
-    if (!malzeme_adi) return hata(res, 'Malzeme adi zorunludur');
+    const { malzeme_kodu, poz_no, malzeme_adi, birim, miktar, birim_fiyat, notlar, okunan_deger } = req.body;
+    if (!malzeme_adi && !okunan_deger) return hata(res, 'Malzeme adı veya okunan değer zorunludur');
 
     const result = db.prepare(`
-      INSERT INTO proje_kesif (proje_id, malzeme_kodu, poz_no, malzeme_adi, birim, miktar, birim_fiyat, notlar)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.projeId, malzeme_kodu, poz_no, malzeme_adi, birim || 'Ad', miktar || 0, birim_fiyat || 0, notlar);
+      INSERT INTO proje_kesif (proje_id, malzeme_kodu, poz_no, malzeme_adi, birim, miktar, birim_fiyat, notlar, okunan_deger)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.params.projeId, malzeme_kodu, poz_no, malzeme_adi || '', birim || 'Ad', miktar || 0, birim_fiyat || 0, notlar, okunan_deger || null);
 
     const yeni = db.prepare('SELECT * FROM proje_kesif WHERE id = ?').get(result.lastInsertRowid);
     aktiviteLogla('proje_kesif', 'olusturma', yeni.id, `Kesif kalemi: ${malzeme_adi} (Proje: ${req.params.projeId})`);
@@ -205,13 +223,13 @@ router.post('/:projeId/toplu', (req, res) => {
     if (!kalemler || !kalemler.length) return hata(res, 'Kalem listesi bos');
 
     const stmt = db.prepare(`
-      INSERT INTO proje_kesif (proje_id, malzeme_kodu, poz_no, malzeme_adi, birim, miktar, birim_fiyat)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO proje_kesif (proje_id, malzeme_kodu, poz_no, malzeme_adi, birim, miktar, birim_fiyat, okunan_deger)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const transaction = db.transaction(() => {
       for (const k of kalemler) {
-        stmt.run(req.params.projeId, k.malzeme_kodu, k.poz_no, k.malzeme_adi, k.birim || 'Ad', k.miktar || 0, k.birim_fiyat || 0);
+        stmt.run(req.params.projeId, k.malzeme_kodu, k.poz_no, k.malzeme_adi, k.birim || 'Ad', k.miktar || 0, k.birim_fiyat || 0, k.okunan_deger || null);
       }
     });
     transaction();

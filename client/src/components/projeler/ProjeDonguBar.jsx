@@ -8,7 +8,7 @@ import { useProjeFazIlerleme, useAdimMetaGuncelle } from '@/hooks/useDongu'
 import {
   FileText, Image, File, Upload, MapPin, Zap, X, Navigation, Clock,
   CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus, Sparkles,
-  ZoomIn, ZoomOut, RotateCcw, Loader2
+  ZoomIn, ZoomOut, RotateCcw, Loader2, Trash2
 } from 'lucide-react'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -180,7 +180,8 @@ function DirekMalzemePopup({ direk, projeId, onKapat }) {
           birim: k.birim || 'Ad',
           miktar: k.miktar || 1,
           birim_fiyat: 0,
-          notlar: `Direk: ${direk.etiket || direk.sembolAdi}`,
+          notlar: '',
+          okunan_deger: [direk.numara, direk.tip || direk.etiket, direk.sembolAdi].filter(Boolean).join(' — '),
         }))
       })
       onKapat()
@@ -305,19 +306,16 @@ function DxfOnizleme({ src, dosyaId, onDirekTikla }) {
         const url = URL.createObjectURL(blob)
 
         setIlerleme('DXF parse ediliyor ve çiziliyor...')
-        console.log('[DXF] Fontlar:', DXF_FONTS)
         await viewer.Load({
           url,
           fonts: DXF_FONTS,
           progressCbk: (phase, processed, total) => {
-            console.log('[DXF] Progress:', phase, processed, total)
             if (phase === 'font') setIlerleme(`Font yükleniyor... (${processed}/${total})`)
             else if (phase === 'fetch') setIlerleme('Dosya alınıyor...')
             else if (phase === 'parse') setIlerleme(`Parse ediliyor... ${total ? Math.round(processed/total*100) + '%' : ''}`)
             else if (phase === 'prepare') setIlerleme('Sahne hazırlanıyor...')
           }
         })
-        console.log('[DXF] hasMissingChars:', viewer.hasMissingChars)
         URL.revokeObjectURL(url)
 
         // Tüm sahneye fit et
@@ -339,7 +337,6 @@ function DxfOnizleme({ src, dosyaId, onDirekTikla }) {
             if (!direklerRef.current.length || !e.position) return
             const px = e.position.x + (viewer.origin?.x || 0)
             const py = e.position.y + (viewer.origin?.y || 0)
-            console.log('[DXF-CLICK] scene:', px.toFixed(0), py.toFixed(0), 'direk sayısı:', direklerRef.current.length)
             // En yakın direği bul
             let enYakin = null, enYakinMesafe = Infinity
             for (const d of direklerRef.current) {
@@ -347,7 +344,6 @@ function DxfOnizleme({ src, dosyaId, onDirekTikla }) {
               const mesafe = Math.sqrt(dx*dx + dy*dy)
               if (mesafe < enYakinMesafe) { enYakinMesafe = mesafe; enYakin = d }
             }
-            console.log('[DXF-CLICK] en yakın:', enYakin?.sembolAdi, enYakin?.etiket, 'mesafe:', enYakinMesafe.toFixed(1))
             // 15 birim yakınlık eşiği
             if (enYakin && enYakinMesafe < 15) {
               const domEvt = e.domEvent || evt

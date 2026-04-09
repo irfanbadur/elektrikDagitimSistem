@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Plus, X, ChevronDown, ChevronRight, Save, Trash2, GripVertical } from 'lucide-react'
 import { useIsTipleri, useIsTipiOlustur, useIsTipiGuncelle, useIsTipiSil } from '@/hooks/useIsTipleri'
 import { useRoller } from '@/hooks/useYonetim'
+import { useDepolar } from '@/hooks/useDepolar'
 import { cn } from '@/lib/utils'
 
 const KOMPONENT_TIPLERI = [
@@ -27,13 +28,14 @@ export default function ProjeTipleri() {
   const { data: tipler, isLoading } = useIsTipleri()
   const { data: rollerRes } = useRoller()
   const roller = rollerRes?.data || []
+  const { data: depolar } = useDepolar()
   const olustur = useIsTipiOlustur()
   const guncelle = useIsTipiGuncelle()
   const sil = useIsTipiSil()
 
   const [seciliId, setSeciliId] = useState(null)
   const [yeniMod, setYeniMod] = useState(false)
-  const [form, setForm] = useState({ ad: '', kod: '', aciklama: '', fazlar: [] })
+  const [form, setForm] = useState({ ad: '', kod: '', aciklama: '', depo_id: '', fazlar: [] })
   const [acikFazlar, setAcikFazlar] = useState({})
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
@@ -44,6 +46,7 @@ export default function ProjeTipleri() {
       ad: tip.ad,
       kod: tip.kod,
       aciklama: tip.aciklama || '',
+      depo_id: tip.depo_id || '',
       fazlar: tip.fazlar.map(f => ({
         sira: f.sira,
         faz_adi: f.faz_adi,
@@ -67,7 +70,7 @@ export default function ProjeTipleri() {
   const yeniBaslat = () => {
     setSeciliId(null)
     setYeniMod(true)
-    setForm({ ad: '', kod: '', aciklama: '', fazlar: [] })
+    setForm({ ad: '', kod: '', aciklama: '', depo_id: '', fazlar: [] })
     setAcikFazlar({})
   }
 
@@ -87,7 +90,7 @@ export default function ProjeTipleri() {
           setYeniMod(false)
         }
       } else {
-        await guncelle.mutateAsync({ id: seciliId, ad: form.ad, aciklama: form.aciklama, fazlar: form.fazlar })
+        await guncelle.mutateAsync({ id: seciliId, ad: form.ad, aciklama: form.aciklama, depo_id: form.depo_id ? parseInt(form.depo_id) : null, fazlar: form.fazlar })
       }
     } catch (err) {
       setKaydetHata(err.message || 'Kaydetme sırasında bir hata oluştu')
@@ -273,14 +276,29 @@ export default function ProjeTipleri() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Açıklama</label>
-                <input
-                  value={form.aciklama}
-                  onChange={e => setForm(f => ({ ...f, aciklama: e.target.value }))}
-                  className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  placeholder="İş tipi açıklaması"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Açıklama</label>
+                  <input
+                    value={form.aciklama}
+                    onChange={e => setForm(f => ({ ...f, aciklama: e.target.value }))}
+                    className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    placeholder="İş tipi açıklaması"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Varsayılan Depo</label>
+                  <select
+                    value={form.depo_id}
+                    onChange={e => setForm(f => ({ ...f, depo_id: e.target.value }))}
+                    className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">Seçiniz</option>
+                    {(depolar || []).map(d => (
+                      <option key={d.id} value={d.id}>{d.depo_adi}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Fazlar */}

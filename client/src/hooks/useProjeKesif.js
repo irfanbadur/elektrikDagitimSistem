@@ -1,10 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/api/client'
 
-export function useProjeKesif(projeId) {
+export function useProjeKesif(projeId, depoId) {
   return useQuery({
-    queryKey: ['proje-kesif', projeId],
-    queryFn: () => api.get(`/proje-kesif/${projeId}`),
+    queryKey: ['proje-kesif', projeId, depoId || ''],
+    queryFn: () => api.get(`/proje-kesif/${projeId}`, { params: depoId ? { depo_id: depoId } : {} }),
     select: (res) => res.data,
     enabled: !!projeId,
   })

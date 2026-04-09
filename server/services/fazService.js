@@ -161,14 +161,14 @@ class FazService {
     }
   }
 
-  isTipiTopluKaydet(id, { ad, aciklama, fazlar }) {
+  isTipiTopluKaydet(id, { ad, aciklama, depo_id, fazlar }) {
     const db = getDb();
 
     const updateTip = db.transaction(() => {
       // İş tipi bilgilerini güncelle
       db.prepare(`
-        UPDATE is_tipleri SET ad = ?, aciklama = ?, guncelleme_tarihi = datetime('now') WHERE id = ?
-      `).run(ad, aciklama || null, id);
+        UPDATE is_tipleri SET ad = ?, aciklama = ?, depo_id = ?, guncelleme_tarihi = datetime('now') WHERE id = ?
+      `).run(ad, aciklama || null, depo_id || null, id);
 
       // proje_adimlari FK referanslarını NULL yap (proje adımları korunur, sadece şablon bağı kopar)
       const eskiFazIds = db.prepare('SELECT id FROM is_tipi_fazlari WHERE is_tipi_id = ?').all(id).map(r => r.id);

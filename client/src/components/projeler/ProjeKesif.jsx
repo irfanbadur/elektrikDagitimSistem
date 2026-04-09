@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import useDropdownNav from '@/hooks/useDropdownNav'
 import { Plus, Trash2, Search, Package, Check, Clock, X, Columns3, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { useProjeKesif, useProjeKesifEkle, useProjeKesifGuncelle, useProjeKesifSil, useProjeKesifOzet } from '@/hooks/useProjeKesif'
+import { useProje } from '@/hooks/useProjeler'
+import { useDepolar } from '@/hooks/useDepolar'
 import { useDepoKatalog } from '@/hooks/useDepoKatalog'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -14,7 +16,7 @@ const DURUM_MAP = {
 }
 
 const TUM_SUTUNLAR = [
-  { key: 'poz_no',       label: 'Poz No',        varsayilan: true  },
+  { key: 'okunan_deger', label: 'Okunan Değer',  varsayilan: true  },
   { key: 'malzeme_kodu', label: 'Malzeme Kodu',  varsayilan: true  },
   { key: 'malzeme_adi',  label: 'Malzeme Adı',   varsayilan: true,  zorunlu: true },
   { key: 'birim',        label: 'Birim',          varsayilan: true  },
@@ -23,6 +25,7 @@ const TUM_SUTUNLAR = [
   { key: 'toplam_tutar', label: 'Toplam Tutar',  varsayilan: false },
   { key: 'alinan_miktar',label: 'Alınan Miktar', varsayilan: false },
   { key: 'durum',        label: 'Durum',          varsayilan: true  },
+  { key: 'depo',         label: 'Depo Stok',      varsayilan: true  },
   { key: 'notlar',       label: 'Notlar',         varsayilan: false },
 ]
 
@@ -401,70 +404,150 @@ function MalzemeAdiHucre({ deger, onKaydet }) {
   )
 }
 
-function KesifSatiri({ kalem: k, durum, onGuncelle, onDurumDegistir, onSil, gorSutun }) {
+function KesifSatiri({ kalem: k, durum, onGuncelle, onDurumDegistir, onSil, gorSutun, onEnterSonraki, depolar, seciliDepoId }) {
+  // Inline katalog arama — malzeme adı hücresinde
+  const [katalogAcik, setKatalogAcik] = useState(false)
+  const [katalogSonuc, setKatalogSonuc] = useState([])
+  const [aramaText, setAramaText] = useState(null)
+  const [araniyor, setAraniyor] = useState(false)
+  const timer = useRef(null)
+  const dropRef = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    const h = (e) => { if (dropRef.current && !dropRef.current.contains(e.target) && inputRef.current && !inputRef.current.contains(e.target)) setKatalogAcik(false) }
+    document.addEventListener('mousedown', h)
+    return () => { document.removeEventListener('mousedown', h); if (timer.current) clearTimeout(timer.current) }
+  }, [])
+
+  const ara = (text) => {
+    if (timer.current) clearTimeout(timer.current)
+    if (!text || text.length < 2) { setKatalogSonuc([]); setKatalogAcik(false); return }
+    setAraniyor(true)
+    timer.current = setTimeout(async () => {
+      try {
+        const r = await api.get('/malzeme-katalog', { params: { arama: text } })
+        const liste = Array.isArray(r) ? r : (r?.data || [])
+        setKatalogSonuc(liste)
+        setKatalogAcik(liste.length > 0)
+      } catch { setKatalogSonuc([]) }
+      setAraniyor(false)
+    }, 300)
+  }
+
+  const handleKatalogSec = useCallback((item) => {
+    if (!item) return
+    onGuncelle({
+      malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || k.malzeme_adi,
+      malzeme_kodu: item.malzeme_kodu || '',
+      birim: item.olcu || k.birim,
+    })
+    setKatalogAcik(false)
+    setAramaText(null)
+    // Seçim sonrası alt satıra geç
+    setTimeout(() => onEnterSonraki?.(), 50)
+  }, [k, onGuncelle])
+
+  const gosterilen = katalogSonuc.slice(0, 15)
+  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, handleKatalogSec, () => setKatalogAcik(false))
+  useEffect(() => { setSeciliIdx(-1) }, [katalogSonuc, setSeciliIdx])
+
+  const editCls = 'w-full rounded border border-transparent bg-transparent px-2 py-1 text-xs hover:border-input focus:border-primary focus:outline-none'
+
   return (
-    <tr className="border-b border-input/50 hover:bg-muted/30 transition-colors">
-      {gorSutun('poz_no') && (
-        <td className="px-3 py-2 font-mono text-xs text-blue-600">{k.poz_no || '-'}</td>
+    <tr className="border-b border-input/50 group hover:bg-muted/20 transition-colors">
+      {gorSutun('okunan_deger') && (
+        <td className="px-2 py-1.5">
+          <span className="px-2 text-xs font-medium text-foreground" title={k.okunan_deger || '-'}>{k.okunan_deger || '-'}</span>
+        </td>
       )}
       {gorSutun('malzeme_kodu') && (
-        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{k.malzeme_kodu || '-'}</td>
+        <td className="px-2 py-1.5">
+          <input value={k.malzeme_kodu || ''} onChange={e => onGuncelle({ malzeme_kodu: e.target.value })} className={cn(editCls, 'font-mono w-24')} placeholder="-" />
+        </td>
       )}
       {gorSutun('malzeme_adi') && (
-        <td className="px-3 py-2 text-xs font-medium relative" style={{ overflow: 'visible' }}>
-          <MalzemeAdiHucre deger={k.malzeme_adi} onKaydet={(data) => onGuncelle(data)} />
+        <td className="px-2 py-1.5 relative" style={{ overflow: 'visible' }}>
+          <input ref={inputRef} value={aramaText !== null ? aramaText : (k.malzeme_adi || '')}
+            onChange={e => { setAramaText(e.target.value); ara(e.target.value) }}
+            onFocus={() => { setAramaText(k.malzeme_adi || ''); if ((k.malzeme_adi || '').length >= 2) ara(k.malzeme_adi) }}
+            onBlur={() => { if (!katalogAcik) setAramaText(null) }}
+            onKeyDown={katalogAcik ? handleKeyDown : (e) => { if (e.key === 'Enter') { e.preventDefault(); onEnterSonraki?.() } }}
+            className={cn(editCls, 'font-medium')} placeholder="Malzeme adı..." />
+          {katalogAcik && (araniyor || gosterilen.length > 0) && (
+            <div ref={dropRef} className="absolute left-0 top-full z-50 mt-1 max-h-48 w-[550px] overflow-y-auto rounded-lg border border-border bg-white shadow-xl ring-1 ring-black/5">
+              {araniyor ? <div className="px-3 py-3 text-center text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Aranıyor...</div> : (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-muted/90"><tr className="border-b border-border">
+                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">Poz</th>
+                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">Kod</th>
+                    <th className="px-2 py-1 text-left font-medium text-muted-foreground">Malzeme</th>
+                    <th className="px-2 py-1 text-center font-medium text-muted-foreground">Birim</th>
+                  </tr></thead>
+                  <tbody>{gosterilen.map((item, i) => (
+                    <tr key={item.id} onMouseDown={() => handleKatalogSec(item)}
+                      className={cn('cursor-pointer border-b border-border/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
+                      <td className="px-2 py-1 font-mono text-blue-600">{item.poz_birlesik || '-'}</td>
+                      <td className="px-2 py-1 font-mono text-muted-foreground">{item.malzeme_kodu || '-'}</td>
+                      <td className="px-2 py-1">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</td>
+                      <td className="px-2 py-1 text-center text-muted-foreground">{item.olcu || '-'}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </div>
+          )}
         </td>
       )}
       {gorSutun('birim') && (
-        <td className="px-3 py-2 text-xs text-muted-foreground">{k.birim}</td>
+        <td className="px-2 py-1.5">
+          <input value={k.birim || 'Ad'} onChange={e => onGuncelle({ birim: e.target.value })} className={cn(editCls, 'text-center w-14')} />
+        </td>
       )}
       {gorSutun('miktar') && (
-        <td className="px-3 py-2 text-left text-xs tabular-nums">
-          <DuzenlenebilirHucre deger={k.miktar || 0} onKaydet={(v) => onGuncelle({ miktar: v })} />
+        <td className="px-2 py-1.5">
+          <input type="number" value={k.miktar || ''} onChange={e => onGuncelle({ miktar: Number(e.target.value) || 0 })} className={cn(editCls, 'text-center w-16')} />
         </td>
       )}
       {gorSutun('birim_fiyat') && (
-        <td className="px-3 py-2 text-left text-xs tabular-nums">
-          <DuzenlenebilirHucre deger={k.birim_fiyat || 0} onKaydet={(v) => onGuncelle({ birim_fiyat: v })} />
+        <td className="px-2 py-1.5">
+          <input type="number" value={k.birim_fiyat || ''} onChange={e => onGuncelle({ birim_fiyat: Number(e.target.value) || 0 })} className={cn(editCls, 'text-center w-16')} />
         </td>
       )}
       {gorSutun('toplam_tutar') && (
-        <td className="px-3 py-2 text-right text-xs tabular-nums font-medium">
+        <td className="px-2 py-1.5 text-right text-xs tabular-nums font-medium">
           {((k.miktar || 0) * (k.birim_fiyat || 0)).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
         </td>
       )}
       {gorSutun('alinan_miktar') && (
-        <td className="px-3 py-2 text-center text-xs tabular-nums">
-          {k.alinan_miktar
-            ? <span className="font-medium text-emerald-600">{k.alinan_miktar}</span>
-            : <span className="text-muted-foreground">-</span>
-          }
+        <td className="px-2 py-1.5 text-center text-xs tabular-nums">
+          {k.alinan_miktar ? <span className="font-medium text-emerald-600">{k.alinan_miktar}</span> : <span className="text-muted-foreground">-</span>}
         </td>
       )}
       {gorSutun('durum') && (
-        <td className="px-3 py-2">
-          <select
-            value={k.durum}
-            onChange={(e) => onDurumDegistir(e.target.value)}
-            className={cn('rounded-full px-2 py-0.5 text-xs font-medium border-0 cursor-pointer', durum.renk)}
-          >
-            {Object.entries(DURUM_MAP).map(([key, val]) => (
-              <option key={key} value={key}>{val.label}</option>
-            ))}
+        <td className="px-2 py-1.5">
+          <select value={k.durum} onChange={(e) => onDurumDegistir(e.target.value)}
+            className={cn('rounded-full px-2 py-0.5 text-xs font-medium border-0 cursor-pointer', durum.renk)}>
+            {Object.entries(DURUM_MAP).map(([key, val]) => <option key={key} value={key}>{val.label}</option>)}
           </select>
         </td>
       )}
-      {gorSutun('notlar') && (
-        <td className="px-3 py-2 text-xs max-w-[150px]">
-          <DuzenlenebilirHucre deger={k.notlar || ''} onKaydet={(v) => onGuncelle({ notlar: v })} type="text" />
+      {gorSutun('depo') && (
+        <td className="px-2 py-1.5 text-xs text-center">
+          {seciliDepoId && k.malzeme_kodu ? (
+            <span className={k.depo_stok > 0 ? 'text-emerald-600 font-medium' : 'text-red-500'}>
+              {k.depo_stok ?? 0}
+            </span>
+          ) : <span className="text-muted-foreground">-</span>}
         </td>
       )}
-      <td className="px-3 py-2 text-right">
-        <button
-          onClick={onSil}
-          className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600"
-          title="Sil"
-        >
+      {gorSutun('notlar') && (
+        <td className="px-2 py-1.5">
+          <input value={k.notlar || ''} onChange={e => onGuncelle({ notlar: e.target.value })} className={cn(editCls, 'max-w-[150px]')} placeholder="Not..." />
+        </td>
+      )}
+      <td className="px-2 py-1.5 text-right">
+        <button onClick={onSil} className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-600 transition-opacity" title="Sil">
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </td>
@@ -531,9 +614,9 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
 
   return (
     <tr className="border-b border-input bg-primary/5">
-      {gorSutun('poz_no') && (
+      {gorSutun('okunan_deger') && (
         <td className="px-3 py-2">
-          <input value={form.poz_no} readOnly tabIndex={-1} placeholder="Poz no" className="w-full rounded border border-input bg-muted/50 px-2 py-1 text-xs text-muted-foreground" />
+          <span className="px-2 text-xs text-muted-foreground">-</span>
         </td>
       )}
       {gorSutun('malzeme_kodu') && (
@@ -612,6 +695,7 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
       {gorSutun('toplam_tutar') && <td className="px-3 py-2 text-xs text-muted-foreground">-</td>}
       {gorSutun('alinan_miktar') && <td className="px-3 py-2 text-xs text-muted-foreground">-</td>}
       {gorSutun('durum') && <td className="px-3 py-2 text-xs text-muted-foreground">Planli</td>}
+      {gorSutun('depo') && <td className="px-3 py-2 text-xs text-muted-foreground">-</td>}
       {gorSutun('notlar') && (
         <td className="px-3 py-2">
           <input value={form.notlar} onChange={e => setForm({ ...form, notlar: e.target.value })} placeholder="Not..." className="w-full rounded border border-input bg-background px-2 py-1 text-xs" />
@@ -632,18 +716,100 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
 }
 
 export default function ProjeKesif({ projeId }) {
-  const { data: kesifler, isLoading } = useProjeKesif(projeId)
+  const { data: depolar } = useDepolar()
+  const { data: proje } = useProje(projeId)
+  const [seciliDepoId, setSeciliDepoId] = useState('')
+
+  // İş tipinin varsayılan deposunu yükle
+  useEffect(() => {
+    if (!proje?.is_tipi_id || seciliDepoId) return
+    api.get(`/is-tipleri/${proje.is_tipi_id}`).then(r => {
+      const tip = r?.data || r
+      if (tip?.depo_id) setSeciliDepoId(String(tip.depo_id))
+    }).catch(() => {})
+  }, [proje?.is_tipi_id])
+
+  const { data: kesifler, isLoading } = useProjeKesif(projeId, seciliDepoId)
   const ekle = useProjeKesifEkle(projeId)
   const guncelle = useProjeKesifGuncelle(projeId)
   const sil = useProjeKesifSil(projeId)
 
   const [yeniSatir, setYeniSatir] = useState(false)
-  const [katalogAcik, setKatalogAcik] = useState(false)
+  const [dxfDosya, setDxfDosya] = useState(null) // { dosyaId, dosyaAdi, adimAdi }
+  const [dxfYukleniyor, setDxfYukleniyor] = useState(false)
+
+  // Yaşam döngüsündeki DXF dosyasını bul
+  useEffect(() => {
+    if (!projeId) return
+    api.get(`/dongu/proje/${projeId}/faz`).then(r => {
+      const fazlar = r?.data || r || []
+      for (const faz of fazlar) {
+        for (const adim of (faz.adimlar || [])) {
+          api.get(`/dosya/adim/${adim.id}`).then(dr => {
+            const dosyalar = dr?.data || dr || []
+            const dxf = dosyalar.find(d => (d.dosya_adi||'').endsWith('.dxf') || (d.orijinal_adi||'').endsWith('.dxf'))
+            if (dxf && !dxfDosya) {
+              setDxfDosya({ dosyaId: dxf.id, dosyaAdi: dxf.orijinal_adi || dxf.dosya_adi, adimAdi: adim.adim_adi })
+            }
+          }).catch(() => {})
+        }
+      }
+    }).catch(() => {})
+  }, [projeId])
+
+  // DXF'ten keşif oluştur — mevcut listeyi temizleyip yeniden oluşturur
+  const handleDxfKesifOlustur = async () => {
+    if (!dxfDosya) return
+    if (kesifler?.length > 0 && !window.confirm('Mevcut keşif listesi silinip DXF\'ten yeniden oluşturulacak. Devam edilsin mi?')) return
+    setDxfYukleniyor(true)
+    try {
+      // Önce mevcut listeyi temizle
+      if (kesifler?.length > 0) {
+        for (const k of kesifler) {
+          await sil.mutateAsync(k.id)
+        }
+      }
+      // DXF'ten elemanları çek ve ekle
+      const r = await api.get(`/dosya/${dxfDosya.dosyaId}/dxf-elemanlar`)
+      const data = r?.data || r
+      if (data?.elemanlar?.length > 0) {
+        for (const el of data.elemanlar) {
+          const okunanDeger = [el.numara, el.tip || el.etiket, el.sembolAdi].filter(Boolean).join(' — ')
+          if (okunanDeger) {
+            await ekle.mutateAsync({
+              malzeme_adi: '',
+              malzeme_kodu: '',
+              poz_no: '',
+              birim: 'Ad',
+              miktar: 1,
+              birim_fiyat: 0,
+              notlar: '',
+              okunan_deger: okunanDeger,
+            })
+          }
+        }
+      }
+    } catch (err) { alert(err.message || 'DXF keşif oluşturma hatası') }
+    finally { setDxfYukleniyor(false) }
+  }
 
   const [gorunurSutunlar, setGorunurSutunlar] = useState(() => {
     try {
       const saved = localStorage.getItem('proje_kesif_sutunlar')
-      if (saved) return JSON.parse(saved)
+      if (saved) {
+        let parsed = JSON.parse(saved)
+        // poz_no → okunan_deger migration
+        if (parsed.includes('poz_no')) parsed = parsed.map(k => k === 'poz_no' ? 'okunan_deger' : k)
+        // Bilinmeyen key'leri kaldır, eksik varsayılanları ekle
+        const gecerliKeys = TUM_SUTUNLAR.map(s => s.key)
+        parsed = parsed.filter(k => gecerliKeys.includes(k))
+        if (!parsed.includes('okunan_deger')) parsed.unshift('okunan_deger')
+        if (!parsed.includes('depo')) {
+          const durumIdx = parsed.indexOf('durum')
+          parsed.splice(durumIdx >= 0 ? durumIdx + 1 : parsed.length, 0, 'depo')
+        }
+        return parsed
+      }
     } catch {}
     return TUM_SUTUNLAR.filter(s => s.varsayilan).map(s => s.key)
   })
@@ -652,6 +818,7 @@ export default function ProjeKesif({ projeId }) {
     try { localStorage.setItem('proje_kesif_sutunlar', JSON.stringify(gorunurSutunlar)) } catch {}
   }, [gorunurSutunlar])
 
+  const tabloRef = useRef(null)
   const gorSutun = (key) => gorunurSutunlar.includes(key)
   const toplamSutun = gorunurSutunlar.length + 1 // +1 for actions
 
@@ -660,42 +827,41 @@ export default function ProjeKesif({ projeId }) {
     setYeniSatir(false)
   }
 
-  const handleKatalogSec = async (kalemler) => {
-    for (const k of kalemler) {
-      await ekle.mutateAsync(k)
-    }
-    setKatalogAcik(false)
-  }
-
   const handleDurumDegistir = (id, kalem, yeniDurum) => {
     guncelle.mutate({ id, ...kalem, durum: yeniDurum })
   }
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4">
         <h3 className="text-lg font-semibold">Proje-Kesif Listesi</h3>
-        <div className="flex gap-2">
-          <SutunSecici gorunurSutunlar={gorunurSutunlar} setGorunurSutunlar={setGorunurSutunlar} />
-          <button onClick={() => setKatalogAcik(true)} className="flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-muted">
-            <Search className="h-4 w-4" />
-            Katalogdan Sec
-          </button>
-          <button onClick={() => setYeniSatir(true)} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90">
-            <Plus className="h-4 w-4" />
-            Manuel Ekle
-          </button>
-        </div>
       </div>
 
       <KesifOzet projeId={projeId} />
 
-      <div className="overflow-hidden rounded-lg border border-input bg-card">
+      <div className="mb-2 flex items-center gap-2">
+        {dxfDosya && (
+          <button onClick={handleDxfKesifOlustur} disabled={dxfYukleniyor}
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors">
+            {dxfYukleniyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            {dxfDosya.adimAdi} &gt; {dxfDosya.dosyaAdi}'den Keşif Oluştur
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <SutunSecici gorunurSutunlar={gorunurSutunlar} setGorunurSutunlar={setGorunurSutunlar} />
+          <button onClick={() => setYeniSatir(true)} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90">
+            <Plus className="h-4 w-4" />
+            Ekle
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-input bg-card" ref={tabloRef}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-input bg-muted/50">
-                {gorSutun('poz_no') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Poz No</th>}
+                {gorSutun('okunan_deger') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Okunan Değer</th>}
                 {gorSutun('malzeme_kodu') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Malzeme Kodu</th>}
                 {gorSutun('malzeme_adi') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Malzeme Adı</th>}
                 {gorSutun('birim') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim</th>}
@@ -704,6 +870,15 @@ export default function ProjeKesif({ projeId }) {
                 {gorSutun('toplam_tutar') && <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Toplam Tutar</th>}
                 {gorSutun('alinan_miktar') && <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Alınan Miktar</th>}
                 {gorSutun('durum') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Durum</th>}
+                {gorSutun('depo') && (
+                  <th className="px-2 py-2">
+                    <select value={seciliDepoId} onChange={e => setSeciliDepoId(e.target.value)}
+                      className="rounded border border-input bg-background px-2 py-1 text-xs font-semibold text-muted-foreground focus:border-primary focus:outline-none">
+                      <option value="">Depo Seç</option>
+                      {(depolar || []).map(d => <option key={d.id} value={d.id}>{d.depo_adi}</option>)}
+                    </select>
+                  </th>
+                )}
                 {gorSutun('notlar') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Notlar</th>}
                 <th className="w-12 px-3 py-3" />
               </tr>
@@ -739,6 +914,16 @@ export default function ProjeKesif({ projeId }) {
                       onGuncelle={(data) => guncelle.mutate({ id: k.id, ...k, ...data })}
                       onDurumDegistir={(d) => handleDurumDegistir(k.id, k, d)}
                       onSil={() => sil.mutate(k.id)}
+                      depolar={depolar}
+                      seciliDepoId={seciliDepoId}
+                      onEnterSonraki={() => {
+                        if (!tabloRef.current) return
+                        const rows = tabloRef.current.querySelectorAll('tbody tr')
+                        const idx = kesifler.findIndex(x => x.id === k.id)
+                        const nextRow = rows[idx + 1 + (yeniSatir ? 1 : 0)]
+                        const input = nextRow?.querySelector('input[placeholder="Malzeme adı..."]')
+                        input?.focus()
+                      }}
                     />
                   )
                 })
@@ -748,7 +933,6 @@ export default function ProjeKesif({ projeId }) {
         </div>
       </div>
 
-      {katalogAcik && <KatalogSecici onSec={handleKatalogSec} onKapat={() => setKatalogAcik(false)} />}
     </div>
   )
 }

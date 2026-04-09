@@ -94,6 +94,21 @@ index 852184e..ae8532b 100644
          })
      }
  
+diff --git a/node_modules/dxf-viewer/src/DxfViewer.js b/node_modules/dxf-viewer/src/DxfViewer.js
+index e9acf7c..e150d7f 100644
+--- a/node_modules/dxf-viewer/src/DxfViewer.js
++++ b/node_modules/dxf-viewer/src/DxfViewer.js
+@@ -433,8 +433,8 @@ export class DxfViewer {
+         const controls = this.controls = new OrbitControls(this.camera, this.canvas)
+         controls.enableRotate = false
+         controls.mouseButtons = {
+-            LEFT: three.MOUSE.PAN,
+-            MIDDLE: three.MOUSE.DOLLY
++            MIDDLE: three.MOUSE.PAN,
++            RIGHT: three.MOUSE.PAN
+         }
+         controls.touches = {
+             ONE: three.TOUCH.PAN,
 diff --git a/node_modules/dxf-viewer/src/DxfWorker.js b/node_modules/dxf-viewer/src/DxfWorker.js
 index f263181..ef6fea9 100644
 --- a/node_modules/dxf-viewer/src/DxfWorker.js

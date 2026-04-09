@@ -149,6 +149,9 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'proje_adimlari', 'komponent_tipi', "TEXT DEFAULT 'dosya_yukleme'");
   addColumnIfNotExists(database, 'proje_adimlari', 'meta_veri', "TEXT DEFAULT '{}'");
 
+  // İş tipleri tablosuna varsayılan depo
+  addColumnIfNotExists(database, 'is_tipleri', 'depo_id', 'INTEGER REFERENCES depolar(id)');
+
   // Bonolar tablosuna irsaliye alanları
   addColumnIfNotExists(database, 'bonolar', 'irsaliye_no', 'TEXT');
   addColumnIfNotExists(database, 'bonolar', 'irsaliye_tarihi', 'DATE');
