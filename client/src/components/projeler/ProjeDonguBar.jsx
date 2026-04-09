@@ -132,7 +132,73 @@ function PanZoomResim({ src, alt }) {
 }
 
 // Direk malzeme popup — DXF'te direğe tıklanınca açılır
-function DirekMalzemePopup({ direk, projeId, onKapat }) {
+// ─── DXF native text sprite oluşturma ───────
+function _notSpriteOlustur(three, baslik, malzemeler, direkX, direkY, origin, textYukseklik) {
+  const satirlar = malzemeler.map(m => `${m.miktar}x ${m.adi}`)
+  const textH = textYukseklik || 2 // DXF text yüksekliği (birim)
+
+  // Canvas boyutlarını hesapla — yüksek çözünürlük için çarpan
+  const PX_PER_UNIT = 40 // her DXF birimi için piksel
+  const lineH = Math.round(textH * PX_PER_UNIT)
+  const FONT = `${lineH}px 'Noto Sans', Arial, sans-serif`
+
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  ctx.font = FONT
+  let maxW = 0
+  for (const s of satirlar) { const w = ctx.measureText(s).width; if (w > maxW) maxW = w }
+
+  canvas.width = Math.ceil(maxW + 4)
+  canvas.height = Math.ceil(satirlar.length * lineH * 1.2 + 4)
+
+  // Şeffaf arka plan (DXF çizim gibi)
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  // DXF text rengi — AutoCAD cyan (layer rengi)
+  ctx.fillStyle = '#00e5ff'
+  ctx.font = FONT
+  satirlar.forEach((s, i) => ctx.fillText(s, 2, (i + 1) * lineH * 1.2))
+
+  const texture = new three.CanvasTexture(canvas)
+  texture.minFilter = three.LinearFilter
+  texture.premultiplyAlpha = true
+  const mat = new three.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false })
+  const sprite = new three.Sprite(mat)
+
+  // Ölçek: canvas piksellerini DXF birimine dönüştür
+  const scaleX = canvas.width / PX_PER_UNIT
+  const scaleY = canvas.height / PX_PER_UNIT
+  sprite.scale.set(scaleX, scaleY, 1)
+
+  const ox = origin?.x || 0, oy = origin?.y || 0
+  // Direğin sağ üstüne yerleştir
+  sprite.position.set(direkX - ox + scaleX * 0.6 + textH, direkY - oy + scaleY * 0.3 + textH, 0.1)
+
+  // Meta veri
+  sprite.userData = { direkKey: baslik, direkX: direkX - ox, direkY: direkY - oy, maxMesafe: Math.max(scaleX, scaleY) * 3 }
+
+  // Bağlantı çizgisi — ince, DXF çizgi gibi
+  const lineGeo = new three.BufferGeometry().setFromPoints([
+    new three.Vector3(direkX - ox, direkY - oy, 0.05),
+    new three.Vector3(sprite.position.x, sprite.position.y, 0.05),
+  ])
+  const lineMat = new three.LineBasicMaterial({ color: 0x00e5ff, linewidth: 1, depthTest: false, transparent: true, opacity: 0.6 })
+  const line = new three.Line(lineGeo, lineMat)
+  sprite.userData.line = line
+
+  return sprite
+}
+
+function _notCizgisiGuncelle(three, sprite) {
+  const line = sprite.userData.line
+  if (!line) return
+  const pos = line.geometry.attributes.position
+  pos.setXYZ(1, sprite.position.x, sprite.position.y, 0.05)
+  pos.needsUpdate = true
+  line.computeLineDistances()
+}
+
+function DirekMalzemePopup({ direk, projeId, onKapat, onMalzemeEklendi }) {
   const [arama, setArama] = useState(direk.etiket || '')
   const [sonuclar, setSonuclar] = useState([])
   const [araniyor, setAraniyor] = useState(false)
@@ -183,6 +249,14 @@ function DirekMalzemePopup({ direk, projeId, onKapat }) {
           notlar: '',
           okunan_deger: [direk.numara, direk.tip || direk.etiket, direk.sembolAdi].filter(Boolean).join(' — '),
         }))
+      })
+      const direkKey = [direk.numara, direk.tip].filter(Boolean).join(' ')
+      onMalzemeEklendi?.({
+        key: direkKey || direk.etiket || 'Direk',
+        x: direk.x,
+        y: direk.y,
+        yukseklik: direk.yukseklik || 2,
+        malzemeler: eklenenler.map(k => ({ adi: k.malzeme_adi, miktar: k.miktar || 1 })),
       })
       onKapat()
     } catch (err) { alert(err.message) }
@@ -251,11 +325,14 @@ function DirekMalzemePopup({ direk, projeId, onKapat }) {
 // DXF Viewer — fontlar: NotoSans (text) + B_CAD (semboller) — stil bazlı seçim otomatik
 const DXF_FONTS = ['/fonts/NotoSans.ttf', '/fonts/B_CAD.ttf', '/fonts/T_ROMANS.ttf']
 
-function DxfOnizleme({ src, dosyaId, onDirekTikla }) {
+function DxfOnizleme({ src, dosyaId, onDirekTikla, direkNotlari, onNotSil }) {
   const containerRef = useRef(null)
   const viewerRef = useRef(null)
   const rendererRef = useRef(null)
   const direklerRef = useRef([])
+  const threeRef = useRef(null)
+  const spritelerRef = useRef({}) // { key: sprite }
+  const dragRef = useRef(null) // { sprite, startPos, startMouse }
   const [yukleniyor, setYukleniyor] = useState(true)
   const [hata, setHata] = useState('')
   const [ilerleme, setIlerleme] = useState('')
@@ -273,6 +350,8 @@ function DxfOnizleme({ src, dosyaId, onDirekTikla }) {
           import('dxf-viewer'),
           import('three')
         ])
+        window.__three = three
+        threeRef.current = three
 
         // Önceki viewer'ı temizle (renderer'ı koru)
         if (viewerRef.current) {
@@ -382,6 +461,107 @@ function DxfOnizleme({ src, dosyaId, onDirekTikla }) {
       }
     }
   }, [])
+
+  // direkNotlari değiştiğinde sprite'ları senkronize et
+  useEffect(() => {
+    const viewer = viewerRef.current
+    const three = threeRef.current
+    if (!viewer || !three || yukleniyor) return
+    const scene = viewer.GetScene?.() || viewer.scene
+    if (!scene) return
+
+    const mevcutKeyler = new Set(Object.keys(direkNotlari || {}))
+    // Silinmesi gereken sprite'lar
+    for (const [key, sprite] of Object.entries(spritelerRef.current)) {
+      if (!mevcutKeyler.has(key)) {
+        scene.remove(sprite)
+        if (sprite.userData.line) scene.remove(sprite.userData.line)
+        sprite.material.map?.dispose()
+        sprite.material.dispose()
+        delete spritelerRef.current[key]
+      }
+    }
+    // Eklenmesi / güncellenmesi gereken sprite'lar
+    for (const [key, not] of Object.entries(direkNotlari || {})) {
+      if (!not.malzemeler?.length) continue
+      // Varsa kaldır ve yeniden oluştur (malzeme listesi değişmiş olabilir)
+      const eski = spritelerRef.current[key]
+      if (eski) {
+        scene.remove(eski)
+        if (eski.userData.line) scene.remove(eski.userData.line)
+        eski.material.map?.dispose()
+        eski.material.dispose()
+      }
+      const sprite = _notSpriteOlustur(three, key, not.malzemeler, not.x, not.y, viewer.origin, not.yukseklik)
+      scene.add(sprite)
+      if (sprite.userData.line) scene.add(sprite.userData.line)
+      spritelerRef.current[key] = sprite
+    }
+    viewer.Render()
+  }, [direkNotlari, yukleniyor])
+
+  // Sprite sürükleme (drag) - mouse event'leri
+  useEffect(() => {
+    const container = containerRef.current
+    const three = threeRef.current
+    if (!container || !three) return
+
+    const raycaster = new three.Raycaster()
+    const mouse = new three.Vector2()
+
+    const getSprites = () => Object.values(spritelerRef.current)
+
+    const onPointerDown = (e) => {
+      const viewer = viewerRef.current
+      if (!viewer || !getSprites().length) return
+      const rect = container.getBoundingClientRect()
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+      raycaster.setFromCamera(mouse, viewer.GetCamera())
+      const hits = raycaster.intersectObjects(getSprites())
+      if (hits.length > 0) {
+        const sprite = hits[0].object
+        dragRef.current = { sprite, startPos: sprite.position.clone(), startMouse: { x: e.clientX, y: e.clientY } }
+        e.stopPropagation()
+        e.preventDefault()
+      }
+    }
+
+    const onPointerMove = (e) => {
+      if (!dragRef.current) return
+      const viewer = viewerRef.current
+      if (!viewer) return
+      const { sprite, startPos, startMouse } = dragRef.current
+      const cam = viewer.GetCamera()
+      // Ekran piksel farkını world birimine çevir
+      const rect = container.getBoundingClientRect()
+      const pxToWorld = (cam.right - cam.left) / cam.zoom / rect.width
+      const dx = (e.clientX - startMouse.x) * pxToWorld
+      const dy = -(e.clientY - startMouse.y) * pxToWorld
+      let nx = startPos.x + dx, ny = startPos.y + dy
+      // Mesafe sınırı
+      const dxD = nx - sprite.userData.direkX, dyD = ny - sprite.userData.direkY
+      const dist = Math.sqrt(dxD * dxD + dyD * dyD)
+      const maxM = sprite.userData.maxMesafe || 50
+      if (dist > maxM) { nx = sprite.userData.direkX + dxD / dist * maxM; ny = sprite.userData.direkY + dyD / dist * maxM }
+      sprite.position.set(nx, ny, sprite.position.z)
+      _notCizgisiGuncelle(three, sprite)
+      viewer.Render()
+      e.stopPropagation()
+      e.preventDefault()
+    }
+
+    const onPointerUp = () => { dragRef.current = null }
+
+    container.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+    }
+  }, [yukleniyor])
 
   return (
     <div className="relative w-full">
@@ -951,6 +1131,7 @@ export default function ProjeDonguBar({ projeId }) {
   const [isDragging, setIsDragging] = useState(false)
   const [seciliDosya, setSeciliDosya] = useState(null) // { id, adi, adimAdi }
   const [seciliDirek, setSeciliDirek] = useState(null) // { sembol, sembolAdi, etiket, ekranX, ekranY }
+  const [direkNotlari, setDirekNotlari] = useState({}) // { key: { x, y, malzemeler: [{adi, miktar}] } }
   const dragState = useRef({ startX: 0, scrollLeft: 0 })
 
   const handleWheel = useCallback((e) => {
@@ -1121,10 +1302,32 @@ export default function ProjeDonguBar({ projeId }) {
               <PanZoomResim src={`/api/dosya/${seciliDosya.id}/dosya`} alt={seciliDosya.adi} />
             ) : seciliDosya.dxf ? (
               <div className="relative">
-                <DxfOnizleme src={`/api/dosya/${seciliDosya.id}/dosya`} dosyaId={seciliDosya.id} onDirekTikla={setSeciliDirek} />
+                <DxfOnizleme
+                  src={`/api/dosya/${seciliDosya.id}/dosya`}
+                  dosyaId={seciliDosya.id}
+                  onDirekTikla={setSeciliDirek}
+                  direkNotlari={direkNotlari}
+                  onNotSil={(key) => setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y })}
+                />
                 {/* Direk popup */}
                 {seciliDirek && (
-                  <DirekMalzemePopup direk={seciliDirek} projeId={projeId} onKapat={() => setSeciliDirek(null)} />
+                  <DirekMalzemePopup
+                    direk={seciliDirek}
+                    projeId={projeId}
+                    onKapat={() => setSeciliDirek(null)}
+                    onMalzemeEklendi={(not) => setDirekNotlari(prev => {
+                      const mevcut = prev[not.key]
+                      return {
+                        ...prev,
+                        [not.key]: {
+                          x: not.x,
+                          y: not.y,
+                          yukseklik: not.yukseklik,
+                          malzemeler: [...(mevcut?.malzemeler || []), ...not.malzemeler],
+                        }
+                      }
+                    })}
+                  />
                 )}
               </div>
             ) : (

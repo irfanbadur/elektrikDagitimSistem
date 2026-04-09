@@ -996,8 +996,8 @@ export default function ProjeKesif({ projeId }) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-input bg-card" ref={tabloRef}>
-        <div className="overflow-x-auto">
+      <div className="rounded-lg border border-input bg-card" ref={tabloRef}>
+        <div className="overflow-x-auto" style={{ overflow: 'visible' }}>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-input bg-muted/50">

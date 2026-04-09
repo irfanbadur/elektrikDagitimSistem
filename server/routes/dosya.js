@@ -556,6 +556,7 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
         sembolAdi: d.sembolAdi,
         x: d.x, y: d.y,
         katman: d.katman,
+        yukseklik: enYakinEtiket?.yukseklik || d.yukseklik || 2,
         numara: numara || null,
         tip: tip || null,
         etiket: enYakinEtiket?.text || null,
