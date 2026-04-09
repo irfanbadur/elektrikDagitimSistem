@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import useDropdownNav from '@/hooks/useDropdownNav'
-import { Plus, Trash2, Search, Package, Check, Clock, X, Columns3, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Search, Package, Check, Clock, X, Columns3, ChevronDown, ChevronUp, Loader2, Combine } from 'lucide-react'
 import { useProjeKesif, useProjeKesifEkle, useProjeKesifGuncelle, useProjeKesifSil, useProjeKesifOzet } from '@/hooks/useProjeKesif'
 import { useProje } from '@/hooks/useProjeler'
 import { useDepolar } from '@/hooks/useDepolar'
@@ -107,6 +107,113 @@ function SutunSecici({ gorunurSutunlar, setGorunurSutunlar }) {
               )
             })}
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const BIRLESTIR_RENKLER = [
+  { bg: 'bg-blue-50', border: 'border-l-blue-500', check: 'border-blue-500 bg-blue-500', label: 'bg-blue-100 text-blue-700' },
+  { bg: 'bg-amber-50', border: 'border-l-amber-500', check: 'border-amber-500 bg-amber-500', label: 'bg-amber-100 text-amber-700' },
+  { bg: 'bg-emerald-50', border: 'border-l-emerald-500', check: 'border-emerald-500 bg-emerald-500', label: 'bg-emerald-100 text-emerald-700' },
+  { bg: 'bg-purple-50', border: 'border-l-purple-500', check: 'border-purple-500 bg-purple-500', label: 'bg-purple-100 text-purple-700' },
+  { bg: 'bg-rose-50', border: 'border-l-rose-500', check: 'border-rose-500 bg-rose-500', label: 'bg-rose-100 text-rose-700' },
+  { bg: 'bg-cyan-50', border: 'border-l-cyan-500', check: 'border-cyan-500 bg-cyan-500', label: 'bg-cyan-100 text-cyan-700' },
+]
+
+function BirlestirSecici({ kesifler, onBirlestir, seciliCinsler, setSeciliCinsler }) {
+  const [acik, setAcik] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setAcik(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const cinsSayilari = {}
+  ;(kesifler || []).forEach(k => {
+    const c = (k.okunan_deger || '').split(' — ').pop()
+    if (c) cinsSayilari[c] = (cinsSayilari[c] || 0) + 1
+  })
+  const cinsler = Object.keys(cinsSayilari).filter(c => cinsSayilari[c] > 1).sort()
+
+  // Seçili cinslere index bazlı renk ata
+  const seciliDizi = [...seciliCinsler]
+  const cinsRenkMap = {}
+  seciliDizi.forEach((c, i) => { cinsRenkMap[c] = BIRLESTIR_RENKLER[i % BIRLESTIR_RENKLER.length] })
+
+  const toggleCins = (c) => setSeciliCinsler(prev => {
+    const yeni = new Set(prev)
+    yeni.has(c) ? yeni.delete(c) : yeni.add(c)
+    return yeni
+  })
+
+  const handleBirlestir = () => {
+    if (seciliCinsler.size === 0) return
+    onBirlestir([...seciliCinsler])
+    setSeciliCinsler(new Set())
+    setAcik(false)
+  }
+
+  if (!cinsler.length) return null
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setAcik(!acik)}
+        className={cn(
+          'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+          seciliCinsler.size > 0 ? 'border-amber-400 bg-amber-50 text-amber-700' : acik ? 'border-primary bg-primary/5 text-primary' : 'border-input bg-background text-foreground hover:bg-muted'
+        )}
+      >
+        <Combine className="h-4 w-4" />
+        Birleştir
+        {seciliCinsler.size > 0 && <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-xs font-semibold">{seciliCinsler.size}</span>}
+        {acik ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+
+      {acik && (
+        <div className="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-input bg-card shadow-lg">
+          <div className="border-b border-input px-3 py-2">
+            <span className="text-xs font-semibold uppercase text-muted-foreground">Malzeme Cinsine Göre Birleştir</span>
+          </div>
+          <div className="p-1">
+            {cinsler.map(c => {
+              const secili = seciliCinsler.has(c)
+              const renk = cinsRenkMap[c]
+              const adet = (kesifler || []).filter(k => (k.okunan_deger || '').split(' — ').pop() === c).length
+              return (
+                <button
+                  key={c}
+                  onClick={() => toggleCins(c)}
+                  className={cn('flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+                    secili && renk ? renk.label : 'hover:bg-muted'
+                  )}
+                >
+                  <div className={cn(
+                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
+                    secili && renk ? renk.check + ' text-white' : 'border-input bg-background'
+                  )}>
+                    {secili && <Check className="h-3 w-3" />}
+                  </div>
+                  <span className="flex-1">{c}</span>
+                  <span className="text-xs text-muted-foreground">{adet} satır</span>
+                </button>
+              )
+            })}
+          </div>
+          {seciliCinsler.size > 0 && (
+            <div className="border-t border-input p-2">
+              <button
+                onClick={handleBirlestir}
+                className="w-full rounded-md bg-amber-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-600 transition-colors"
+              >
+                Seçilenleri Birleştir ({seciliCinsler.size} cins)
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -404,7 +511,7 @@ function MalzemeAdiHucre({ deger, onKaydet }) {
   )
 }
 
-function KesifSatiri({ kalem: k, durum, onGuncelle, onDurumDegistir, onSil, gorSutun, onEnterSonraki, depolar, seciliDepoId }) {
+function KesifSatiri({ kalem: k, siraNo, secili, birlestirRenk, onSecimDegistir, durum, onGuncelle, onDurumDegistir, onSil, gorSutun, onEnterSonraki, depolar, seciliDepoId }) {
   // Inline katalog arama — malzeme adı hücresinde
   const [katalogAcik, setKatalogAcik] = useState(false)
   const [katalogSonuc, setKatalogSonuc] = useState([])
@@ -455,7 +562,11 @@ function KesifSatiri({ kalem: k, durum, onGuncelle, onDurumDegistir, onSil, gorS
   const editCls = 'w-full rounded border border-transparent bg-transparent px-2 py-1 text-xs hover:border-input focus:border-primary focus:outline-none'
 
   return (
-    <tr className="border-b border-input/50 group hover:bg-muted/20 transition-colors">
+    <tr className={cn('border-b border-input/50 group hover:bg-muted/20 transition-colors', secili && 'bg-primary/5', birlestirRenk && `${birlestirRenk.bg} border-l-4 ${birlestirRenk.border}`)}>
+      <td className="px-1.5 py-1.5 text-center text-xs text-muted-foreground w-8">{siraNo}</td>
+      <td className="px-1 py-1.5 text-center w-8">
+        <input type="checkbox" checked={secili} onChange={e => onSecimDegistir(e.target.checked)} className="h-3.5 w-3.5 rounded border-gray-300 accent-primary cursor-pointer" />
+      </td>
       {gorSutun('okunan_deger') && (
         <td className="px-2 py-1.5">
           <span className="px-2 text-xs font-medium text-foreground" title={k.okunan_deger || '-'}>{k.okunan_deger || '-'}</span>
@@ -614,6 +725,8 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
 
   return (
     <tr className="border-b border-input bg-primary/5">
+      <td className="px-1.5 py-2 text-center text-xs text-muted-foreground">+</td>
+      <td className="px-1 py-2" />
       {gorSutun('okunan_deger') && (
         <td className="px-3 py-2">
           <span className="px-2 text-xs text-muted-foreground">-</span>
@@ -735,6 +848,8 @@ export default function ProjeKesif({ projeId }) {
   const sil = useProjeKesifSil(projeId)
 
   const [yeniSatir, setYeniSatir] = useState(false)
+  const [seciliIdler, setSeciliIdler] = useState(new Set())
+  const [birlestirCinsler, setBirlestirCinsler] = useState(new Set())
   const [dxfDosya, setDxfDosya] = useState(null) // { dosyaId, dosyaAdi, adimAdi }
   const [dxfYukleniyor, setDxfYukleniyor] = useState(false)
 
@@ -769,24 +884,28 @@ export default function ProjeKesif({ projeId }) {
           await sil.mutateAsync(k.id)
         }
       }
-      // DXF'ten elemanları çek ve ekle
+      // DXF'ten elemanları çek, aynı okunan değerleri birleştir
       const r = await api.get(`/dosya/${dxfDosya.dosyaId}/dxf-elemanlar`)
       const data = r?.data || r
       if (data?.elemanlar?.length > 0) {
+        const birlesik = new Map()
         for (const el of data.elemanlar) {
-          const okunanDeger = [el.numara, el.tip || el.etiket, el.sembolAdi].filter(Boolean).join(' — ')
+          const okunanDeger = [el.tip || el.etiket, el.sembolAdi].filter(Boolean).join(' — ')
           if (okunanDeger) {
-            await ekle.mutateAsync({
-              malzeme_adi: '',
-              malzeme_kodu: '',
-              poz_no: '',
-              birim: 'Ad',
-              miktar: 1,
-              birim_fiyat: 0,
-              notlar: '',
-              okunan_deger: okunanDeger,
-            })
+            birlesik.set(okunanDeger, (birlesik.get(okunanDeger) || 0) + 1)
           }
+        }
+        for (const [okunanDeger, miktar] of birlesik) {
+          await ekle.mutateAsync({
+            malzeme_adi: '',
+            malzeme_kodu: '',
+            poz_no: '',
+            birim: 'Ad',
+            miktar,
+            birim_fiyat: 0,
+            notlar: '',
+            okunan_deger: okunanDeger,
+          })
         }
       }
     } catch (err) { alert(err.message || 'DXF keşif oluşturma hatası') }
@@ -820,11 +939,31 @@ export default function ProjeKesif({ projeId }) {
 
   const tabloRef = useRef(null)
   const gorSutun = (key) => gorunurSutunlar.includes(key)
-  const toplamSutun = gorunurSutunlar.length + 1 // +1 for actions
+  const toplamSutun = gorunurSutunlar.length + 3 // +1 actions +2 (#, checkbox)
 
   const handleKaydet = async (data) => {
     await ekle.mutateAsync(data)
     setYeniSatir(false)
+  }
+
+  const handleBirlestir = async (cinsler) => {
+    if (!kesifler?.length || !cinsler.length) return
+    const toplamSatir = kesifler.filter(k => {
+      const cins = (k.okunan_deger || '').split(' — ').pop()
+      return cinsler.includes(cins)
+    }).length
+    if (!window.confirm(`${cinsler.join(', ')} cinslerindeki ${toplamSatir} satır birleştirilecek. Devam edilsin mi?`)) return
+
+    for (const cins of cinsler) {
+      const satirlar = kesifler.filter(k => (k.okunan_deger || '').split(' — ').pop() === cins)
+      if (satirlar.length <= 1) continue
+      const toplamMiktar = satirlar.reduce((s, k) => s + (k.miktar || 0), 0)
+      // İlk satırı güncelle, diğerlerini sil
+      await guncelle.mutateAsync({ id: satirlar[0].id, ...satirlar[0], miktar: toplamMiktar, okunan_deger: cins })
+      for (let i = 1; i < satirlar.length; i++) {
+        await sil.mutateAsync(satirlar[i].id)
+      }
+    }
   }
 
   const handleDurumDegistir = (id, kalem, yeniDurum) => {
@@ -849,6 +988,7 @@ export default function ProjeKesif({ projeId }) {
         )}
         <div className="ml-auto flex items-center gap-2">
           <SutunSecici gorunurSutunlar={gorunurSutunlar} setGorunurSutunlar={setGorunurSutunlar} />
+          <BirlestirSecici kesifler={kesifler} onBirlestir={handleBirlestir} seciliCinsler={birlestirCinsler} setSeciliCinsler={setBirlestirCinsler} />
           <button onClick={() => setYeniSatir(true)} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90">
             <Plus className="h-4 w-4" />
             Ekle
@@ -861,6 +1001,17 @@ export default function ProjeKesif({ projeId }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-input bg-muted/50">
+                <th className="w-8 px-1.5 py-3 text-center text-xs font-semibold text-muted-foreground">#</th>
+                <th className="w-8 px-1 py-3 text-center">
+                  <input type="checkbox"
+                    checked={kesifler?.length > 0 && seciliIdler.size === kesifler.length}
+                    onChange={e => {
+                      if (e.target.checked) setSeciliIdler(new Set(kesifler.map(k => k.id)))
+                      else setSeciliIdler(new Set())
+                    }}
+                    className="h-3.5 w-3.5 rounded border-gray-300 accent-primary cursor-pointer"
+                  />
+                </th>
                 {gorSutun('okunan_deger') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Okunan Değer</th>}
                 {gorSutun('malzeme_kodu') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Malzeme Kodu</th>}
                 {gorSutun('malzeme_adi') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Malzeme Adı</th>}
@@ -903,12 +1054,23 @@ export default function ProjeKesif({ projeId }) {
                   </td>
                 </tr>
               ) : (
-                kesifler?.map((k) => {
+                kesifler?.map((k, idx) => {
                   const durum = DURUM_MAP[k.durum] || DURUM_MAP.planli
+                  const cins = (k.okunan_deger || '').split(' — ').pop()
+                  const birlestirIdx = [...birlestirCinsler].indexOf(cins)
+                  const birlestirRenk = birlestirIdx >= 0 ? BIRLESTIR_RENKLER[birlestirIdx % BIRLESTIR_RENKLER.length] : null
                   return (
                     <KesifSatiri
                       key={k.id}
                       kalem={k}
+                      siraNo={idx + 1}
+                      secili={seciliIdler.has(k.id)}
+                      birlestirRenk={birlestirRenk}
+                      onSecimDegistir={(checked) => setSeciliIdler(prev => {
+                        const yeni = new Set(prev)
+                        checked ? yeni.add(k.id) : yeni.delete(k.id)
+                        return yeni
+                      })}
                       durum={durum}
                       gorSutun={gorSutun}
                       onGuncelle={(data) => guncelle.mutate({ id: k.id, ...k, ...data })}
