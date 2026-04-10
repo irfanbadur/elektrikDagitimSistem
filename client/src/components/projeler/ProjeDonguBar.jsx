@@ -8,7 +8,7 @@ import { useProjeFazIlerleme, useAdimMetaGuncelle } from '@/hooks/useDongu'
 import {
   FileText, Image, File, Upload, MapPin, Zap, X, Navigation, Clock,
   CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus, Sparkles,
-  ZoomIn, ZoomOut, RotateCcw, Loader2, Trash2
+  ZoomIn, ZoomOut, RotateCcw, Loader2, Trash2, Save
 } from 'lucide-react'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -325,17 +325,52 @@ function DirekMalzemePopup({ direk, projeId, onKapat, onMalzemeEklendi }) {
 // DXF Viewer — fontlar: NotoSans (text) + B_CAD (semboller) — stil bazlı seçim otomatik
 const DXF_FONTS = ['/fonts/NotoSans.ttf', '/fonts/B_CAD.ttf', '/fonts/T_ROMANS.ttf']
 
-function DxfOnizleme({ src, dosyaId, onDirekTikla, direkNotlari, onNotSil }) {
+function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotSil }) {
+  const qc = useQueryClient()
   const containerRef = useRef(null)
   const viewerRef = useRef(null)
   const rendererRef = useRef(null)
   const direklerRef = useRef([])
   const threeRef = useRef(null)
   const spritelerRef = useRef({}) // { key: sprite }
+  const spriteKonumRef = useRef({}) // { key: { x, y } } — sürüklenen konumlar
   const dragRef = useRef(null) // { sprite, startPos, startMouse }
+  const onDirekTiklaRef = useRef(onDirekTikla)
+  onDirekTiklaRef.current = onDirekTikla
   const [yukleniyor, setYukleniyor] = useState(true)
+  const [kaydediliyor, setKaydediliyor] = useState(false)
   const [hata, setHata] = useState('')
   const [ilerleme, setIlerleme] = useState('')
+
+  const handleMetrajKaydet = async () => {
+    if (!direkNotlari || !Object.keys(direkNotlari).length) return alert('Henüz direk malzemesi eklenmemiş')
+    if (!projeId || !dosyaId) return
+    setKaydediliyor(true)
+    try {
+      const viewer = viewerRef.current
+      const origin = viewer?.origin || { x: 0, y: 0 }
+      // Sprite'ların güncel pozisyonlarından notları topla
+      const notlar = Object.entries(direkNotlari).map(([key, not]) => {
+        const sprite = spritelerRef.current[key]
+        const sx = sprite ? sprite.position.x + origin.x : not.x
+        const sy = sprite ? sprite.position.y + origin.y : not.y
+        return {
+          x: sx,
+          y: sy,
+          yukseklik: not.yukseklik || 2,
+          satirlar: not.malzemeler.map(m => `${m.miktar}x ${m.adi}`),
+        }
+      })
+      const r = await api.post(`/dosya/${dosyaId}/dxf-metraj-kaydet`, { proje_id: projeId, notlar })
+      const data = r?.data || r
+      // Yaşam döngüsü ve dosya listelerini yenile
+      qc.invalidateQueries({ queryKey: ['faz-ilerleme'] })
+      qc.invalidateQueries({ queryKey: ['adim-dosyalar'] })
+      onNotSil?.('__ALL__') // Tüm sprite'ları temizle
+      alert('Metraj.dxf Hakediş > Metraj adımına kaydedildi.')
+    } catch (err) { alert(err.message || 'Metraj kaydetme hatası') }
+    finally { setKaydediliyor(false) }
+  }
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -426,7 +461,7 @@ function DxfOnizleme({ src, dosyaId, onDirekTikla, direkNotlari, onNotSil }) {
             // 15 birim yakınlık eşiği
             if (enYakin && enYakinMesafe < 15) {
               const domEvt = e.domEvent || evt
-              onDirekTikla?.({
+              onDirekTiklaRef.current?.({
                 ...enYakin,
                 mesafe: enYakinMesafe,
               })
@@ -479,20 +514,28 @@ function DxfOnizleme({ src, dosyaId, onDirekTikla, direkNotlari, onNotSil }) {
         sprite.material.map?.dispose()
         sprite.material.dispose()
         delete spritelerRef.current[key]
+        delete spriteKonumRef.current[key]
       }
     }
     // Eklenmesi / güncellenmesi gereken sprite'lar
     for (const [key, not] of Object.entries(direkNotlari || {})) {
       if (!not.malzemeler?.length) continue
-      // Varsa kaldır ve yeniden oluştur (malzeme listesi değişmiş olabilir)
+      // Varsa konumunu kaydet, kaldır ve yeniden oluştur
       const eski = spritelerRef.current[key]
       if (eski) {
+        spriteKonumRef.current[key] = { x: eski.position.x, y: eski.position.y }
         scene.remove(eski)
         if (eski.userData.line) scene.remove(eski.userData.line)
         eski.material.map?.dispose()
         eski.material.dispose()
       }
       const sprite = _notSpriteOlustur(three, key, not.malzemeler, not.x, not.y, viewer.origin, not.yukseklik)
+      // Kaydedilmiş konum varsa geri yükle
+      const kayitliKonum = spriteKonumRef.current[key]
+      if (kayitliKonum) {
+        sprite.position.set(kayitliKonum.x, kayitliKonum.y, sprite.position.z)
+        _notCizgisiGuncelle(three, sprite)
+      }
       scene.add(sprite)
       if (sprite.userData.line) scene.add(sprite.userData.line)
       spritelerRef.current[key] = sprite
@@ -593,6 +636,17 @@ function DxfOnizleme({ src, dosyaId, onDirekTikla, direkNotlari, onNotSil }) {
             <button onClick={() => { const v = viewerRef.current; if (v && v.bounds) { const b = v.bounds, o = v.origin || {x:0,y:0}; v.FitView(b.minX-o.x, b.maxX-o.x, b.minY-o.y, b.maxY-o.y) } }}
               className="rounded p-1 hover:bg-muted" title="Tümünü Göster"><RotateCcw className="h-3.5 w-3.5" /></button>
           </div>
+          {direkNotlari && Object.keys(direkNotlari).length > 0 && (
+            <button
+              onClick={handleMetrajKaydet}
+              disabled={kaydediliyor}
+              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+              title="Malzeme notlarıyla birlikte DXF'i Hakediş > Metraj adımına kaydet"
+            >
+              {kaydediliyor ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Metraj'a Kaydet
+            </button>
+          )}
         </div>
       )}
       <div ref={containerRef} style={{ height: 400, width: '100%' }} />
@@ -1132,6 +1186,8 @@ export default function ProjeDonguBar({ projeId }) {
   const [seciliDosya, setSeciliDosya] = useState(null) // { id, adi, adimAdi }
   const [seciliDirek, setSeciliDirek] = useState(null) // { sembol, sembolAdi, etiket, ekranX, ekranY }
   const [direkNotlari, setDirekNotlari] = useState({}) // { key: { x, y, malzemeler: [{adi, miktar}] } }
+  // Dosya değiştiğinde direk notlarını ve seçili direği temizle
+  useEffect(() => { setDirekNotlari({}); setSeciliDirek(null) }, [seciliDosya?.id])
   const dragState = useRef({ startX: 0, scrollLeft: 0 })
 
   const handleWheel = useCallback((e) => {
@@ -1305,9 +1361,10 @@ export default function ProjeDonguBar({ projeId }) {
                 <DxfOnizleme
                   src={`/api/dosya/${seciliDosya.id}/dosya`}
                   dosyaId={seciliDosya.id}
-                  onDirekTikla={setSeciliDirek}
+                  projeId={projeId}
+                  onDirekTikla={(d) => { if (!seciliDirek) setSeciliDirek(d) }}
                   direkNotlari={direkNotlari}
-                  onNotSil={(key) => setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y })}
+                  onNotSil={(key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y })}
                 />
                 {/* Direk popup */}
                 {seciliDirek && (

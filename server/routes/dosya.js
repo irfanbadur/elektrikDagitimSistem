@@ -567,4 +567,222 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// POST /:id/dxf-metraj-kaydet — DXF dosyasına malzeme notları ekleyip Metraj adımına kaydet
+router.post('/:id/dxf-metraj-kaydet', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const db = getDb();
+    const dosya = dosyaService.dosyaGetir(parseInt(req.params.id));
+    if (!dosya) return res.status(404).json({ success: false, error: 'Dosya bulunamadı' });
+
+    const { proje_id, notlar } = req.body;
+    if (!proje_id || !notlar?.length) return res.status(400).json({ success: false, error: 'proje_id ve notlar gerekli' });
+
+    const metrajAdim = db.prepare(
+      `SELECT id FROM proje_adimlari WHERE proje_id = ? AND faz_kodu = 'hak_edis' AND adim_kodu = 'metraj' LIMIT 1`
+    ).get(proje_id);
+    if (!metrajAdim) return res.status(404).json({ success: false, error: 'Hakediş > Metraj adımı bulunamadı' });
+
+    // ── Orijinal DXF'i satır satır oku ──
+    const tamYol = dosyaService.dosyaYoluCozumle(dosya.dosya_yolu);
+    const raw = fs.readFileSync(tamYol);
+    const NL = raw.includes(Buffer.from('\r\n')) ? '\r\n' : '\n';
+    const isAnsi = raw.toString('ascii', 0, Math.min(raw.length, 2000)).includes('ANSI_1254');
+
+    // Türkçe → Windows-1254 byte dönüşümü
+    const WIN1254 = {'\u011E':0xD0,'\u011F':0xF0,'\u0130':0xDD,'\u0131':0xFD,'\u015E':0xDE,'\u015F':0xFE,'\u00C7':0xC7,'\u00E7':0xE7,'\u00D6':0xD6,'\u00F6':0xF6,'\u00DC':0xDC,'\u00FC':0xFC};
+    const encodeStr = (str) => {
+      if (!isAnsi) return Buffer.from(str, 'utf-8');
+      const out = [];
+      for (const ch of str) {
+        const m = WIN1254[ch];
+        if (m !== undefined) out.push(m);
+        else { const c = ch.charCodeAt(0); out.push(c <= 0xFF ? c : 0x3F); }
+      }
+      return Buffer.from(out);
+    };
+
+    // ── Orijinal dosyayı group code pair'lere ayır ──
+    const lines = raw.toString('latin1').split(/\r?\n/);
+    // Section yapısını tara, ENTITIES ENDSEC ve LAYER ENDTAB pozisyonlarını bul
+    let entitiesEndsecLine = -1; // "0" satırının index'i (ENDSEC'ten hemen önce)
+    let layerEndtabLine = -1;
+    let inEntities = false, inLayerTable = false;
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      const code = lines[i].trim();
+      const val = lines[i + 1]?.trim();
+      if (code === '2' && val === 'ENTITIES') inEntities = true;
+      if (code === '2' && val === 'LAYER') inLayerTable = true;
+      if (code === '0' && val === 'ENDTAB' && inLayerTable) { layerEndtabLine = i; inLayerTable = false; }
+      if (code === '0' && val === 'ENDSEC' && inEntities) { entitiesEndsecLine = i; inEntities = false; break; }
+    }
+    if (entitiesEndsecLine < 0) return res.status(400).json({ success: false, error: 'DXF ENTITIES ENDSEC bulunamadı' });
+
+    // ── $HANDSEED oku ve handle'ları sıralı oluştur ──
+    let handleSeed = 0x900;
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      if (lines[i].trim() === '5' || lines[i].trim() === '$HANDSEED') {
+        const val = parseInt(lines[i + 1]?.trim(), 16);
+        if (val > handleSeed) handleSeed = val;
+      }
+    }
+    handleSeed += 10; // Güvenli başlangıç
+
+    // ── Model Space owner handle'ı bul (genelde 1B veya 1F) ──
+    let ownerHandle = '1B';
+    for (let i = 0; i < lines.length - 3; i += 2) {
+      if (lines[i].trim() === '2' && lines[i + 1]?.trim() === '*Model_Space') {
+        // Önceki satırlarda 5 (handle) ara
+        for (let j = i - 2; j >= Math.max(0, i - 10); j -= 2) {
+          if (lines[j].trim() === '5') { ownerHandle = lines[j + 1].trim(); break; }
+        }
+        break;
+      }
+    }
+
+    // ── AutoCAD uyumlu TEXT entity'leri oluştur ──
+    const textBufParts = [];
+    const nl = Buffer.from(NL, 'latin1');
+    const addLine = (str) => { textBufParts.push(Buffer.from(str, 'latin1'), nl); };
+    for (const not of notlar) {
+      const { x, y, yukseklik, satirlar } = not;
+      if (!satirlar?.length) continue;
+      const h = yukseklik || 2;
+      satirlar.forEach((satir, i) => {
+        const handle = (handleSeed++).toString(16).toUpperCase();
+        const py = (y - i * h * 1.3).toFixed(6);
+        const xStr = x.toFixed(6);
+        addLine('0'); addLine('TEXT');
+        addLine('5'); addLine(handle);
+        addLine('330'); addLine(ownerHandle);
+        addLine('100'); addLine('AcDbEntity');
+        addLine('67'); addLine('0');
+        addLine('8'); addLine('MALZEME');
+        addLine('62'); addLine('4');
+        addLine('6'); addLine('ByLayer');
+        addLine('370'); addLine('-1');
+        addLine('48'); addLine('1.0');
+        addLine('60'); addLine('0');
+        addLine('100'); addLine('AcDbText');
+        addLine('1'); textBufParts.push(encodeStr(satir), nl);
+        addLine('10'); addLine(xStr);
+        addLine('20'); addLine(py);
+        addLine('30'); addLine('0.0');
+        addLine('40'); addLine(h.toFixed(6));
+        addLine('41'); addLine('1.0');
+        addLine('50'); addLine('0.0');
+        addLine('51'); addLine('0.0');
+        addLine('7'); addLine('Standard');
+        addLine('11'); addLine(xStr);
+        addLine('21'); addLine(py);
+        addLine('31'); addLine('0.0');
+        addLine('210'); addLine('0.0');
+        addLine('220'); addLine('0.0');
+        addLine('230'); addLine('1.0');
+        addLine('72'); addLine('0');
+        addLine('100'); addLine('AcDbText');
+        addLine('73'); addLine('0');
+      });
+    }
+    const textBlokBuf = Buffer.concat(textBufParts);
+
+    // ── $HANDSEED güncelle (header'daki değeri artır) ──
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      if (lines[i].trim() === '9' && lines[i + 1]?.trim() === '$HANDSEED') {
+        if (i + 3 < lines.length && lines[i + 2].trim() === '5') {
+          lines[i + 3] = (handleSeed + 10).toString(16).toUpperCase();
+        }
+        break;
+      }
+    }
+
+    // ── MALZEME layer satırları ──
+    // LAYER table'ın handle'ını bul
+    let layerTableHandle = '5';
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      if (lines[i].trim() === '2' && lines[i + 1]?.trim() === 'LAYER') {
+        // Önceki satırlarda handle'ı bul
+        for (let j = i - 2; j >= Math.max(0, i - 10); j -= 2) {
+          if (lines[j].trim() === '5') { layerTableHandle = lines[j + 1].trim(); break; }
+        }
+        // Layer sayacını artır (70 group code)
+        for (let j = i + 2; j < Math.min(lines.length, i + 12); j += 2) {
+          if (lines[j].trim() === '70') {
+            const count = parseInt(lines[j + 1]?.trim()) || 0;
+            lines[j + 1] = String(count + 1);
+            break;
+          }
+        }
+        break;
+      }
+    }
+    const layerLines = [];
+    if (layerEndtabLine > 0 && !raw.includes(Buffer.from('MALZEME'))) {
+      const layerHandle = (handleSeed++).toString(16).toUpperCase();
+      layerLines.push(
+        '0', 'LAYER',
+        '5', layerHandle,
+        '330', layerTableHandle,
+        '100', 'AcDbSymbolTableRecord',
+        '100', 'AcDbLayerTableRecord',
+        '2', 'MALZEME',
+        '70', '0',
+        '62', '4',
+        '6', 'Continuous',
+        '290', '1',
+        '370', '-3',
+        '390', '0',
+      );
+    }
+
+    // ── Çıktı buffer'ı oluştur ──
+    // Orijinal satırları yeniden birleştir, araya layer ve text ekle
+    const outParts = [];
+    const pushLine = (str) => outParts.push(Buffer.from(str + NL, 'latin1'));
+
+    for (let i = 0; i < lines.length; i++) {
+      // Layer ENDTAB'dan önce layer ekle
+      if (i === layerEndtabLine && layerLines.length > 0) {
+        for (const ll of layerLines) pushLine(ll);
+      }
+      // ENTITIES ENDSEC'den önce text buffer ekle
+      if (i === entitiesEndsecLine && textBlokBuf.length > 0) {
+        outParts.push(textBlokBuf);
+      }
+      // Orijinal satır
+      if (i < lines.length - 1 || lines[i].trim() !== '') {
+        outParts.push(Buffer.from(lines[i], 'latin1'));
+        if (i < lines.length - 1) outParts.push(Buffer.from(NL, 'latin1'));
+      }
+    }
+    const outBuf = Buffer.concat(outParts);
+
+    // ── Dosya kaydet ──
+    const proje = db.prepare('SELECT proje_no, proje_tipi FROM projeler WHERE id = ?').get(proje_id);
+    const yil = new Date().getFullYear();
+    const projeKlasor = proje ? `${yil}/${proje.proje_no}` : `${yil}/genel`;
+    const yeniAdi = `${proje?.proje_no || 'proje'}_Metraj.dxf`;
+    const goreceliYol = `projeler/${projeKlasor}/metraj/${yeniAdi}`;
+    const yeniTamYol = dosyaService.dosyaYoluCozumle(goreceliYol);
+
+    db.prepare(`UPDATE dosyalar SET durum = 'silindi' WHERE proje_adim_id = ? AND orijinal_adi = 'Metraj.dxf' AND durum = 'aktif'`).run(metrajAdim.id);
+
+    fs.mkdirSync(path.dirname(yeniTamYol), { recursive: true });
+    fs.writeFileSync(yeniTamYol, outBuf);
+
+    const result = db.prepare(`
+      INSERT INTO dosyalar (dosya_adi, orijinal_adi, dosya_yolu, dosya_boyutu, mime_tipi, kategori,
+        alan, alt_alan, proje_id, proje_adim_id, durum, olusturma_tarihi)
+      VALUES (?, ?, ?, ?, 'application/dxf', 'cizim', 'proje', ?, ?, ?, 'aktif', datetime('now'))
+    `).run(yeniAdi, 'Metraj.dxf', goreceliYol, outBuf.length,
+      proje ? `${proje.proje_tipi}/${proje.proje_no}/metraj` : 'metraj', proje_id, metrajAdim.id);
+
+    res.json({ success: true, data: { dosya_id: result.lastInsertRowid, adim_id: metrajAdim.id, dosya_adi: 'Metraj.dxf' } });
+  } catch (err) {
+    console.error('DXF metraj kaydet hatası:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
