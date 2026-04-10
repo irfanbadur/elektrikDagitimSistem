@@ -8,7 +8,7 @@ import { useProjeFazIlerleme, useAdimMetaGuncelle } from '@/hooks/useDongu'
 import {
   FileText, Image, File, Upload, MapPin, Zap, X, Navigation, Clock,
   CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus, Sparkles,
-  ZoomIn, ZoomOut, RotateCcw, Loader2, Trash2, Save
+  ZoomIn, ZoomOut, RotateCcw, Loader2, Trash2, Save, Layers, Eye, EyeOff
 } from 'lucide-react'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -132,13 +132,20 @@ function PanZoomResim({ src, alt }) {
 }
 
 // Direk malzeme popup — DXF'te direğe tıklanınca açılır
-// ─── DXF native text sprite oluşturma ───────
-function _notSpriteOlustur(three, baslik, malzemeler, direkX, direkY, origin, textYukseklik) {
-  const satirlar = malzemeler.map(m => `${m.miktar}x ${m.adi}`)
-  const textH = textYukseklik || 2 // DXF text yüksekliği (birim)
+// ─── Varsayılan katman tanımları ───────
+const VARSAYILAN_KATMANLAR = [
+  { id: 'demontaj', ad: 'Demontaj', renk: '#ff6b6b', punto: 2, gorunur: true },
+  { id: 'kesif',    ad: 'Keşif',    renk: '#00e5ff', punto: 2, gorunur: true },
+  { id: 'metraj',   ad: 'Metraj',   renk: '#4ade80', punto: 2, gorunur: true },
+]
 
-  // Canvas boyutlarını hesapla — yüksek çözünürlük için çarpan
-  const PX_PER_UNIT = 40 // her DXF birimi için piksel
+// ─── DXF native text sprite oluşturma ───────
+function _notSpriteOlustur(three, baslik, malzemeler, direkX, direkY, origin, textYukseklik, renk) {
+  const satirlar = malzemeler.map(m => `${m.miktar}x ${m.adi}`)
+  const textH = textYukseklik || 2
+  const textColor = renk || '#00e5ff'
+
+  const PX_PER_UNIT = 40
   const lineH = Math.round(textH * PX_PER_UNIT)
   const FONT = `${lineH}px 'Noto Sans', Arial, sans-serif`
 
@@ -151,11 +158,8 @@ function _notSpriteOlustur(three, baslik, malzemeler, direkX, direkY, origin, te
   canvas.width = Math.ceil(maxW + 4)
   canvas.height = Math.ceil(satirlar.length * lineH * 1.2 + 4)
 
-  // Şeffaf arka plan (DXF çizim gibi)
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-  // DXF text rengi — AutoCAD cyan (layer rengi)
-  ctx.fillStyle = '#00e5ff'
+  ctx.fillStyle = textColor
   ctx.font = FONT
   satirlar.forEach((s, i) => ctx.fillText(s, 2, (i + 1) * lineH * 1.2))
 
@@ -165,24 +169,21 @@ function _notSpriteOlustur(three, baslik, malzemeler, direkX, direkY, origin, te
   const mat = new three.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false })
   const sprite = new three.Sprite(mat)
 
-  // Ölçek: canvas piksellerini DXF birimine dönüştür
   const scaleX = canvas.width / PX_PER_UNIT
   const scaleY = canvas.height / PX_PER_UNIT
   sprite.scale.set(scaleX, scaleY, 1)
 
   const ox = origin?.x || 0, oy = origin?.y || 0
-  // Direğin sağ üstüne yerleştir
   sprite.position.set(direkX - ox + scaleX * 0.6 + textH, direkY - oy + scaleY * 0.3 + textH, 0.1)
 
-  // Meta veri
   sprite.userData = { direkKey: baslik, direkX: direkX - ox, direkY: direkY - oy, maxMesafe: Math.max(scaleX, scaleY) * 3 }
 
-  // Bağlantı çizgisi — ince, DXF çizgi gibi
+  const colorInt = parseInt(textColor.replace('#', ''), 16)
   const lineGeo = new three.BufferGeometry().setFromPoints([
     new three.Vector3(direkX - ox, direkY - oy, 0.05),
     new three.Vector3(sprite.position.x, sprite.position.y, 0.05),
   ])
-  const lineMat = new three.LineBasicMaterial({ color: 0x00e5ff, linewidth: 1, depthTest: false, transparent: true, opacity: 0.6 })
+  const lineMat = new three.LineBasicMaterial({ color: colorInt, linewidth: 1, depthTest: false, transparent: true, opacity: 0.6 })
   const line = new three.Line(lineGeo, lineMat)
   sprite.userData.line = line
 
@@ -198,11 +199,14 @@ function _notCizgisiGuncelle(three, sprite) {
   line.computeLineDistances()
 }
 
-function DirekMalzemePopup({ direk, projeId, onKapat, onMalzemeEklendi }) {
+function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle }) {
+  const direkKey = [direk.numara, direk.tip].filter(Boolean).join(' ') || direk.etiket || 'Direk'
+  const mevcutNot = direkNotlari?.[direkKey]
+  const malzemeler = mevcutNot?.malzemeler || []
+
   const [arama, setArama] = useState(direk.etiket || '')
   const [sonuclar, setSonuclar] = useState([])
   const [araniyor, setAraniyor] = useState(false)
-  const [eklenenler, setEklenenler] = useState([])
   const timer = useRef(null)
   const inputRef = useRef(null)
 
@@ -222,27 +226,44 @@ function DirekMalzemePopup({ direk, projeId, onKapat, onMalzemeEklendi }) {
   useEffect(() => { if (direk.etiket) ara(direk.etiket); setTimeout(() => inputRef.current?.focus(), 100) }, [])
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 
-  const handleMalzemeEkleNav = useCallback((item) => {
-    if (!item) return
-    setEklenenler(prev => [...prev, { malzeme_kodu: item.malzeme_kodu || '', malzeme_adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '', birim: item.olcu || 'Ad', miktar: 1 }])
-  }, [])
-
-  const gosterilen = sonuclar.slice(0, 10)
-  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, handleMalzemeEkleNav, onKapat)
-  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
-
-
-  const handleMiktarDegistir = (idx, miktar) => {
-    setEklenenler(prev => prev.map((e, i) => i === idx ? { ...e, miktar: Number(miktar) || 0 } : e))
+  // Malzeme listesini güncelle → anında DXF sprite'a yansır
+  const guncelleNotlar = (yeniMalzemeler) => {
+    onMalzemeGuncelle?.({
+      key: direkKey,
+      x: mevcutNot?.x || direk.x,
+      y: mevcutNot?.y || direk.y,
+      yukseklik: direk.yukseklik || 2,
+      malzemeler: yeniMalzemeler,
+    })
   }
 
-  const handleKaydet = async () => {
-    if (eklenenler.length === 0) return
+  const handleMalzemeEkle = useCallback((item) => {
+    if (!item) return
+    const yeni = { adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '', miktar: 1, malzeme_kodu: item.malzeme_kodu || '', birim: item.olcu || 'Ad' }
+    guncelleNotlar([...malzemeler, yeni])
+  }, [malzemeler])
+
+  const gosterilen = sonuclar.slice(0, 10)
+  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, handleMalzemeEkle, onKapat)
+  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
+
+  const handleMiktarDegistir = (idx, miktar) => {
+    const yeni = malzemeler.map((m, i) => i === idx ? { ...m, miktar: Number(miktar) || 1 } : m)
+    guncelleNotlar(yeni)
+  }
+
+  const handleSil = (idx) => {
+    const yeni = malzemeler.filter((_, i) => i !== idx)
+    guncelleNotlar(yeni)
+  }
+
+  const handleKesifEkle = async () => {
+    if (!malzemeler.length) return
     try {
       await api.post(`/proje-kesif/${projeId}/toplu`, {
-        kalemler: eklenenler.map(k => ({
+        kalemler: malzemeler.map(k => ({
           malzeme_kodu: k.malzeme_kodu || null,
-          malzeme_adi: k.malzeme_adi,
+          malzeme_adi: k.adi,
           birim: k.birim || 'Ad',
           miktar: k.miktar || 1,
           birim_fiyat: 0,
@@ -250,20 +271,12 @@ function DirekMalzemePopup({ direk, projeId, onKapat, onMalzemeEklendi }) {
           okunan_deger: [direk.numara, direk.tip || direk.etiket, direk.sembolAdi].filter(Boolean).join(' — '),
         }))
       })
-      const direkKey = [direk.numara, direk.tip].filter(Boolean).join(' ')
-      onMalzemeEklendi?.({
-        key: direkKey || direk.etiket || 'Direk',
-        x: direk.x,
-        y: direk.y,
-        yukseklik: direk.yukseklik || 2,
-        malzemeler: eklenenler.map(k => ({ adi: k.malzeme_adi, miktar: k.miktar || 1 })),
-      })
-      onKapat()
     } catch (err) { alert(err.message) }
   }
 
   return (
-    <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 380, maxHeight: 420, overflow: 'auto' }}>
+    <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 380, maxHeight: 480, overflow: 'auto' }}
+      onMouseDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
       <div className="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/30">
         <div className="flex items-center gap-2">
           {direk.numara && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-bold text-primary">{direk.numara}</span>}
@@ -287,7 +300,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, onMalzemeEklendi }) {
         <div className="max-h-32 overflow-y-auto border-b border-border">
           {araniyor ? <div className="px-3 py-2 text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Aranıyor...</div> : (
             gosterilen.map((item, i) => (
-              <button key={item.id} onClick={() => handleMalzemeEkleNav(item)}
+              <button key={item.id} onClick={() => handleMalzemeEkle(item)}
                 className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs border-b border-border/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
                 <span className="font-mono text-blue-600 w-20 shrink-0">{item.malzeme_kodu || '-'}</span>
                 <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
@@ -298,26 +311,33 @@ function DirekMalzemePopup({ direk, projeId, onKapat, onMalzemeEklendi }) {
         </div>
       )}
 
-      {/* Eklenen malzemeler */}
-      {eklenenler.length > 0 && (
-        <div className="p-2">
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Eklenen Malzemeler</div>
-          {eklenenler.map((e, i) => (
-            <div key={i} className="flex items-center gap-2 py-1 border-b border-border/30">
-              <span className="flex-1 text-xs truncate">{e.malzeme_adi}</span>
-              <input type="number" value={e.miktar} onChange={ev => handleMiktarDegistir(i, ev.target.value)} min="1"
-                className="w-14 rounded border border-input px-1 py-0.5 text-center text-xs" />
-              <span className="text-[10px] text-muted-foreground w-6">{e.birim}</span>
-              <button onClick={() => setEklenenler(prev => prev.filter((_,j) => j !== i))} className="text-red-400 hover:text-red-600">
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
-          <button onClick={handleKaydet} className="mt-2 w-full rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
-            Keşife Ekle ({eklenenler.length})
-          </button>
+      {/* Direk malzeme listesi — DXF ile senkron */}
+      <div className="p-2">
+        <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">
+          Direk Malzeme Listesi {malzemeler.length > 0 && `(${malzemeler.length})`}
         </div>
-      )}
+        {malzemeler.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground/60 py-2 text-center">Yukarıdan malzeme arayıp ekleyin</p>
+        ) : (
+          <>
+            {malzemeler.map((m, i) => (
+              <div key={i} className="flex items-center gap-1.5 py-1 border-b border-border/30">
+                <span className="flex-1 text-xs truncate" title={m.adi}>{m.adi}</span>
+                <input type="number" value={m.miktar} onChange={e => handleMiktarDegistir(i, e.target.value)} min="1"
+                  className="w-12 rounded border border-input px-1 py-0.5 text-center text-xs" />
+                <span className="text-[10px] text-muted-foreground w-5">{m.birim || 'Ad'}</span>
+                <button onClick={() => handleSil(i)} className="text-red-400 hover:text-red-600 p-0.5">
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+            <button onClick={handleKesifEkle}
+              className="mt-2 w-full rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
+              Keşife Ekle ({malzemeler.length})
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -341,6 +361,10 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [hata, setHata] = useState('')
   const [ilerleme, setIlerleme] = useState('')
+  const [katmanlar, setKatmanlar] = useState(() => VARSAYILAN_KATMANLAR.map(k => ({ ...k })))
+  const [katmanPanelAcik, setKatmanPanelAcik] = useState(false)
+  const katmanlarRef = useRef(katmanlar)
+  katmanlarRef.current = katmanlar
 
   const handleMetrajKaydet = async () => {
     if (!direkNotlari || !Object.keys(direkNotlari).length) return alert('Henüz direk malzemesi eklenmemiş')
@@ -497,7 +521,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
     }
   }, [])
 
-  // direkNotlari değiştiğinde sprite'ları senkronize et
+  // direkNotlari veya katman ayarları değiştiğinde sprite'ları senkronize et
   useEffect(() => {
     const viewer = viewerRef.current
     const three = threeRef.current
@@ -520,6 +544,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
     // Eklenmesi / güncellenmesi gereken sprite'lar
     for (const [key, not] of Object.entries(direkNotlari || {})) {
       if (!not.malzemeler?.length) continue
+      const katman = katmanlar.find(k => k.id === (not.katman || 'kesif')) || katmanlar[1]
       // Varsa konumunu kaydet, kaldır ve yeniden oluştur
       const eski = spritelerRef.current[key]
       if (eski) {
@@ -529,7 +554,11 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
         eski.material.map?.dispose()
         eski.material.dispose()
       }
-      const sprite = _notSpriteOlustur(three, key, not.malzemeler, not.x, not.y, viewer.origin, not.yukseklik)
+      const sprite = _notSpriteOlustur(three, key, not.malzemeler, not.x, not.y, viewer.origin, katman.punto, katman.renk)
+      sprite.userData.katman = katman.id
+      // Katman görünürlüğü
+      sprite.visible = katman.gorunur
+      if (sprite.userData.line) sprite.userData.line.visible = katman.gorunur
       // Kaydedilmiş konum varsa geri yükle
       const kayitliKonum = spriteKonumRef.current[key]
       if (kayitliKonum) {
@@ -541,7 +570,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
       spritelerRef.current[key] = sprite
     }
     viewer.Render()
-  }, [direkNotlari, yukleniyor])
+  }, [direkNotlari, katmanlar, yukleniyor])
 
   // Sprite sürükleme (drag) - mouse event'leri
   useEffect(() => {
@@ -626,6 +655,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
       )}
       {/* Kontroller */}
       {!yukleniyor && !hata && (
+        <>
         <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
           {/* Zoom */}
           <div className="flex items-center gap-1 rounded-lg bg-white/90 px-1.5 py-1 shadow-sm border border-border">
@@ -636,6 +666,12 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
             <button onClick={() => { const v = viewerRef.current; if (v && v.bounds) { const b = v.bounds, o = v.origin || {x:0,y:0}; v.FitView(b.minX-o.x, b.maxX-o.x, b.minY-o.y, b.maxY-o.y) } }}
               className="rounded p-1 hover:bg-muted" title="Tümünü Göster"><RotateCcw className="h-3.5 w-3.5" /></button>
           </div>
+          {/* Katmanlar */}
+          <button onClick={() => setKatmanPanelAcik(p => !p)}
+            className={cn('flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium shadow-sm border', katmanPanelAcik ? 'bg-primary/10 border-primary text-primary' : 'bg-white/90 border-border hover:bg-muted')}
+            title="Katmanlar">
+            <Layers className="h-3.5 w-3.5" /> Katmanlar
+          </button>
           {direkNotlari && Object.keys(direkNotlari).length > 0 && (
             <button
               onClick={handleMetrajKaydet}
@@ -648,6 +684,41 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
             </button>
           )}
         </div>
+        {/* Katman Paneli */}
+        {katmanPanelAcik && (
+          <div className="absolute top-10 right-2 z-20 w-56 rounded-lg border border-border bg-white/95 shadow-lg backdrop-blur-sm" onClick={e => e.stopPropagation()}>
+            <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground uppercase">Katmanlar</span>
+              <button onClick={() => setKatmanPanelAcik(false)} className="p-0.5 rounded hover:bg-muted"><X className="h-3 w-3" /></button>
+            </div>
+            <div className="p-2 space-y-2">
+              {katmanlar.map(k => (
+                <div key={k.id} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setKatmanlar(prev => prev.map(p => p.id === k.id ? { ...p, gorunur: !p.gorunur } : p))}
+                      className={cn('p-0.5 rounded', k.gorunur ? 'text-foreground' : 'text-muted-foreground/40')} title={k.gorunur ? 'Gizle' : 'Göster'}>
+                      {k.gorunur ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                    </button>
+                    <div className="w-4 h-4 rounded-sm border border-border/50 shrink-0 relative overflow-hidden">
+                      <input type="color" value={k.renk}
+                        onChange={e => setKatmanlar(prev => prev.map(p => p.id === k.id ? { ...p, renk: e.target.value } : p))}
+                        className="absolute inset-0 w-8 h-8 -top-1 -left-1 cursor-pointer border-0" />
+                    </div>
+                    <span className={cn('text-xs font-medium flex-1', !k.gorunur && 'text-muted-foreground/50 line-through')}>{k.ad}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 ml-6">
+                    <span className="text-[10px] text-muted-foreground w-8">Punto</span>
+                    <input type="range" min="0.5" max="5" step="0.5" value={k.punto}
+                      onChange={e => setKatmanlar(prev => prev.map(p => p.id === k.id ? { ...p, punto: parseFloat(e.target.value) } : p))}
+                      className="flex-1 h-1 accent-primary" />
+                    <span className="text-[10px] font-mono text-muted-foreground w-6 text-right">{k.punto}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        </>
       )}
       <div ref={containerRef} style={{ height: 400, width: '100%' }} />
     </div>
@@ -1372,18 +1443,17 @@ export default function ProjeDonguBar({ projeId }) {
                     direk={seciliDirek}
                     projeId={projeId}
                     onKapat={() => setSeciliDirek(null)}
-                    onMalzemeEklendi={(not) => setDirekNotlari(prev => {
-                      const mevcut = prev[not.key]
-                      return {
-                        ...prev,
-                        [not.key]: {
-                          x: not.x,
-                          y: not.y,
-                          yukseklik: not.yukseklik,
-                          malzemeler: [...(mevcut?.malzemeler || []), ...not.malzemeler],
-                        }
+                    direkNotlari={direkNotlari}
+                    onMalzemeGuncelle={(not) => setDirekNotlari(prev => ({
+                      ...prev,
+                      [not.key]: {
+                        x: not.x,
+                        y: not.y,
+                        yukseklik: not.yukseklik,
+                        katman: prev[not.key]?.katman || 'kesif',
+                        malzemeler: not.malzemeler,
                       }
-                    })}
+                    }))}
                   />
                 )}
               </div>
