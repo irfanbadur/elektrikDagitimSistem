@@ -567,6 +567,112 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// GET /:id/dxf-harita — DXF çizim verilerini WGS84 koordinatlarına çevirip harita için döndür
+router.get('/:id/dxf-harita', (req, res) => {
+  try {
+    const proj4 = require('proj4');
+    const fs = require('fs');
+    const dosya = dosyaService.dosyaGetir(parseInt(req.params.id));
+    if (!dosya) return res.status(404).json({ success: false, error: 'Dosya bulunamadı' });
+    const tamYol = dosyaService.dosyaYoluCozumle(dosya.dosya_yolu);
+    const content = fs.readFileSync(tamYol, 'latin1');
+    const lines = content.split(/\r?\n/);
+
+    // TUREF/ITRF96 TM36 (Türkiye Transverse Mercator) → WGS84
+    // YEDAŞ bölgesi: central meridian 36°, false easting 500000
+    const turefTM36 = '+proj=tmerc +lat_0=0 +lon_0=36 +k=1 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs';
+    const wgs84 = '+proj=longlat +datum=WGS84 +no_defs';
+    const toWGS84 = (x, y) => {
+      // TM36 koordinat aralığı doğrulaması (block tanımlarını atla)
+      if (x < 100000 || x > 900000 || y < 3500000 || y > 5000000) return null;
+      try { const [lng, lat] = proj4(turefTM36, wgs84, [x, y]); return { lat, lng }; }
+      catch { return null; }
+    };
+
+    // Entity'leri parse et
+    const cizgiler = []; // LINE entity'leri → polyline olarak
+    const polylineler = []; // LWPOLYLINE entity'leri
+    const noktalar = []; // TEXT (direkler, etiketler)
+
+    let entityType = null, entity = {};
+    let lwVertices = []; // LWPOLYLINE köşe noktaları
+
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      const code = parseInt(lines[i].trim());
+      const val = lines[i + 1]?.trim();
+
+      if (code === 0) {
+        // Önceki entity'yi kaydet
+        if (entityType === 'LINE' && entity.x1 !== undefined) {
+          const p1 = toWGS84(entity.x1, entity.y1);
+          const p2 = toWGS84(entity.x2, entity.y2);
+          if (p1 && p2) cizgiler.push({ tip: 'line', katman: entity.katman || '0', noktalar: [[p1.lat, p1.lng], [p2.lat, p2.lng]] });
+        }
+        if (entityType === 'LWPOLYLINE' && lwVertices.length >= 2) {
+          const coords = lwVertices.map(v => toWGS84(v.x, v.y)).filter(Boolean);
+          if (coords.length >= 2) polylineler.push({ tip: 'polyline', katman: entity.katman || '0', kapali: entity.kapali, noktalar: coords.map(c => [c.lat, c.lng]) });
+        }
+        if (entityType === 'TEXT' && entity.text && entity.x !== undefined) {
+          // Sembol TEXT'leri (B_CAD font, Direk stili) atla — tek karakter semboller
+          if (entity.stil !== 'Direk' || entity.text.length > 2) {
+            const p = toWGS84(entity.x, entity.y);
+            if (p) noktalar.push({ tip: 'text', text: entity.text, katman: entity.katman || '0', stil: entity.stil, lat: p.lat, lng: p.lng });
+          }
+        }
+
+        entityType = val;
+        entity = {};
+        lwVertices = [];
+        continue;
+      }
+
+      // LINE
+      if (entityType === 'LINE') {
+        if (code === 8) entity.katman = val;
+        else if (code === 10) entity.x1 = parseFloat(val);
+        else if (code === 20) entity.y1 = parseFloat(val);
+        else if (code === 11) entity.x2 = parseFloat(val);
+        else if (code === 21) entity.y2 = parseFloat(val);
+      }
+      // LWPOLYLINE
+      if (entityType === 'LWPOLYLINE') {
+        if (code === 8) entity.katman = val;
+        else if (code === 70) entity.kapali = (parseInt(val) & 1) === 1;
+        else if (code === 10) lwVertices.push({ x: parseFloat(val) });
+        else if (code === 20 && lwVertices.length > 0) lwVertices[lwVertices.length - 1].y = parseFloat(val);
+      }
+      // TEXT (direkler, etiketler)
+      if (entityType === 'TEXT') {
+        if (code === 8) entity.katman = val;
+        else if (code === 7) entity.stil = val;
+        else if (code === 1) entity.text = val;
+        else if (code === 10) entity.x = parseFloat(val);
+        else if (code === 20) entity.y = parseFloat(val);
+      }
+    }
+
+    // DXF bounds hesapla (UTM → WGS84)
+    const allX = [], allY = [];
+    cizgiler.forEach(c => c.noktalar.forEach(p => { allX.push(p[1]); allY.push(p[0]); }));
+    polylineler.forEach(c => c.noktalar.forEach(p => { allX.push(p[1]); allY.push(p[0]); }));
+    noktalar.forEach(n => { allX.push(n.lng); allY.push(n.lat); });
+    const bounds = allX.length > 0 ? {
+      southWest: [Math.min(...allY), Math.min(...allX)],
+      northEast: [Math.max(...allY), Math.max(...allX)],
+    } : null;
+
+    res.json({
+      success: true,
+      data: {
+        bounds,
+        cizgiler: [...cizgiler, ...polylineler],
+        noktalar,
+        toplam: { cizgi: cizgiler.length, polyline: polylineler.length, text: noktalar.length }
+      }
+    });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 // POST /:id/dxf-metraj-kaydet — DXF dosyasına malzeme notları ekleyip Metraj adımına kaydet
 router.post('/:id/dxf-metraj-kaydet', (req, res) => {
   try {

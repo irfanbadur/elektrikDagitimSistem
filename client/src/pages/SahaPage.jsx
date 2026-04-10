@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, createContext, useContext } from 'react'
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap, useMapEvents, Polyline, CircleMarker, ImageOverlay } from 'react-leaflet'
 import L from 'leaflet'
 import MainLayout from '@/components/layout/MainLayout'
 import '@/utils/leafletFix'
@@ -697,10 +697,12 @@ function PaketMarker({ paket, offset = 0 }) {
 }
 
 // ─── HARİTA SINIRLARINI AYARLA ──────────────────────────
-function FitBounds({ ekipler, paketler }) {
+function FitBounds({ ekipler, paketler, projeCizimleri }) {
   const map = useMap()
+  const ilkYukleme = useRef(true)
 
   useEffect(() => {
+    if (!ilkYukleme.current) return // Sadece ilk yüklemede çalış
     const noktalar = []
 
     ekipler
@@ -711,7 +713,13 @@ function FitBounds({ ekipler, paketler }) {
       .filter(p => p.latitude && p.longitude)
       .forEach(p => noktalar.push([p.latitude, p.longitude]))
 
+    ;(projeCizimleri || []).forEach(c => {
+      (c.noktalar || []).forEach(n => { if (n.lat && n.lng) noktalar.push([n.lat, n.lng]) })
+      ;(c.cizgiler || []).forEach(cz => { (cz.noktalar || []).forEach(p => noktalar.push(p)) })
+    })
+
     if (noktalar.length === 0) return
+    ilkYukleme.current = false
 
     if (noktalar.length === 1) {
       map.setView(noktalar[0], 13)
@@ -719,9 +727,142 @@ function FitBounds({ ekipler, paketler }) {
       const bounds = L.latLngBounds(noktalar)
       map.fitBounds(bounds, { padding: [50, 50] })
     }
-  }, [ekipler, paketler, map])
+  }, [ekipler, paketler, projeCizimleri, map])
 
   return null
+}
+
+// ─── PROJE DXF ÇİZİM KATMANI ────────────────────────────
+// ─── DXF OFFSCREEN RENDER → HARITA IMAGE OVERLAY ────────
+const DXF_FONTS = ['/fonts/NotoSans.ttf', '/fonts/B_CAD.ttf', '/fonts/T_ROMANS.ttf']
+
+function ProjeCizimKatmani({ cizim }) {
+  const overlayRef = useRef(null)
+  const viewerRef = useRef(null)
+  const rendererRef = useRef(null)
+  const containerRef = useRef(null)
+  const threeRef = useRef(null)
+  const [hazir, setHazir] = useState(false)
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const map = useMap()
+
+  // DXF viewer'ı yükle (bir kez)
+  useEffect(() => {
+    if (!cizim.bounds || !cizim.dosyaId) return
+    let cancelled = false
+
+    const yukle = async () => {
+      setYukleniyor(true)
+      try {
+        const [{ DxfViewer }, three] = await Promise.all([import('dxf-viewer'), import('three')])
+        threeRef.current = three
+
+        const container = document.createElement('div')
+        container.style.cssText = 'width:4096px;height:4096px;position:absolute;left:-9999px'
+        document.body.appendChild(container)
+        containerRef.current = container
+
+        const renderer = new three.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
+        renderer.setSize(4096, 4096)
+        container.appendChild(renderer.domElement)
+        rendererRef.current = renderer
+
+        const viewer = new DxfViewer(container, {
+          clearColor: new three.Color(0x000000), clearAlpha: 0,
+          autoResize: false, colorCorrection: true, renderer,
+        })
+        viewerRef.current = viewer
+
+        const response = await fetch(`/api/dosya/${cizim.dosyaId}/dosya`)
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        await viewer.Load({ url, fonts: DXF_FONTS })
+        URL.revokeObjectURL(url)
+
+        if (!cancelled) setHazir(true)
+      } catch (err) { console.error('[Saha DXF]', err) }
+      finally { if (!cancelled) setYukleniyor(false) }
+    }
+
+    yukle()
+    return () => {
+      cancelled = true
+      if (viewerRef.current) { try { viewerRef.current.Clear() } catch {} viewerRef.current = null }
+      if (rendererRef.current) { rendererRef.current.dispose(); rendererRef.current = null }
+      if (containerRef.current) { try { document.body.removeChild(containerRef.current) } catch {} containerRef.current = null }
+    }
+  }, [cizim.dosyaId])
+
+  // Leaflet custom overlay: DXF canvas'ını doğrudan harita üzerinde göster
+  useEffect(() => {
+    if (!hazir || !viewerRef.current || !rendererRef.current || !cizim.bounds) return
+    const viewer = viewerRef.current
+    const renderer = rendererRef.current
+
+    const DxfOverlay = L.Layer.extend({
+      onAdd(map) {
+        this._map = map
+        this._canvas = renderer.domElement
+        this._canvas.style.position = 'absolute'
+        this._canvas.style.pointerEvents = 'none'
+        map.getPanes().overlayPane.appendChild(this._canvas)
+        map.on('moveend', this._update, this)
+        this._update()
+      },
+      onRemove(map) {
+        map.getPanes().overlayPane.removeChild(this._canvas)
+        map.off('moveend', this._update, this)
+      },
+      _update() {
+        if (!this._map) return
+        const bounds = L.latLngBounds(cizim.bounds.southWest, cizim.bounds.northEast)
+        const topLeft = this._map.latLngToLayerPoint(bounds.getNorthWest())
+        const bottomRight = this._map.latLngToLayerPoint(bounds.getSouthEast())
+        const w = Math.abs(bottomRight.x - topLeft.x)
+        const h = Math.abs(bottomRight.y - topLeft.y)
+
+        // Canvas'ı harita piksel boyutuna ayarla
+        const size = Math.max(w, h, 512)
+        const renderSize = Math.min(Math.round(size * (window.devicePixelRatio || 1)), 8192)
+
+        if (renderer.domElement.width !== renderSize || renderer.domElement.height !== renderSize) {
+          renderer.setSize(renderSize, renderSize)
+        }
+
+        // DXF kamerasını harita alanına göre ayarla
+        if (viewer.bounds && viewer.origin) {
+          const b = viewer.bounds, o = viewer.origin
+          viewer.FitView(b.minX - o.x, b.maxX - o.x, b.minY - o.y, b.maxY - o.y)
+        }
+        viewer.Render()
+
+        // Canvas'ı harita üzerinde konumlandır
+        this._canvas.style.left = topLeft.x + 'px'
+        this._canvas.style.top = topLeft.y + 'px'
+        this._canvas.style.width = w + 'px'
+        this._canvas.style.height = h + 'px'
+      }
+    })
+
+    const overlay = new DxfOverlay()
+    overlay.addTo(map)
+    overlayRef.current = overlay
+
+    return () => {
+      if (overlayRef.current) { map.removeLayer(overlayRef.current); overlayRef.current = null }
+    }
+  }, [hazir, map, cizim.bounds])
+
+  if (!cizim.bounds) return null
+
+  return yukleniyor && !hazir ? (
+    <CircleMarker
+      center={[(cizim.bounds.southWest[0] + cizim.bounds.northEast[0]) / 2, (cizim.bounds.southWest[1] + cizim.bounds.northEast[1]) / 2]}
+      radius={8} pathOptions={{ color: '#6366f1', fillColor: '#6366f1', fillOpacity: 0.3 }}
+    >
+      <Tooltip permanent>{cizim.projeNo} yükleniyor...</Tooltip>
+    </CircleMarker>
+  ) : null
 }
 
 // ─── HARİTA TIKLAMA — KONUM ATAMA ───────────────────────
@@ -759,7 +900,9 @@ export default function SahaPage() {
   const [katmanlar, setKatmanlar] = useState({
     ekipler: true,
     veriPaketleri: true,
+    projeCizimleri: true,
   })
+  const [projeCizimleri, setProjeCizimleri] = useState([]) // { projeId, projeNo, dosyaId, cizgiler, noktalar }
 
   const varsayilanMerkez = [41.2867, 36.3300]
   const varsayilanZoom = 10
@@ -782,6 +925,28 @@ export default function SahaPage() {
       } else {
         setHata('Veri yuklenemedi')
       }
+
+      // Proje DXF çizimlerini yükle
+      try {
+        const cizimRes = await fetch('/api/saha/proje-cizimleri')
+        const cizimJson = await cizimRes.json()
+        if (cizimJson.success && cizimJson.data?.length > 0) {
+          // Her DXF dosyası için harita verilerini çek (paralel)
+          const cizimler = await Promise.all(
+            cizimJson.data.map(async (p) => {
+              try {
+                const r = await fetch(`/api/dosya/${p.dosya_id}/dxf-harita`)
+                const j = await r.json()
+                if (j.success && j.data) {
+                  return { projeId: p.id, projeNo: p.proje_no, projeTipi: p.proje_tipi, mahalle: p.mahalle, dosyaId: p.dosya_id, ...j.data }
+                }
+              } catch {}
+              return null
+            })
+          )
+          setProjeCizimleri(cizimler.filter(Boolean).filter(c => c.cizgiler?.length > 0 || c.noktalar?.length > 0))
+        }
+      } catch {}
     } catch (err) {
       setHata('Sunucuya baglanilamadi')
       console.error('Saha veri hatasi:', err)
@@ -809,8 +974,6 @@ export default function SahaPage() {
 
   useEffect(() => {
     verileriYukle()
-    const interval = setInterval(verileriYukle, 30000)
-    return () => clearInterval(interval)
   }, [verileriYukle])
 
   const konumluEkipSayisi = ekipler.filter(e => e.son_latitude && e.son_longitude).length
@@ -856,6 +1019,15 @@ export default function SahaPage() {
             />
             Veri Paketleri
           </label>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={katmanlar.projeCizimleri}
+              onChange={() => katmanToggle('projeCizimleri')}
+              className="accent-primary"
+            />
+            Proje Çizimleri {projeCizimleri.length > 0 && <span className="text-muted-foreground">({projeCizimleri.length})</span>}
+          </label>
 
           <button
             onClick={verileriYukle}
@@ -897,12 +1069,15 @@ export default function SahaPage() {
             <MapContainer
               center={varsayilanMerkez}
               zoom={varsayilanZoom}
+              maxZoom={22}
               style={{ height: '100%', width: '100%' }}
               zoomControl={true}
             >
               <TileLayer
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                maxZoom={22}
+                maxNativeZoom={19}
               />
 
               {/* Ekip markerlari */}
@@ -933,7 +1108,12 @@ export default function SahaPage() {
                 })
               })()}
 
-              <FitBounds ekipler={ekipler} paketler={paketler} />
+              {/* Proje DXF çizimleri */}
+              {katmanlar.projeCizimleri && projeCizimleri.map((cizim) => (
+                <ProjeCizimKatmani key={`cizim-${cizim.dosyaId}`} cizim={cizim} />
+              ))}
+
+              <FitBounds ekipler={ekipler} paketler={paketler} projeCizimleri={katmanlar.projeCizimleri ? projeCizimleri : []} />
               <MapClickHandler seciliEkipId={seciliEkipId} onKonumAta={konumAta} />
             </MapContainer>
           )}
