@@ -818,66 +818,44 @@ function TumProjelerDxfOverlay({ projeCizimleri }) {
     return () => { cancelled = true; imagesRef.current = [] }
   }, [projeCizimleri.map(c => c.dosyaId).join(',')])
 
-  // Tek 2D canvas overlay — tüm projeleri compositing ile çiz
+  // Tek 2D canvas — harita container'a doğrudan ekle
   useEffect(() => {
     if (!hazir || !imagesRef.current.length) return
+    const container = map.getContainer()
+    if (!container) return
 
     const canvas = document.createElement('canvas')
-    canvas.style.position = 'absolute'
-    canvas.style.pointerEvents = 'none'
+    canvas.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:400'
+    container.appendChild(canvas)
 
-    const DxfOverlay = L.Layer.extend({
-      onAdd(m) {
-        this._map = m
-        m.getPanes().overlayPane.appendChild(canvas)
-        m.on('moveend', this._render, this)
-        this._render()
-      },
-      onRemove(m) {
-        if (canvas.parentNode) canvas.parentNode.removeChild(canvas)
-        m.off('moveend', this._render, this)
-      },
-      _render() {
-        if (!this._map) return
-        const mapSize = this._map.getSize()
-        const dpr = window.devicePixelRatio || 1
-        canvas.width = mapSize.x * dpr
-        canvas.height = mapSize.y * dpr
-        canvas.style.width = mapSize.x + 'px'
-        canvas.style.height = mapSize.y + 'px'
+    const render = () => {
+      const mapSize = map.getSize()
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = mapSize.x * dpr
+      canvas.height = mapSize.y * dpr
+      canvas.style.width = mapSize.x + 'px'
+      canvas.style.height = mapSize.y + 'px'
 
-        // Canvas'ı harita origin'e hizala
-        const mapOrigin = this._map.getPixelOrigin()
-        const panePos = this._map.getPane('overlayPane').style.transform
-        // leaflet pane translate'ini yakala
-        const match = panePos?.match(/translate3d\((-?\d+)px,\s*(-?\d+)px/)
-        const tx = match ? parseInt(match[1]) : 0
-        const ty = match ? parseInt(match[2]) : 0
-        canvas.style.left = -tx + 'px'
-        canvas.style.top = -ty + 'px'
+      const ctx = canvas.getContext('2d')
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-        const ctx = canvas.getContext('2d')
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-        // Her projeyi çiz
-        for (const { img, bounds } of imagesRef.current) {
-          const nw = this._map.latLngToLayerPoint(L.latLng(bounds.northEast[0], bounds.southWest[1]))
-          const se = this._map.latLngToLayerPoint(L.latLng(bounds.southWest[0], bounds.northEast[1]))
-          const dx = (nw.x + tx) * dpr
-          const dy = (nw.y + ty) * dpr
-          const dw = (se.x - nw.x) * dpr
-          const dh = (se.y - nw.y) * dpr
-          ctx.drawImage(img, dx, dy, dw, dh)
-        }
+      for (const { img, bounds } of imagesRef.current) {
+        const nw = map.latLngToContainerPoint(L.latLng(bounds.northEast[0], bounds.southWest[1]))
+        const se = map.latLngToContainerPoint(L.latLng(bounds.southWest[0], bounds.northEast[1]))
+        ctx.drawImage(img, nw.x * dpr, nw.y * dpr, (se.x - nw.x) * dpr, (se.y - nw.y) * dpr)
       }
-    })
+    }
 
-    const overlay = new DxfOverlay()
-    overlay.addTo(map)
-    overlayRef.current = overlay
+    render()
+    map.on('move', render)
+    map.on('zoom', render)
+    map.on('resize', render)
 
     return () => {
-      if (overlayRef.current) { map.removeLayer(overlayRef.current); overlayRef.current = null }
+      map.off('move', render)
+      map.off('zoom', render)
+      map.off('resize', render)
+      if (canvas.parentNode) canvas.parentNode.removeChild(canvas)
     }
   }, [hazir, map])
 
@@ -890,7 +868,7 @@ function TumProjelerDxfOverlay({ projeCizimleri }) {
 }
 
 // ─── Proje Marker (sadece etiket + kart) ────────────────
-function ProjeMarkerKarti({ cizim }) {
+function ProjeMarkerKarti({ cizim, gorunur, onToggle }) {
   if (!cizim.bounds) return null
   const merkez = [(cizim.bounds.southWest[0] + cizim.bounds.northEast[0]) / 2, (cizim.bounds.southWest[1] + cizim.bounds.northEast[1]) / 2]
   const referans = (cizim.noktalar?.[0]) ? [cizim.noktalar[0].lat, cizim.noktalar[0].lng] : merkez
@@ -922,8 +900,21 @@ function ProjeMarkerKarti({ cizim }) {
     try { localStorage.setItem(storageKey, JSON.stringify(yeni)) } catch {}
   }, [referans, storageKey])
 
+  // Göz ikonuna tıklama — marker içindeki .dxf-toggle elementini dinle
+  useEffect(() => {
+    const marker = markerRef.current
+    if (!marker) return
+    const el = marker.getElement?.()
+    if (!el) return
+    const handler = (e) => {
+      if (e.target.closest('.dxf-toggle')) { e.stopPropagation(); onToggle?.() }
+    }
+    el.addEventListener('click', handler, true)
+    return () => el.removeEventListener('click', handler, true)
+  })
+
   return (
-    <Marker ref={markerRef} position={markerPos} icon={projeMarkerIcon(cizim.projeNo)} draggable={true}
+    <Marker ref={markerRef} position={markerPos} icon={projeMarkerIcon(cizim.projeNo, gorunur)} draggable={true}
       eventHandlers={{ drag: handleDrag, dragend: handleDragEnd }}>
       <Popup maxWidth={280} minWidth={240}>
         <ProjeKarti cizim={cizim} />
@@ -934,16 +925,20 @@ function ProjeMarkerKarti({ cizim }) {
 }
 
 // ─── PROJE MARKER İKONU ──────────────────────────────────
-function projeMarkerIcon(projeNo) {
+function projeMarkerIcon(projeNo, gorunur) {
+  const eyeIcon = gorunur
+    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
   return L.divIcon({
     className: 'proje-cizim-marker',
     html: `<div style="
       display:inline-flex;align-items:center;gap:4px;
-      background:#4f46e5;color:white;padding:2px 8px;border-radius:4px;
+      background:${gorunur ? '#059669' : '#4f46e5'};color:white;padding:2px 8px;border-radius:4px;
       font-size:11px;font-weight:600;white-space:nowrap;
       box-shadow:0 2px 4px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.3);
+      cursor:pointer;
     ">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M9 8h6M9 12h6M9 16h6M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16"/></svg>
+      <span class="dxf-toggle" style="display:flex;align-items:center;padding:2px;border-radius:3px;cursor:pointer;opacity:0.9">${eyeIcon}</span>
       ${projeNo}
     </div>`,
     iconSize: [0, 0],
@@ -1040,6 +1035,7 @@ export default function SahaPage() {
     projeCizimleri: true,
   })
   const [projeCizimleri, setProjeCizimleri] = useState([]) // { projeId, projeNo, dosyaId, cizgiler, noktalar }
+  const [gorunurProjeler, setGorunurProjeler] = useState(new Set()) // dosyaId set
 
   const varsayilanMerkez = [41.2867, 36.3300]
   const varsayilanZoom = 10
@@ -1270,12 +1266,19 @@ export default function SahaPage() {
                 })
               })()}
 
-              {/* Proje DXF çizimleri — tek vektörel canvas */}
-              {katmanlar.projeCizimleri && projeCizimleri.length > 0 && (
-                <TumProjelerDxfOverlay projeCizimleri={projeCizimleri} />
+              {/* Proje DXF çizimleri — sadece seçili projeler */}
+              {katmanlar.projeCizimleri && gorunurProjeler.size > 0 && (
+                <TumProjelerDxfOverlay projeCizimleri={projeCizimleri.filter(c => gorunurProjeler.has(c.dosyaId))} />
               )}
               {katmanlar.projeCizimleri && projeCizimleri.map((cizim) => (
-                <ProjeMarkerKarti key={`mk-${cizim.dosyaId}`} cizim={cizim} />
+                <ProjeMarkerKarti key={`mk-${cizim.dosyaId}`} cizim={cizim}
+                  gorunur={gorunurProjeler.has(cizim.dosyaId)}
+                  onToggle={() => setGorunurProjeler(prev => {
+                    const yeni = new Set(prev)
+                    yeni.has(cizim.dosyaId) ? yeni.delete(cizim.dosyaId) : yeni.add(cizim.dosyaId)
+                    return yeni
+                  })}
+                />
               ))}
 
               <FitBounds ekipler={ekipler} paketler={paketler} projeCizimleri={katmanlar.projeCizimleri ? projeCizimleri : []} />

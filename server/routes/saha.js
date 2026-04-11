@@ -303,11 +303,12 @@ router.get('/proje-cizimleri', (req, res) => {
       FROM projeler p
       JOIN proje_adimlari pa ON pa.proje_id = p.id AND pa.adim_kodu = 'yeni_durum_proje'
       JOIN dosyalar d ON d.proje_adim_id = pa.id AND d.durum = 'aktif'
-        AND (d.dosya_adi LIKE '%.dxf' OR d.orijinal_adi LIKE '%.dxf')
+        AND (LOWER(d.orijinal_adi) LIKE '%yen%durum.dxf' OR LOWER(d.dosya_adi) LIKE '%yen%durum.dxf')
       LEFT JOIN ekipler e ON p.ekip_id = e.id
       LEFT JOIN bolgeler b ON p.bolge_id = b.id
       LEFT JOIN proje_adimlari pa_aktif ON pa_aktif.id = p.aktif_adim_id
       WHERE p.durum != 'tamamlandi'
+      GROUP BY p.id
       ORDER BY p.olusturma_tarihi DESC
     `).all();
     basarili(res, projeler);

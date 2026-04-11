@@ -18,7 +18,9 @@ const { getDb, initDatabase } = require('../db/database');
 initDatabase();
 const db = getDb();
 
-const DOC_KET = path.join(__dirname, '../../doc/KET');
+// Parametre: node server/scripts/importProjeDosyalari.js [KET|YB]
+const TIP = (process.argv[2] || 'KET').toUpperCase();
+const DOC_KET = path.join(__dirname, `../../doc/${TIP}`);
 const UPLOADS = path.join(__dirname, '../../uploads/projeler');
 
 console.log('=== Proje Dosyaları Import ===\n');
@@ -42,16 +44,30 @@ function mimeTespit(adi) {
 
 // DB projeleri yükle
 const dbProjeler = db.prepare('SELECT id, proje_no, musteri_adi, proje_tipi FROM projeler').all();
-// Elle eşleştirme tablosu (fuzzy eşleşmeyen projeler için)
+// Elle eşleştirme tablosu
 const ELLE_ESLESTIRME = {
+  // KET
   'Geyikkoşan KET': '26.BATI.KET.1.073',
   'Habib Semiz': '26.BATI.KET.1.081',
   'Metin Hancı': '26.BATI.KET.1.026-33',
   'Metin Değirmenci': 'KET-BEKLEYEN-070',
-  'Metin Hancı': '26.BATI.KET.1.026-33',
   'Teiaş Riskli Lokasyon KET': 'KET-BEKLEYEN-075',
   'Ömer Demir': 'KET-BEKLEYEN-074',
   'Ömer Ulusoy': 'KET-BEKLEYEN-060',
+  // YB
+  'Adem Cürebal': '26.BATI.YB.1.058',
+  'Ali Balçık': '26.BATI.YB.1.028',
+  'Aydın Kurnaz': 'KET-BEKLEYEN-071',
+  'Hüseyin Koçyiğit': 'KET-BEKLEYEN-058',
+  'Kerim Bircan': '26.BATI.YB.1.026',
+  'Metin Demir': '26.BATI.YB.1.033',
+  'Naim Memiş': '26.BATI.YB.1.029',
+  'Sezai Özbkar': '26.BATI.YB.1.016',
+  'Yasemin Ak': '26.BATI.YB.1.057',
+  'Şakir Demirbağ': '26.BATI.YB.1.068',
+  'İsmail kurnaz': '26.BATI.YB.1.006',
+  'Adem Kondu': '26.BATI.YB.1.030',
+  'Berat Şahin': 'KET-BEKLEYEN-068',
 };
 
 const kullanilan = new Set();
