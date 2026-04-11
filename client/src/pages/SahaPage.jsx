@@ -736,111 +736,139 @@ function FitBounds({ ekipler, paketler, projeCizimleri }) {
 // ─── DXF OFFSCREEN RENDER → HARITA IMAGE OVERLAY ────────
 const DXF_FONTS = ['/fonts/NotoSans.ttf', '/fonts/B_CAD.ttf', '/fonts/T_ROMANS.ttf']
 
-function ProjeCizimKatmani({ cizim }) {
+// ─── Tüm DXF'leri tek 2D canvas'a compositing ile birleştir ───
+function TumProjelerDxfOverlay({ projeCizimleri }) {
+  const map = useMap()
   const overlayRef = useRef(null)
-  const viewerRef = useRef(null)
-  const rendererRef = useRef(null)
-  const containerRef = useRef(null)
-  const threeRef = useRef(null)
+  const imagesRef = useRef([]) // [{img, bounds}]
   const [hazir, setHazir] = useState(false)
   const [yukleniyor, setYukleniyor] = useState(false)
-  const map = useMap()
 
-  // DXF viewer'ı yükle (bir kez)
   useEffect(() => {
-    if (!cizim.bounds || !cizim.dosyaId) return
+    const cizimleriYukle = projeCizimleri.filter(c => c.dosyaId && c.bounds)
+    if (!cizimleriYukle.length) return
     let cancelled = false
 
     const yukle = async () => {
       setYukleniyor(true)
       try {
         const [{ DxfViewer }, three] = await Promise.all([import('dxf-viewer'), import('three')])
-        threeRef.current = three
 
+        const SIZE = 4096
         const container = document.createElement('div')
-        container.style.cssText = 'width:4096px;height:4096px;position:absolute;left:-9999px'
+        container.style.cssText = `width:${SIZE}px;height:${SIZE}px;position:absolute;left:-9999px;top:-9999px`
         document.body.appendChild(container)
-        containerRef.current = container
 
         const renderer = new three.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
-        renderer.setSize(4096, 4096)
+        renderer.setSize(SIZE, SIZE)
+        renderer.setClearColor(0x000000, 0)
         container.appendChild(renderer.domElement)
-        rendererRef.current = renderer
 
-        const viewer = new DxfViewer(container, {
-          clearColor: new three.Color(0x000000), clearAlpha: 0,
-          autoResize: false, colorCorrection: true, renderer,
-        })
-        viewerRef.current = viewer
+        const images = []
 
-        const response = await fetch(`/api/dosya/${cizim.dosyaId}/dosya`)
-        const blob = await response.blob()
-        const url = URL.createObjectURL(blob)
-        await viewer.Load({ url, fonts: DXF_FONTS })
-        URL.revokeObjectURL(url)
+        // Her DXF'i sırayla render et ve PNG olarak sakla
+        for (const cizim of cizimleriYukle) {
+          if (cancelled) break
+          try {
+            const viewer = new DxfViewer(container, {
+              clearColor: new three.Color(0x000000), clearAlpha: 0,
+              autoResize: false, colorCorrection: true, renderer,
+            })
 
-        if (!cancelled) setHazir(true)
-      } catch (err) { console.error('[Saha DXF]', err) }
+            const response = await fetch(`/api/dosya/${cizim.dosyaId}/dosya`)
+            const blob = await response.blob()
+            const url = URL.createObjectURL(blob)
+            await viewer.Load({ url, fonts: DXF_FONTS })
+            URL.revokeObjectURL(url)
+
+            if (viewer.bounds && viewer.origin) {
+              const b = viewer.bounds, o = viewer.origin
+              const dxfW = b.maxX - b.minX, dxfH = b.maxY - b.minY
+              let rw, rh
+              if (dxfW > dxfH) { rw = SIZE; rh = Math.max(Math.round(SIZE * dxfH / dxfW), 512) }
+              else { rh = SIZE; rw = Math.max(Math.round(SIZE * dxfW / dxfH), 512) }
+              renderer.setSize(rw, rh)
+              container.style.width = rw + 'px'
+              container.style.height = rh + 'px'
+              viewer.FitView(b.minX - o.x, b.maxX - o.x, b.minY - o.y, b.maxY - o.y)
+              renderer.setClearColor(0x000000, 0)
+              viewer.Render()
+
+              const img = new Image()
+              img.src = renderer.domElement.toDataURL('image/png')
+              await new Promise(r => { img.onload = r; img.onerror = r })
+              images.push({ img, bounds: cizim.bounds })
+            }
+            viewer.Clear()
+          } catch (err) { console.error('[Saha DXF]', cizim.projeNo, err) }
+        }
+
+        renderer.dispose()
+        document.body.removeChild(container)
+
+        if (!cancelled && images.length) {
+          imagesRef.current = images
+          setHazir(true)
+        }
+      } catch (err) { console.error('[Saha DXF overlay]', err) }
       finally { if (!cancelled) setYukleniyor(false) }
     }
 
     yukle()
-    return () => {
-      cancelled = true
-      if (viewerRef.current) { try { viewerRef.current.Clear() } catch {} viewerRef.current = null }
-      if (rendererRef.current) { rendererRef.current.dispose(); rendererRef.current = null }
-      if (containerRef.current) { try { document.body.removeChild(containerRef.current) } catch {} containerRef.current = null }
-    }
-  }, [cizim.dosyaId])
+    return () => { cancelled = true; imagesRef.current = [] }
+  }, [projeCizimleri.map(c => c.dosyaId).join(',')])
 
-  // Leaflet custom overlay: DXF canvas'ını doğrudan harita üzerinde göster
+  // Tek 2D canvas overlay — tüm projeleri compositing ile çiz
   useEffect(() => {
-    if (!hazir || !viewerRef.current || !rendererRef.current || !cizim.bounds) return
-    const viewer = viewerRef.current
-    const renderer = rendererRef.current
+    if (!hazir || !imagesRef.current.length) return
+
+    const canvas = document.createElement('canvas')
+    canvas.style.position = 'absolute'
+    canvas.style.pointerEvents = 'none'
 
     const DxfOverlay = L.Layer.extend({
-      onAdd(map) {
-        this._map = map
-        this._canvas = renderer.domElement
-        this._canvas.style.position = 'absolute'
-        this._canvas.style.pointerEvents = 'none'
-        map.getPanes().overlayPane.appendChild(this._canvas)
-        map.on('moveend', this._update, this)
-        this._update()
+      onAdd(m) {
+        this._map = m
+        m.getPanes().overlayPane.appendChild(canvas)
+        m.on('moveend', this._render, this)
+        this._render()
       },
-      onRemove(map) {
-        map.getPanes().overlayPane.removeChild(this._canvas)
-        map.off('moveend', this._update, this)
+      onRemove(m) {
+        if (canvas.parentNode) canvas.parentNode.removeChild(canvas)
+        m.off('moveend', this._render, this)
       },
-      _update() {
+      _render() {
         if (!this._map) return
-        const bounds = L.latLngBounds(cizim.bounds.southWest, cizim.bounds.northEast)
-        const topLeft = this._map.latLngToLayerPoint(bounds.getNorthWest())
-        const bottomRight = this._map.latLngToLayerPoint(bounds.getSouthEast())
-        const w = Math.abs(bottomRight.x - topLeft.x)
-        const h = Math.abs(bottomRight.y - topLeft.y)
+        const mapSize = this._map.getSize()
+        const dpr = window.devicePixelRatio || 1
+        canvas.width = mapSize.x * dpr
+        canvas.height = mapSize.y * dpr
+        canvas.style.width = mapSize.x + 'px'
+        canvas.style.height = mapSize.y + 'px'
 
-        // Canvas'ı harita piksel boyutuna ayarla
-        const size = Math.max(w, h, 512)
-        const renderSize = Math.min(Math.round(size * (window.devicePixelRatio || 1)), 8192)
+        // Canvas'ı harita origin'e hizala
+        const mapOrigin = this._map.getPixelOrigin()
+        const panePos = this._map.getPane('overlayPane').style.transform
+        // leaflet pane translate'ini yakala
+        const match = panePos?.match(/translate3d\((-?\d+)px,\s*(-?\d+)px/)
+        const tx = match ? parseInt(match[1]) : 0
+        const ty = match ? parseInt(match[2]) : 0
+        canvas.style.left = -tx + 'px'
+        canvas.style.top = -ty + 'px'
 
-        if (renderer.domElement.width !== renderSize || renderer.domElement.height !== renderSize) {
-          renderer.setSize(renderSize, renderSize)
+        const ctx = canvas.getContext('2d')
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+        // Her projeyi çiz
+        for (const { img, bounds } of imagesRef.current) {
+          const nw = this._map.latLngToLayerPoint(L.latLng(bounds.northEast[0], bounds.southWest[1]))
+          const se = this._map.latLngToLayerPoint(L.latLng(bounds.southWest[0], bounds.northEast[1]))
+          const dx = (nw.x + tx) * dpr
+          const dy = (nw.y + ty) * dpr
+          const dw = (se.x - nw.x) * dpr
+          const dh = (se.y - nw.y) * dpr
+          ctx.drawImage(img, dx, dy, dw, dh)
         }
-
-        // DXF kamerasını harita alanına göre ayarla
-        if (viewer.bounds && viewer.origin) {
-          const b = viewer.bounds, o = viewer.origin
-          viewer.FitView(b.minX - o.x, b.maxX - o.x, b.minY - o.y, b.maxY - o.y)
-        }
-        viewer.Render()
-
-        // Canvas'ı harita üzerinde konumlandır
-        this._canvas.style.left = topLeft.x + 'px'
-        this._canvas.style.top = topLeft.y + 'px'
-        this._canvas.style.width = w + 'px'
-        this._canvas.style.height = h + 'px'
       }
     })
 
@@ -851,11 +879,20 @@ function ProjeCizimKatmani({ cizim }) {
     return () => {
       if (overlayRef.current) { map.removeLayer(overlayRef.current); overlayRef.current = null }
     }
-  }, [hazir, map, cizim.bounds])
+  }, [hazir, map])
 
+  if (yukleniyor && !hazir) {
+    return <CircleMarker center={[41.5, 36.1]} radius={8} pathOptions={{ color: '#6366f1', fillOpacity: 0.3 }}>
+      <Tooltip permanent>DXF çizimleri yükleniyor...</Tooltip>
+    </CircleMarker>
+  }
+  return null
+}
+
+// ─── Proje Marker (sadece etiket + kart) ────────────────
+function ProjeMarkerKarti({ cizim }) {
   if (!cizim.bounds) return null
   const merkez = [(cizim.bounds.southWest[0] + cizim.bounds.northEast[0]) / 2, (cizim.bounds.southWest[1] + cizim.bounds.northEast[1]) / 2]
-  // İlk noktayı referans al, 150m yarıçap
   const referans = (cizim.noktalar?.[0]) ? [cizim.noktalar[0].lat, cizim.noktalar[0].lng] : merkez
   const storageKey = `saha_marker_${cizim.projeId}`
   const [markerPos, setMarkerPos] = useState(() => {
@@ -868,7 +905,7 @@ function ProjeCizimKatmani({ cizim }) {
     if (!marker) return
     const pos = marker.getLatLng()
     const refLatLng = L.latLng(referans[0], referans[1])
-    const mesafe = refLatLng.distanceTo(pos) // metre cinsinden
+    const mesafe = refLatLng.distanceTo(pos)
     if (mesafe > 150) {
       const dLat = pos.lat - referans[0], dLng = pos.lng - referans[1]
       const ratio = 150 / mesafe
@@ -877,7 +914,6 @@ function ProjeCizimKatmani({ cizim }) {
   }
 
   const handleDrag = useCallback((e) => { sinirla(e.target) }, [referans])
-
   const handleDragEnd = useCallback((e) => {
     sinirla(e.target)
     const pos = e.target.getLatLng()
@@ -887,21 +923,13 @@ function ProjeCizimKatmani({ cizim }) {
   }, [referans, storageKey])
 
   return (
-    <>
-      {yukleniyor && !hazir && (
-        <CircleMarker center={merkez} radius={8} pathOptions={{ color: '#6366f1', fillColor: '#6366f1', fillOpacity: 0.3 }}>
-          <Tooltip permanent>{cizim.projeNo} yükleniyor...</Tooltip>
-        </CircleMarker>
-      )}
-      {/* Proje marker + kart — sürüklenebilir */}
-      <Marker ref={markerRef} position={markerPos} icon={projeMarkerIcon(cizim.projeNo)} draggable={true}
-        eventHandlers={{ drag: handleDrag, dragend: handleDragEnd }}>
-        <Popup maxWidth={280} minWidth={240}>
-          <ProjeKarti cizim={cizim} />
-        </Popup>
-        <Tooltip direction="top" offset={[0, -10]}>{cizim.projeNo}</Tooltip>
-      </Marker>
-    </>
+    <Marker ref={markerRef} position={markerPos} icon={projeMarkerIcon(cizim.projeNo)} draggable={true}
+      eventHandlers={{ drag: handleDrag, dragend: handleDragEnd }}>
+      <Popup maxWidth={280} minWidth={240}>
+        <ProjeKarti cizim={cizim} />
+      </Popup>
+      <Tooltip direction="top" offset={[0, -10]}>{cizim.projeNo}</Tooltip>
+    </Marker>
   )
 }
 
@@ -1242,9 +1270,12 @@ export default function SahaPage() {
                 })
               })()}
 
-              {/* Proje DXF çizimleri */}
+              {/* Proje DXF çizimleri — tek vektörel canvas */}
+              {katmanlar.projeCizimleri && projeCizimleri.length > 0 && (
+                <TumProjelerDxfOverlay projeCizimleri={projeCizimleri} />
+              )}
               {katmanlar.projeCizimleri && projeCizimleri.map((cizim) => (
-                <ProjeCizimKatmani key={`cizim-${cizim.dosyaId}`} cizim={cizim} />
+                <ProjeMarkerKarti key={`mk-${cizim.dosyaId}`} cizim={cizim} />
               ))}
 
               <FitBounds ekipler={ekipler} paketler={paketler} projeCizimleri={katmanlar.projeCizimleri ? projeCizimleri : []} />

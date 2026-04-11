@@ -21,8 +21,8 @@ const TUM_SUTUNLAR = [
   { key: 'malzeme_adi',  label: 'Malzeme Adı',   varsayilan: true,  zorunlu: true },
   { key: 'birim',        label: 'Birim',          varsayilan: true  },
   { key: 'miktar',       label: 'Miktar',         varsayilan: true  },
-  { key: 'birim_fiyat',  label: 'Birim Fiyat',   varsayilan: false },
-  { key: 'toplam_tutar', label: 'Toplam Tutar',  varsayilan: false },
+  { key: 'birim_fiyat',  label: 'Birim Fiyat',   varsayilan: true  },
+  { key: 'toplam_tutar', label: 'Toplam Tutar',  varsayilan: true  },
   { key: 'alinan_miktar',label: 'Alınan Miktar', varsayilan: false },
   { key: 'durum',        label: 'Durum',          varsayilan: true  },
   { key: 'depo',         label: 'Depo Stok',      varsayilan: true  },
@@ -626,7 +626,7 @@ function KesifSatiri({ kalem: k, siraNo, secili, birlestirRenk, onSecimDegistir,
         </td>
       )}
       {gorSutun('toplam_tutar') && (
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums font-medium">
+        <td className="px-3 py-1.5 text-left text-xs tabular-nums font-medium">
           {((k.miktar || 0) * (k.birim_fiyat || 0)).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
         </td>
       )}
@@ -927,6 +927,14 @@ export default function ProjeKesif({ projeId }) {
           const durumIdx = parsed.indexOf('durum')
           parsed.splice(durumIdx >= 0 ? durumIdx + 1 : parsed.length, 0, 'depo')
         }
+        if (!parsed.includes('birim_fiyat')) {
+          const miktarIdx = parsed.indexOf('miktar')
+          parsed.splice(miktarIdx >= 0 ? miktarIdx + 1 : parsed.length, 0, 'birim_fiyat')
+        }
+        if (!parsed.includes('toplam_tutar')) {
+          const bfIdx = parsed.indexOf('birim_fiyat')
+          parsed.splice(bfIdx >= 0 ? bfIdx + 1 : parsed.length, 0, 'toplam_tutar')
+        }
         return parsed
       }
     } catch {}
@@ -1018,7 +1026,7 @@ export default function ProjeKesif({ projeId }) {
                 {gorSutun('birim') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim</th>}
                 {gorSutun('miktar') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Miktar</th>}
                 {gorSutun('birim_fiyat') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim Fiyat</th>}
-                {gorSutun('toplam_tutar') && <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Toplam Tutar</th>}
+                {gorSutun('toplam_tutar') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Toplam Tutar</th>}
                 {gorSutun('alinan_miktar') && <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Alınan Miktar</th>}
                 {gorSutun('durum') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Durum</th>}
                 {gorSutun('depo') && (
@@ -1091,6 +1099,32 @@ export default function ProjeKesif({ projeId }) {
                 })
               )}
             </tbody>
+            {/* Genel Toplam */}
+            {kesifler?.length > 0 && gorSutun('toplam_tutar') && (
+              <tfoot className="sticky bottom-0 bg-muted/95 backdrop-blur-sm border-t-2 border-primary/20">
+                <tr>
+                  <td colSpan={2} />
+                  {gorSutun('okunan_deger') && <td />}
+                  {gorSutun('malzeme_kodu') && <td />}
+                  {gorSutun('malzeme_adi') && (
+                    <td className="px-3 py-2 text-xs font-bold text-right">TOPLAM</td>
+                  )}
+                  {gorSutun('birim') && <td />}
+                  {gorSutun('miktar') && <td />}
+                  {gorSutun('birim_fiyat') && <td />}
+                  {gorSutun('toplam_tutar') && (
+                    <td className="px-3 py-2 text-left text-sm font-bold text-primary tabular-nums">
+                      {kesifler.reduce((t, k) => t + (k.miktar || 0) * (k.birim_fiyat || 0), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL
+                    </td>
+                  )}
+                  {gorSutun('alinan_miktar') && <td />}
+                  {gorSutun('durum') && <td />}
+                  {gorSutun('depo') && <td />}
+                  {gorSutun('notlar') && <td />}
+                  <td />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
