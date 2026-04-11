@@ -140,6 +140,38 @@ function runMigrations(database) {
   // Projeler: dış kişi (teslim eden) referansı
   addColumnIfNotExists(database, 'projeler', 'teslim_eden_id', 'INTEGER REFERENCES dis_kisiler(id)');
 
+  // Projeler: Excel import alanları
+  addColumnIfNotExists(database, 'projeler', 'yil', 'INTEGER');
+  addColumnIfNotExists(database, 'projeler', 'ihale_no', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'ihale_adi', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'yuklenici', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'tur', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'cbs_id', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'cbs_durum', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'is_durumu', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'demontaj_teslim_durumu', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'sozlesme_kesfi', 'REAL');
+  addColumnIfNotExists(database, 'projeler', 'kesif_tutari', 'REAL');
+  addColumnIfNotExists(database, 'projeler', 'hakedis_miktari', 'REAL');
+  addColumnIfNotExists(database, 'projeler', 'hakedis_yuzdesi', 'REAL');
+  addColumnIfNotExists(database, 'projeler', 'ilerleme_miktari', 'REAL');
+  addColumnIfNotExists(database, 'projeler', 'ilerleme_yuzdesi', 'REAL');
+  addColumnIfNotExists(database, 'projeler', 'proje_onay_durumu', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'is_grubu', 'TEXT');
+  addColumnIfNotExists(database, 'projeler', 'proje_baslangic_tarihi', 'DATE');
+  addColumnIfNotExists(database, 'projeler', 'enerjilenme_tarihi', 'DATE');
+  addColumnIfNotExists(database, 'projeler', 'pyp', 'TEXT');
+
+  // Malzeme kataloğu yeni alanlar
+  addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'eski_poz', 'TEXT');
+  addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'malzeme_birim_fiyat', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'montaj_birim_fiyat', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'demontaj_birim_fiyat', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'demontajdan_montaj_fiyat', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'malzeme_sap_fiyat', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'filtre', 'TEXT');
+  addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'agirlik', 'REAL');
+
   // Departman sistemi: roller tablosuna departman_id ve birim_id
   addColumnIfNotExists(database, 'roller', 'departman_id', 'INTEGER REFERENCES departmanlar(id)');
   addColumnIfNotExists(database, 'roller', 'birim_id', 'INTEGER REFERENCES departman_birimleri(id)');

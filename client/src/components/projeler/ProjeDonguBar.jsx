@@ -431,7 +431,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
 
         setIlerleme('Viewer başlatılıyor...')
         const viewer = new DxfViewer(containerRef.current, {
-          clearColor: new three.Color('#f8fafc'),
+          clearColor: new three.Color('#000000'),
           autoResize: true,
           colorCorrection: true,
           renderer: rendererRef.current,
@@ -810,7 +810,7 @@ function DosyaYuklemeIcerik({ adim, projeId, onDosyaSec }) {
               const handleDosyaTikla = (e) => {
                 e.stopPropagation()
                 const ext = adi.split('.').pop().toLowerCase()
-                onDosyaSec?.({ id: dosya.id, adi, adimAdi: adim.adim_adi, gorsel, xls: xlsMi(adi), dxf: ext === 'dxf' || ext === 'dwg' })
+                onDosyaSec?.({ id: dosya.id, adi, adimAdi: adim.adim_adi, adimKodu: adim.adim_kodu, gorsel, xls: xlsMi(adi), dxf: ext === 'dxf' || ext === 'dwg' })
               }
               if (gorsel) return (
                 <div key={dosya.id} className="relative group" onClick={handleDosyaTikla}>
@@ -1433,12 +1433,12 @@ export default function ProjeDonguBar({ projeId }) {
                   src={`/api/dosya/${seciliDosya.id}/dosya`}
                   dosyaId={seciliDosya.id}
                   projeId={projeId}
-                  onDirekTikla={(d) => { if (!seciliDirek) setSeciliDirek(d) }}
-                  direkNotlari={direkNotlari}
-                  onNotSil={(key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y })}
+                  onDirekTikla={seciliDosya.adimKodu === 'kesif' ? (d) => { if (!seciliDirek) setSeciliDirek(d) } : undefined}
+                  direkNotlari={seciliDosya.adimKodu === 'kesif' ? direkNotlari : undefined}
+                  onNotSil={seciliDosya.adimKodu === 'kesif' ? (key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y }) : undefined}
                 />
-                {/* Direk popup */}
-                {seciliDirek && (
+                {/* Direk popup — sadece Keşif adımında */}
+                {seciliDosya.adimKodu === 'kesif' && seciliDirek && (
                   <DirekMalzemePopup
                     direk={seciliDirek}
                     projeId={projeId}

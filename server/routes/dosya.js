@@ -275,6 +275,47 @@ router.post('/yukle', upload.single('dosya'), async (req, res) => {
       veriPaketiService.tamamla(veriPaketiId);
     }
 
+    // ── Yeni Durum Proje'ye DXF yüklendiğinde Keşif ve Metraj adımlarına kopyala ──
+    if (projeAdimId && projeId && req.file.originalname?.toLowerCase().endsWith('.dxf')) {
+      const db = require('../db/database').getDb();
+      const adim = db.prepare('SELECT adim_kodu FROM proje_adimlari WHERE id = ?').get(projeAdimId);
+      if (adim?.adim_kodu === 'yeni_durum_proje') {
+        const fs = require('fs');
+        const path = require('path');
+        const hedefAdimlar = db.prepare(
+          `SELECT id, adim_kodu, adim_adi FROM proje_adimlari WHERE proje_id = ? AND adim_kodu IN ('kesif', 'metraj')`
+        ).all(projeId);
+
+        for (const hedef of hedefAdimlar) {
+          try {
+            // Orijinal dosyayı kopyala
+            const kaynakYol = dosyaService.dosyaYoluCozumle(sonuc.dosya_yolu);
+            const hedefAdi = `${projeNo || 'proje'}_${hedef.adim_adi.replace(/\s+/g, '-')}.dxf`;
+            const hedefGorYol = sonuc.dosya_yolu.replace(/[^/]+$/, `../${hedef.adim_adi.replace(/\s+/g, '_')}/${hedefAdi}`).replace(/\.\.\//g, '');
+            // Basitleştirilmiş yol
+            const parcalar = sonuc.dosya_yolu.split('/');
+            parcalar.pop(); // dosya adını çıkar
+            const hedefKlasor = parcalar.join('/').replace(/\/[^/]+$/, `/${hedef.adim_adi.replace(/\s+/g, '_')}`);
+            const goreceliYol = `${hedefKlasor}/${hedefAdi}`;
+            const hedefTamYol = dosyaService.dosyaYoluCozumle(goreceliYol);
+
+            fs.mkdirSync(path.dirname(hedefTamYol), { recursive: true });
+            fs.copyFileSync(kaynakYol, hedefTamYol);
+
+            // Önceki dosyayı pasife çek
+            db.prepare(`UPDATE dosyalar SET durum = 'silindi' WHERE proje_adim_id = ? AND dosya_adi LIKE '%.dxf' AND durum = 'aktif'`).run(hedef.id);
+
+            // DB kaydı oluştur
+            db.prepare(`
+              INSERT INTO dosyalar (dosya_adi, orijinal_adi, dosya_yolu, dosya_boyutu, mime_tipi, kategori,
+                alan, proje_id, proje_adim_id, durum, olusturma_tarihi)
+              VALUES (?, ?, ?, ?, 'application/dxf', 'cizim', 'proje', ?, ?, 'aktif', datetime('now'))
+            `).run(hedefAdi, hedefAdi, goreceliYol, sonuc.dosya_boyutu || 0, projeId, hedef.id);
+          } catch (kopyaErr) { console.error(`DXF kopyalama hatası (${hedef.adim_kodu}):`, kopyaErr.message); }
+        }
+      }
+    }
+
     res.json({ success: true, data: sonuc });
   } catch (error) {
     console.error('Dosya yükleme hatası:', error);

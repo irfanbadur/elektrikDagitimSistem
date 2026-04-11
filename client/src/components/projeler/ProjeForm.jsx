@@ -137,6 +137,27 @@ const BOS_FORM = {
   enerji_alinan_direk_no: '',
   kesinti_ihtiyaci: null,
   izinler: null,
+  // Excel import alanları
+  yil: '',
+  pyp: '',
+  ihale_no: '',
+  ihale_adi: '',
+  yuklenici: '',
+  tur: '',
+  cbs_id: '',
+  cbs_durum: '',
+  is_durumu: '',
+  demontaj_teslim_durumu: '',
+  sozlesme_kesfi: '',
+  kesif_tutari: '',
+  hakedis_miktari: '',
+  hakedis_yuzdesi: '',
+  ilerleme_miktari: '',
+  ilerleme_yuzdesi: '',
+  proje_onay_durumu: '',
+  is_grubu: '',
+  proje_baslangic_tarihi: '',
+  enerjilenme_tarihi: '',
 }
 
 export default function ProjeForm() {
@@ -226,6 +247,26 @@ export default function ProjeForm() {
         enerji_alinan_direk_no: proje.enerji_alinan_direk_no || '',
         kesinti_ihtiyaci: proje.kesinti_ihtiyaci != null ? Boolean(proje.kesinti_ihtiyaci) : null,
         izinler: proje.izinler ? (typeof proje.izinler === 'string' ? JSON.parse(proje.izinler) : proje.izinler) : null,
+        yil: proje.yil || '',
+        pyp: proje.pyp || '',
+        ihale_no: proje.ihale_no || '',
+        ihale_adi: proje.ihale_adi || '',
+        yuklenici: proje.yuklenici || '',
+        tur: proje.tur || '',
+        cbs_id: proje.cbs_id || '',
+        cbs_durum: proje.cbs_durum || '',
+        is_durumu: proje.is_durumu || '',
+        demontaj_teslim_durumu: proje.demontaj_teslim_durumu || '',
+        sozlesme_kesfi: proje.sozlesme_kesfi || '',
+        kesif_tutari: proje.kesif_tutari || '',
+        hakedis_miktari: proje.hakedis_miktari || '',
+        hakedis_yuzdesi: proje.hakedis_yuzdesi || '',
+        ilerleme_miktari: proje.ilerleme_miktari || '',
+        ilerleme_yuzdesi: proje.ilerleme_yuzdesi || '',
+        proje_onay_durumu: proje.proje_onay_durumu || '',
+        is_grubu: proje.is_grubu || '',
+        proje_baslangic_tarihi: proje.proje_baslangic_tarihi ? proje.proje_baslangic_tarihi.slice(0, 10) : '',
+        enerjilenme_tarihi: proje.enerjilenme_tarihi ? proje.enerjilenme_tarihi.slice(0, 10) : '',
       })
     }
   }, [duzenleModu, proje])
@@ -438,6 +479,26 @@ export default function ProjeForm() {
       enerji_alinan_direk_no: form.enerji_alinan_direk_no || null,
       kesinti_ihtiyaci: form.kesinti_ihtiyaci,
       izinler: form.izinler,
+      yil: form.yil ? Number(form.yil) : null,
+      pyp: form.pyp || null,
+      ihale_no: form.ihale_no || null,
+      ihale_adi: form.ihale_adi || null,
+      yuklenici: form.yuklenici || null,
+      tur: form.tur || null,
+      cbs_id: form.cbs_id || null,
+      cbs_durum: form.cbs_durum || null,
+      is_durumu: form.is_durumu || null,
+      demontaj_teslim_durumu: form.demontaj_teslim_durumu || null,
+      sozlesme_kesfi: form.sozlesme_kesfi ? Number(form.sozlesme_kesfi) : null,
+      kesif_tutari: form.kesif_tutari ? Number(form.kesif_tutari) : null,
+      hakedis_miktari: form.hakedis_miktari ? Number(form.hakedis_miktari) : null,
+      hakedis_yuzdesi: form.hakedis_yuzdesi ? Number(form.hakedis_yuzdesi) : null,
+      ilerleme_miktari: form.ilerleme_miktari ? Number(form.ilerleme_miktari) : null,
+      ilerleme_yuzdesi: form.ilerleme_yuzdesi ? Number(form.ilerleme_yuzdesi) : null,
+      proje_onay_durumu: form.proje_onay_durumu || null,
+      is_grubu: form.is_grubu || null,
+      proje_baslangic_tarihi: form.proje_baslangic_tarihi || null,
+      enerjilenme_tarihi: form.enerjilenme_tarihi || null,
     }
 
     try {
@@ -1020,6 +1081,127 @@ export default function ProjeForm() {
                 onChange={(e) => handleChange('teslim_tarihi', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Sözleşme ve İhale Bilgileri */}
+        <div className="rounded-lg border border-border bg-card p-6">
+          <h2 className="mb-4 text-lg font-semibold">Sözleşme / İhale Bilgileri</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium">PYP</label>
+              <input type="text" value={form.pyp} onChange={(e) => handleChange('pyp', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="26.BATI.KET.1.001" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">İhale No</label>
+              <input type="text" value={form.ihale_no} onChange={(e) => handleChange('ihale_no', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">İhale Adı</label>
+              <input type="text" value={form.ihale_adi} onChange={(e) => handleChange('ihale_adi', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Yüklenici</label>
+              <input type="text" value={form.yuklenici} onChange={(e) => handleChange('yuklenici', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Tür</label>
+              <input type="text" value={form.tur} onChange={(e) => handleChange('tur', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="TRAFOLU YB" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Yıl</label>
+              <input type="number" value={form.yil} onChange={(e) => handleChange('yil', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">İş Grubu (Etap)</label>
+              <input type="text" value={form.is_grubu} onChange={(e) => handleChange('is_grubu', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Sözleşme Keşfi</label>
+              <input type="number" step="0.01" value={form.sozlesme_kesfi} onChange={(e) => handleChange('sozlesme_kesfi', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Keşif Tutarı</label>
+              <input type="number" step="0.01" value={form.kesif_tutari} onChange={(e) => handleChange('kesif_tutari', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+          </div>
+        </div>
+
+        {/* CBS ve Durum Bilgileri */}
+        <div className="rounded-lg border border-border bg-card p-6">
+          <h2 className="mb-4 text-lg font-semibold">CBS ve Durum Bilgileri</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium">CBS ID</label>
+              <input type="text" value={form.cbs_id} onChange={(e) => handleChange('cbs_id', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">CBS Durum</label>
+              <input type="text" value={form.cbs_durum} onChange={(e) => handleChange('cbs_durum', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">İş Durumu</label>
+              <input type="text" value={form.is_durumu} onChange={(e) => handleChange('is_durumu', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Proje Onay Durumu</label>
+              <input type="text" value={form.proje_onay_durumu} onChange={(e) => handleChange('proje_onay_durumu', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Demontaj Teslim Durumu</label>
+              <input type="text" value={form.demontaj_teslim_durumu} onChange={(e) => handleChange('demontaj_teslim_durumu', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+          </div>
+        </div>
+
+        {/* Hakediş ve İlerleme */}
+        <div className="rounded-lg border border-border bg-card p-6">
+          <h2 className="mb-4 text-lg font-semibold">Hakediş ve İlerleme</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Hakediş Miktarı</label>
+              <input type="number" step="0.01" value={form.hakedis_miktari} onChange={(e) => handleChange('hakedis_miktari', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Hakediş %</label>
+              <input type="number" step="0.01" value={form.hakedis_yuzdesi} onChange={(e) => handleChange('hakedis_yuzdesi', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">İlerleme Miktarı</label>
+              <input type="number" step="0.01" value={form.ilerleme_miktari} onChange={(e) => handleChange('ilerleme_miktari', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">İlerleme %</label>
+              <input type="number" step="0.01" value={form.ilerleme_yuzdesi} onChange={(e) => handleChange('ilerleme_yuzdesi', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Proje Başlangıç Tarihi</label>
+              <input type="date" value={form.proje_baslangic_tarihi} onChange={(e) => handleChange('proje_baslangic_tarihi', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Enerjilenme Tarihi</label>
+              <input type="date" value={form.enerjilenme_tarihi} onChange={(e) => handleChange('enerjilenme_tarihi', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
           </div>
         </div>

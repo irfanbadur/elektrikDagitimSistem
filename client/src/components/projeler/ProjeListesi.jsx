@@ -158,7 +158,7 @@ export default function ProjeListesi() {
       },
       {
         accessorKey: 'proje_tipi',
-        header: 'Tip',
+        header: 'Tür',
         cell: ({ getValue }) => (
           <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium">
             {getValue()}
@@ -172,7 +172,7 @@ export default function ProjeListesi() {
       },
       {
         accessorKey: 'musteri_adi',
-        header: 'Musteri',
+        header: 'Proje Adı',
         cell: ({ row }) => row.original.musteri_adi || '-',
       },
       {

@@ -22,12 +22,15 @@ const SAYFA_BOYUTU_SECENEKLERI = [25, 50, 100, 250, 500]
 const TUM_SUTUNLAR = [
   { key: 'malzeme_kodu', label: 'Malzeme Kodu', varsayilan: true },
   { key: 'poz_birlesik', label: 'Poz Birleşik', varsayilan: true },
-  { key: 'malzeme_tanimi_sap', label: 'SAP Tanımı', varsayilan: false },
+  { key: 'eski_poz', label: 'Eski Poz', varsayilan: false },
   { key: 'malzeme_cinsi', label: 'Malzeme Cinsi', varsayilan: true },
+  { key: 'termin', label: 'Malzeme Termini', varsayilan: true },
   { key: 'olcu', label: 'Ölçü', varsayilan: true },
-  { key: 'termin', label: 'Termin', varsayilan: true },
-  { key: 'ihale_kesfi', label: 'İhale Keşfi', varsayilan: true },
-  { key: 'toplam_talep', label: 'Toplam Talep', varsayilan: true },
+  { key: 'malzeme_birim_fiyat', label: 'Malzeme B.F.', varsayilan: true },
+  { key: 'montaj_birim_fiyat', label: 'Montaj B.F.', varsayilan: true },
+  { key: 'demontaj_birim_fiyat', label: 'Demontaj B.F.', varsayilan: false },
+  { key: 'demontajdan_montaj_fiyat', label: 'Dem.Montaj B.F.', varsayilan: false },
+  { key: 'malzeme_sap_fiyat', label: 'SAP Fiyatı', varsayilan: true },
   { key: 'kategori', label: 'Kategori', varsayilan: false },
 ]
 
@@ -131,8 +134,8 @@ function HucreDegeri({ sutunKey, malzeme }) {
       return <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{val || '-'}</td>
     case 'poz_birlesik':
       return <td className="px-3 py-2 font-mono text-xs font-medium text-blue-600 dark:text-blue-400">{val || '-'}</td>
-    case 'malzeme_tanimi_sap':
-      return <td className="px-3 py-2 text-xs">{val || '-'}</td>
+    case 'eski_poz':
+      return <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{val || '-'}</td>
     case 'malzeme_cinsi':
       return <td className="px-3 py-2 text-xs font-medium">{val || '-'}</td>
     case 'olcu':
@@ -156,6 +159,12 @@ function HucreDegeri({ sutunKey, malzeme }) {
           ) : '-'}
         </td>
       )
+    case 'malzeme_birim_fiyat':
+    case 'montaj_birim_fiyat':
+    case 'demontaj_birim_fiyat':
+    case 'demontajdan_montaj_fiyat':
+    case 'malzeme_sap_fiyat':
+      return <td className="px-3 py-2 text-right text-xs tabular-nums">{val ? val.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}</td>
     case 'ihale_kesfi':
     case 'toplam_talep':
       return <td className="px-3 py-2 text-right text-xs tabular-nums">{val ? val.toLocaleString('tr-TR') : '0'}</td>
@@ -223,12 +232,7 @@ export default function DepoKatalogPage() {
     })
   }, [malzemeler, siralama])
 
-  // Pagination
-  const toplamSayfa = Math.max(1, Math.ceil((siraliData?.length || 0) / sayfaBoyutu))
-  const sayfaData = useMemo(() => {
-    const baslangic = (sayfa - 1) * sayfaBoyutu
-    return siraliData.slice(baslangic, baslangic + sayfaBoyutu)
-  }, [siraliData, sayfa, sayfaBoyutu])
+  const sayfaData = siraliData
 
   const handleSirala = (key) => {
     setSiralama((prev) =>
@@ -311,11 +315,11 @@ export default function DepoKatalogPage() {
         </div>
 
         {/* Tablo */}
-        <div className="overflow-hidden rounded-lg border border-input bg-card">
-          <div className="overflow-x-auto">
+        <div className="rounded-lg border border-input bg-card">
+          <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 340px)' }}>
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-input bg-muted/50">
+              <thead className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm">
+                <tr className="border-b border-input">
                   <th className="w-12 px-3 py-3 text-left text-xs font-semibold text-muted-foreground">#</th>
                   {gorunurSutunListesi.map((sutun) => (
                     <th
@@ -362,7 +366,7 @@ export default function DepoKatalogPage() {
                 ) : (
                   sayfaData.map((m, idx) => (
                     <tr key={m.id} className="border-b border-input/50 transition-colors hover:bg-muted/30">
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{(sayfa - 1) * sayfaBoyutu + idx + 1}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{idx + 1}</td>
                       {gorunurSutunListesi.map((sutun) => (
                         <HucreDegeri key={sutun.key} sutunKey={sutun.key} malzeme={m} />
                       ))}
@@ -373,59 +377,10 @@ export default function DepoKatalogPage() {
             </table>
           </div>
 
-          {/* Pagination */}
-          {!isLoading && siraliData.length > sayfaBoyutu && (
-            <div className="flex items-center justify-between border-t border-input px-4 py-3">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Sayfa basina:</span>
-                  <select
-                    value={sayfaBoyutu}
-                    onChange={(e) => { setSayfaBoyutu(Number(e.target.value)); setSayfa(1) }}
-                    className="rounded border border-input bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    {SAYFA_BOYUTU_SECENEKLERI.map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {((sayfa - 1) * sayfaBoyutu + 1).toLocaleString('tr-TR')} - {Math.min(sayfa * sayfaBoyutu, siraliData.length).toLocaleString('tr-TR')} / {siraliData.length.toLocaleString('tr-TR')} kayit
-                </p>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setSayfa(1)}
-                  disabled={sayfa === 1}
-                  className="rounded px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Ilk
-                </button>
-                <button
-                  onClick={() => setSayfa((s) => Math.max(1, s - 1))}
-                  disabled={sayfa === 1}
-                  className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="px-3 py-1 text-xs font-medium">
-                  {sayfa} / {toplamSayfa}
-                </span>
-                <button
-                  onClick={() => setSayfa((s) => Math.min(toplamSayfa, s + 1))}
-                  disabled={sayfa === toplamSayfa}
-                  className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => setSayfa(toplamSayfa)}
-                  disabled={sayfa === toplamSayfa}
-                  className="rounded px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Son
-                </button>
-              </div>
+          {/* Kayıt sayısı */}
+          {!isLoading && siraliData.length > 0 && (
+            <div className="border-t border-input px-4 py-2">
+              <p className="text-xs text-muted-foreground">{siraliData.length.toLocaleString('tr-TR')} kayıt</p>
             </div>
           )}
         </div>
