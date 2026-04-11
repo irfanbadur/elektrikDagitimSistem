@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap, useMapEvents, Polyline, CircleMarker, ImageOverlay } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap, useMapEvents, Polyline, CircleMarker, ImageOverlay, LayersControl, LayerGroup } from 'react-leaflet'
 import L from 'leaflet'
 import MainLayout from '@/components/layout/MainLayout'
 import '@/utils/leafletFix'
@@ -854,15 +854,124 @@ function ProjeCizimKatmani({ cizim }) {
   }, [hazir, map, cizim.bounds])
 
   if (!cizim.bounds) return null
+  const merkez = [(cizim.bounds.southWest[0] + cizim.bounds.northEast[0]) / 2, (cizim.bounds.southWest[1] + cizim.bounds.northEast[1]) / 2]
+  // İlk noktayı referans al, 150m yarıçap
+  const referans = (cizim.noktalar?.[0]) ? [cizim.noktalar[0].lat, cizim.noktalar[0].lng] : merkez
+  const storageKey = `saha_marker_${cizim.projeId}`
+  const [markerPos, setMarkerPos] = useState(() => {
+    try { const s = localStorage.getItem(storageKey); if (s) return JSON.parse(s) } catch {}
+    return merkez
+  })
+  const markerRef = useRef(null)
 
-  return yukleniyor && !hazir ? (
-    <CircleMarker
-      center={[(cizim.bounds.southWest[0] + cizim.bounds.northEast[0]) / 2, (cizim.bounds.southWest[1] + cizim.bounds.northEast[1]) / 2]}
-      radius={8} pathOptions={{ color: '#6366f1', fillColor: '#6366f1', fillOpacity: 0.3 }}
-    >
-      <Tooltip permanent>{cizim.projeNo} yükleniyor...</Tooltip>
-    </CircleMarker>
-  ) : null
+  const sinirla = (marker) => {
+    if (!marker) return
+    const pos = marker.getLatLng()
+    const refLatLng = L.latLng(referans[0], referans[1])
+    const mesafe = refLatLng.distanceTo(pos) // metre cinsinden
+    if (mesafe > 150) {
+      const dLat = pos.lat - referans[0], dLng = pos.lng - referans[1]
+      const ratio = 150 / mesafe
+      marker.setLatLng(L.latLng(referans[0] + dLat * ratio, referans[1] + dLng * ratio))
+    }
+  }
+
+  const handleDrag = useCallback((e) => { sinirla(e.target) }, [referans])
+
+  const handleDragEnd = useCallback((e) => {
+    sinirla(e.target)
+    const pos = e.target.getLatLng()
+    const yeni = [pos.lat, pos.lng]
+    setMarkerPos(yeni)
+    try { localStorage.setItem(storageKey, JSON.stringify(yeni)) } catch {}
+  }, [referans, storageKey])
+
+  return (
+    <>
+      {yukleniyor && !hazir && (
+        <CircleMarker center={merkez} radius={8} pathOptions={{ color: '#6366f1', fillColor: '#6366f1', fillOpacity: 0.3 }}>
+          <Tooltip permanent>{cizim.projeNo} yükleniyor...</Tooltip>
+        </CircleMarker>
+      )}
+      {/* Proje marker + kart — sürüklenebilir */}
+      <Marker ref={markerRef} position={markerPos} icon={projeMarkerIcon(cizim.projeNo)} draggable={true}
+        eventHandlers={{ drag: handleDrag, dragend: handleDragEnd }}>
+        <Popup maxWidth={280} minWidth={240}>
+          <ProjeKarti cizim={cizim} />
+        </Popup>
+        <Tooltip direction="top" offset={[0, -10]}>{cizim.projeNo}</Tooltip>
+      </Marker>
+    </>
+  )
+}
+
+// ─── PROJE MARKER İKONU ──────────────────────────────────
+function projeMarkerIcon(projeNo) {
+  return L.divIcon({
+    className: 'proje-cizim-marker',
+    html: `<div style="
+      display:inline-flex;align-items:center;gap:4px;
+      background:#4f46e5;color:white;padding:2px 8px;border-radius:4px;
+      font-size:11px;font-weight:600;white-space:nowrap;
+      box-shadow:0 2px 4px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.3);
+    ">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M9 8h6M9 12h6M9 16h6M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16"/></svg>
+      ${projeNo}
+    </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  })
+}
+
+// ─── PROJE KARTI (Accordion) ─────────────────────────────
+const DURUM_RENK = {
+  baslama: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Başlama' },
+  devam_ediyor: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'Devam Ediyor' },
+  tamamlandi: { bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'Tamamlandı' },
+}
+
+function ProjeKarti({ cizim }) {
+  const [acik, setAcik] = useState(false)
+  const durum = DURUM_RENK[cizim.durum] || DURUM_RENK.baslama
+
+  return (
+    <div style={{ margin: -8 }}>
+      {/* Header — her zaman görünür */}
+      <div
+        onClick={() => setAcik(p => !p)}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: '#4f46e5', color: 'white', borderRadius: acik ? '6px 6px 0 0' : '6px', gap: 6 }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>{cizim.projeNo}</span>
+          <span style={{ fontSize: 11, opacity: 0.85 }}>{cizim.musteri_adi || cizim.mahalle || ''}</span>
+        </div>
+        <span style={{ fontSize: 16, transition: 'transform 0.2s', transform: acik ? 'rotate(180deg)' : 'rotate(0)' }}>▾</span>
+      </div>
+
+      {/* Body — accordion */}
+      {acik && (
+        <div style={{ padding: '8px 10px', fontSize: 12, lineHeight: 1.6, background: '#f8fafc', borderRadius: '0 0 6px 6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
+            <div><span style={{ color: '#6b7280' }}>Tip:</span> <b>{cizim.projeTipi}</b></div>
+            <div><span style={{ color: '#6b7280' }}>Durum:</span> <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: durum.bg === 'bg-blue-50' ? '#dbeafe' : durum.bg === 'bg-amber-50' ? '#fef3c7' : '#d1fae5', color: durum.text === 'text-blue-700' ? '#1d4ed8' : durum.text === 'text-amber-700' ? '#b45309' : '#047857' }}>{durum.label}</span></div>
+            {cizim.mahalle && <div><span style={{ color: '#6b7280' }}>Mahalle:</span> {cizim.mahalle}</div>}
+            {cizim.ilce && <div><span style={{ color: '#6b7280' }}>İlçe:</span> {cizim.ilce}</div>}
+            {cizim.bolge_adi && <div><span style={{ color: '#6b7280' }}>Bölge:</span> {cizim.bolge_adi}</div>}
+            {cizim.ekip_adi && <div><span style={{ color: '#6b7280' }}>Ekip:</span> {cizim.ekip_adi}</div>}
+            {cizim.aktif_faz && <div style={{ gridColumn: '1/-1' }}><span style={{ color: '#6b7280' }}>Aşama:</span> {cizim.aktif_faz} → {cizim.aktif_adim}</div>}
+            {cizim.baslama_tarihi && <div><span style={{ color: '#6b7280' }}>Başlangıç:</span> {cizim.baslama_tarihi}</div>}
+            {cizim.bitis_tarihi && <div><span style={{ color: '#6b7280' }}>Bitiş:</span> {cizim.bitis_tarihi}</div>}
+          </div>
+          {cizim.notlar && <div style={{ marginTop: 6, padding: '4px 6px', background: '#f1f5f9', borderRadius: 4, fontSize: 11, color: '#475569' }}>{cizim.notlar}</div>}
+          <a href={`/projeler/${cizim.projeId}`}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 8, padding: '6px 0', background: '#4f46e5', color: 'white', borderRadius: 4, fontSize: 12, fontWeight: 600, textDecoration: 'none' }}
+          >
+            Projeye Git →
+          </a>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── HARİTA TIKLAMA — KONUM ATAMA ───────────────────────
@@ -938,7 +1047,14 @@ export default function SahaPage() {
                 const r = await fetch(`/api/dosya/${p.dosya_id}/dxf-harita`)
                 const j = await r.json()
                 if (j.success && j.data) {
-                  return { projeId: p.id, projeNo: p.proje_no, projeTipi: p.proje_tipi, mahalle: p.mahalle, dosyaId: p.dosya_id, ...j.data }
+                  return {
+                    projeId: p.id, projeNo: p.proje_no, projeTipi: p.proje_tipi,
+                    musteri_adi: p.musteri_adi, mahalle: p.mahalle, durum: p.durum,
+                    il: p.il, ilce: p.ilce, bolge_adi: p.bolge_adi, ekip_adi: p.ekip_adi,
+                    aktif_faz: p.aktif_faz, aktif_adim: p.aktif_adim,
+                    baslama_tarihi: p.baslama_tarihi, bitis_tarihi: p.bitis_tarihi,
+                    notlar: p.notlar, dosyaId: p.dosya_id, ...j.data
+                  }
                 }
               } catch {}
               return null
@@ -1073,12 +1189,30 @@ export default function SahaPage() {
               style={{ height: '100%', width: '100%' }}
               zoomControl={true}
             >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                maxZoom={22}
-                maxNativeZoom={19}
-              />
+              <LayersControl position="topright">
+                <LayersControl.BaseLayer checked name="Harita">
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    maxZoom={22}
+                    maxNativeZoom={19}
+                  />
+                </LayersControl.BaseLayer>
+                <LayersControl.BaseLayer name="Uydu">
+                  <TileLayer
+                    url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                    maxZoom={22}
+                    maxNativeZoom={21}
+                  />
+                </LayersControl.BaseLayer>
+                <LayersControl.BaseLayer name="Uydu + Etiket">
+                  <TileLayer
+                    url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
+                    maxZoom={22}
+                    maxNativeZoom={21}
+                  />
+                </LayersControl.BaseLayer>
+              </LayersControl>
 
               {/* Ekip markerlari */}
               {katmanlar.ekipler && ekipler.map((ekip, index) => (

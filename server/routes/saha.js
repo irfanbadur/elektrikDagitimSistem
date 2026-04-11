@@ -294,11 +294,19 @@ router.get('/proje-cizimleri', (req, res) => {
     // Sadece "Yeni Durum Proje" adımındaki DXF dosyaları
     const projeler = db.prepare(`
       SELECT p.id, p.proje_no, p.proje_tipi, p.musteri_adi, p.mahalle, p.durum,
-        d.id as dosya_id, d.orijinal_adi as dosya_adi
+        p.il, p.ilce, p.baslama_tarihi, p.bitis_tarihi, p.notlar,
+        p.tamamlanma_yuzdesi, p.ekip_id,
+        e.ekip_adi,
+        b.bolge_adi,
+        d.id as dosya_id, d.orijinal_adi as dosya_adi,
+        pa_aktif.faz_adi as aktif_faz, pa_aktif.adim_adi as aktif_adim
       FROM projeler p
       JOIN proje_adimlari pa ON pa.proje_id = p.id AND pa.adim_kodu = 'yeni_durum_proje'
       JOIN dosyalar d ON d.proje_adim_id = pa.id AND d.durum = 'aktif'
         AND (d.dosya_adi LIKE '%.dxf' OR d.orijinal_adi LIKE '%.dxf')
+      LEFT JOIN ekipler e ON p.ekip_id = e.id
+      LEFT JOIN bolgeler b ON p.bolge_id = b.id
+      LEFT JOIN proje_adimlari pa_aktif ON pa_aktif.id = p.aktif_adim_id
       WHERE p.durum != 'tamamlandi'
       ORDER BY p.olusturma_tarihi DESC
     `).all();
