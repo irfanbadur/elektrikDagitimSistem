@@ -19,11 +19,11 @@ const TUM_SUTUNLAR = [
   { key: 'okunan_deger', label: 'Okunan Değer',  varsayilan: true  },
   { key: 'malzeme_kodu', label: 'Malzeme Kodu',  varsayilan: true  },
   { key: 'malzeme_adi',  label: 'Malzeme Adı',   varsayilan: true,  zorunlu: true },
+  { key: 'birim_fiyat',  label: 'Birim Fiyat',   varsayilan: true  },
   { key: 'birim',        label: 'Birim',          varsayilan: true  },
   { key: 'miktar',       label: 'Miktar',         varsayilan: true  },
   { key: 'ilerleme',     label: 'İlerleme',       varsayilan: true  },
   { key: 'kalan',        label: 'Kalan',          varsayilan: true  },
-  { key: 'birim_fiyat',  label: 'Birim Fiyat',   varsayilan: true  },
   { key: 'toplam_tutar', label: 'Toplam Tutar',  varsayilan: true  },
   { key: 'alinan_miktar',label: 'Alınan Miktar', varsayilan: false },
   { key: 'durum',        label: 'Durum',          varsayilan: true  },
@@ -612,6 +612,11 @@ function KesifSatiri({ kalem: k, siraNo, secili, birlestirRenk, onSecimDegistir,
           )}
         </td>
       )}
+      {gorSutun('birim_fiyat') && (
+        <td className="px-2 py-1.5 text-center text-xs tabular-nums text-muted-foreground">
+          {(k.birim_fiyat || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+        </td>
+      )}
       {gorSutun('birim') && (
         <td className="px-2 py-1.5">
           <input value={k.birim || 'Ad'} onChange={e => onGuncelle({ birim: e.target.value })} className={cn(editCls, 'text-center w-14')} />
@@ -620,7 +625,7 @@ function KesifSatiri({ kalem: k, siraNo, secili, birlestirRenk, onSecimDegistir,
       {gorSutun('miktar') && (
         <td className="px-2 py-1.5">
           {k.kapsayici ? (
-            <span className="block text-center text-xs tabular-nums text-sky-700">{(k._hesaplananMiktar ?? k.miktar ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</span>
+            <span className={cn(editCls, 'text-center w-16 block tabular-nums text-sky-700')}>{(k._hesaplananMiktar ?? k.miktar ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</span>
           ) : (
             <input type="number" value={k.miktar || ''} onChange={e => onGuncelle({ miktar: Number(e.target.value) || 0 })} className={cn(editCls, 'text-center w-16')} />
           )}
@@ -629,7 +634,7 @@ function KesifSatiri({ kalem: k, siraNo, secili, birlestirRenk, onSecimDegistir,
       {gorSutun('ilerleme') && (
         <td className="px-2 py-1.5">
           {k.kapsayici ? (
-            <span className="block text-center text-xs tabular-nums text-sky-700">{(k._hesaplananIlerleme ?? k.ilerleme ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</span>
+            <span className={cn(editCls, 'text-center w-16 block tabular-nums text-sky-700')}>{(k._hesaplananIlerleme ?? k.ilerleme ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</span>
           ) : (
             <input type="number" value={k.ilerleme || ''} max={k.miktar || 0}
               onChange={e => { const v = Math.min(Number(e.target.value) || 0, k.miktar || 0); onGuncelle({ ilerleme: v }) }}
@@ -642,14 +647,9 @@ function KesifSatiri({ kalem: k, siraNo, secili, birlestirRenk, onSecimDegistir,
           {(() => { const m = k.kapsayici ? (k._hesaplananMiktar ?? k.miktar ?? 0) : (k.miktar || 0); const i = k.kapsayici ? (k._hesaplananIlerleme ?? k.ilerleme ?? 0) : (k.ilerleme || 0); return Math.max(m - i, 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) })()}
         </td>
       )}
-      {gorSutun('birim_fiyat') && (
-        <td className="px-2 py-1.5">
-          <input type="number" value={k.birim_fiyat || ''} onChange={e => onGuncelle({ birim_fiyat: Number(e.target.value) || 0 })} className={cn(editCls, 'text-center w-16')} />
-        </td>
-      )}
       {gorSutun('toplam_tutar') && (
         <td className="px-3 py-1.5 text-left text-xs tabular-nums font-medium">
-          {((k.miktar || 0) * (k.birim_fiyat || 0)).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+          {(((k.kapsayici ? (k._hesaplananMiktar ?? k.miktar ?? 0) : (k.miktar || 0)) * (k.birim_fiyat || 0))).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
         </td>
       )}
       {gorSutun('alinan_miktar') && (
@@ -812,6 +812,9 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
           </div>
         </td>
       )}
+      {gorSutun('birim_fiyat') && (
+        <td className="px-3 py-2 text-center text-xs text-muted-foreground">-</td>
+      )}
       {gorSutun('birim') && (
         <td className="px-3 py-2">
           <input value={form.birim} readOnly tabIndex={-1} className="w-16 rounded border border-input bg-muted/50 px-2 py-1 text-xs text-muted-foreground" />
@@ -828,11 +831,6 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
         </td>
       )}
       {gorSutun('kalan') && <td className="px-3 py-2 text-xs text-muted-foreground">-</td>}
-      {gorSutun('birim_fiyat') && (
-        <td className="px-3 py-2">
-          <input type="number" value={form.birim_fiyat} onChange={e => setForm({ ...form, birim_fiyat: e.target.value })} placeholder="0" className="w-20 rounded border border-input bg-background px-2 py-1 text-xs" />
-        </td>
-      )}
       {gorSutun('toplam_tutar') && <td className="px-3 py-2 text-xs text-muted-foreground">-</td>}
       {gorSutun('alinan_miktar') && <td className="px-3 py-2 text-xs text-muted-foreground">-</td>}
       {gorSutun('durum') && <td className="px-3 py-2 text-xs text-muted-foreground">Planli</td>}
@@ -872,7 +870,7 @@ export default function ProjeKesif({ projeId }) {
 
   const { data: kesifler, isLoading } = useProjeKesif(projeId, seciliDepoId)
   const ekle = useProjeKesifEkle(projeId)
-  const guncelle = useProjeKesifGuncelle(projeId)
+  const guncelle = useProjeKesifGuncelle(projeId, seciliDepoId)
   const sil = useProjeKesifSil(projeId)
 
   const [yeniSatir, setYeniSatir] = useState(false)
@@ -1059,11 +1057,11 @@ export default function ProjeKesif({ projeId }) {
                 {gorSutun('okunan_deger') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Okunan Değer</th>}
                 {gorSutun('malzeme_kodu') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Malzeme Kodu</th>}
                 {gorSutun('malzeme_adi') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Malzeme Adı</th>}
+                {gorSutun('birim_fiyat') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim Fiyat</th>}
                 {gorSutun('birim') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim</th>}
                 {gorSutun('miktar') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Miktar</th>}
                 {gorSutun('ilerleme') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">İlerleme</th>}
                 {gorSutun('kalan') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Kalan</th>}
-                {gorSutun('birim_fiyat') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim Fiyat</th>}
                 {gorSutun('toplam_tutar') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Toplam Tutar</th>}
                 {gorSutun('alinan_miktar') && <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Alınan Miktar</th>}
                 {gorSutun('durum') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Durum</th>}
@@ -1154,14 +1152,18 @@ export default function ProjeKesif({ projeId }) {
                   {gorSutun('malzeme_adi') && (
                     <td className="px-3 py-2 text-xs font-bold text-right">TOPLAM</td>
                   )}
+                  {gorSutun('birim_fiyat') && <td />}
                   {gorSutun('birim') && <td />}
                   {gorSutun('miktar') && <td />}
                   {gorSutun('ilerleme') && <td />}
-                  {gorSutun('kalan') && <td />}
-                  {gorSutun('birim_fiyat') && <td />}
+                  {gorSutun('kalan') && (
+                    <td className="px-3 py-2 text-left text-sm font-bold text-amber-600 tabular-nums">
+                      {kesifler.reduce((t, k) => { const m = k.kapsayici ? (k._hesaplananMiktar ?? k.miktar ?? 0) : (k.miktar || 0); const i = k.kapsayici ? (k._hesaplananIlerleme ?? k.ilerleme ?? 0) : (k.ilerleme || 0); return t + Math.max(m - i, 0) * (k.birim_fiyat || 0) }, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL
+                    </td>
+                  )}
                   {gorSutun('toplam_tutar') && (
                     <td className="px-3 py-2 text-left text-sm font-bold text-primary tabular-nums">
-                      {kesifler.reduce((t, k) => t + (k.miktar || 0) * (k.birim_fiyat || 0), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL
+                      {kesifler.reduce((t, k) => { const m = k.kapsayici ? (k._hesaplananMiktar ?? k.miktar ?? 0) : (k.miktar || 0); return t + m * (k.birim_fiyat || 0) }, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL
                     </td>
                   )}
                   {gorSutun('alinan_miktar') && <td />}
