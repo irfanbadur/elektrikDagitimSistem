@@ -16,8 +16,11 @@ app.use(tenantMiddleware);
 
 // Tenant API — frontend'e tenant bilgisi
 app.get('/api/tenant', (req, res) => {
-  res.json({ success: true, data: { slug: req.tenantSlug, name: req.tenantInfo?.name } });
+  res.json({ success: true, data: { slug: req.tenantSlug, name: req.tenantInfo?.name, isLanding: req.isLanding || false } });
 });
+
+// Admin API — firma yönetimi (bare domain üzerinden)
+app.use('/api/admin', require('./routes/admin'));
 
 // Routes
 app.use('/api/ayarlar', require('./routes/ayarlar'));
@@ -121,7 +124,7 @@ app.get('*', (req, res) => {
 initDatabase();
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`ElektraTrack sunucu çalışıyor: http://0.0.0.0:${PORT}`);
+  console.log(`enerjabze sunucu çalışıyor: http://0.0.0.0:${PORT}`);
 });
 // Ollama görsel analiz uzun sürebilir — timeout'u 5 dakikaya çıkar
 server.timeout = 300000;

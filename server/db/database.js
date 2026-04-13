@@ -11,10 +11,16 @@ const SEED_PATH = path.join(__dirname, 'seed.sql');
 const tenantStorage = new AsyncLocalStorage();
 const dbCache = new Map();
 
-// Bilinen tenant'lar (JSON dosyasından veya hardcoded)
-const TENANTS = {
-  cakmakgrup: { name: 'Çakmak Grup', active: true },
-};
+// Tenant'ları JSON dosyasından oku
+const TENANTS_PATH = path.join(__dirname, '../../data/tenants.json');
+function loadTenants() {
+  try { return JSON.parse(fs.readFileSync(TENANTS_PATH, 'utf-8')); }
+  catch { return {}; }
+}
+function saveTenants(data) {
+  fs.writeFileSync(TENANTS_PATH, JSON.stringify(data, null, 2), 'utf-8');
+}
+let TENANTS = loadTenants();
 
 function setCurrentTenant(slug) {
   // Script'ler için (AsyncLocalStorage dışında)
@@ -790,4 +796,4 @@ function fixProjeDurumlari(database) {
   }
 }
 
-module.exports = { getDb, initDatabase, tenantStorage, setCurrentTenant, getCurrentTenantSlug, TENANTS };
+module.exports = { getDb, initDatabase, tenantStorage, setCurrentTenant, getCurrentTenantSlug, TENANTS, loadTenants, saveTenants };

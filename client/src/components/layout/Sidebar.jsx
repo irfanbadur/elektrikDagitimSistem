@@ -92,7 +92,7 @@ export default function Sidebar({ firmaAdi = 'Firma Adı' }) {
           <Zap size={20} color="white" />
         </div>
         <div>
-          <div style={S.brandTitle}>ElektraTrack</div>
+          <div style={S.brandTitle}>enerjabze</div>
           <div style={S.brandSub}>{firmaAdi}</div>
         </div>
       </div>

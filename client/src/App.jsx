@@ -1,8 +1,12 @@
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import LoginPage from '@/pages/LoginPage'
+
+const LandingPage = lazy(() => import('@/pages/LandingPage'))
+const AdminPage = lazy(() => import('@/pages/AdminPage'))
 import DashboardPage from '@/pages/DashboardPage'
 import EkiplerPage from '@/pages/EkiplerPage'
 import ProjelerPage from '@/pages/ProjelerPage'
@@ -81,13 +85,52 @@ function AppRoutes() {
   )
 }
 
+function TenantRouter() {
+  const [tenantInfo, setTenantInfo] = useState(null)
+  const [yukleniyor, setYukleniyor] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/tenant').then(r => r.json()).then(j => {
+      setTenantInfo(j.data)
+    }).catch(() => {
+      setTenantInfo({ isLanding: true })
+    }).finally(() => setYukleniyor(false))
+  }, [])
+
+  if (yukleniyor) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 text-gray-500">
+        <div className="text-4xl">⚡</div>
+        <div className="text-sm">Yükleniyor...</div>
+      </div>
+    )
+  }
+
+  // Landing page (bare domain, tenant yok)
+  if (tenantInfo?.isLanding && !tenantInfo?.slug) {
+    return (
+      <Suspense fallback={<div className="flex h-screen items-center justify-center text-gray-500">Yükleniyor...</div>}>
+        <Routes>
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="*" element={<LandingPage />} />
+        </Routes>
+      </Suspense>
+    )
+  }
+
+  // Tenant uygulaması
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
+  )
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthProvider>
-          <AppRoutes />
-        </AuthProvider>
+        <TenantRouter />
       </BrowserRouter>
     </QueryClientProvider>
   )

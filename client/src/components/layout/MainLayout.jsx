@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
@@ -6,7 +6,12 @@ import AiSohbetPanel from '../ai/AiSohbetPanel'
 
 export default function MainLayout({ children, title = 'Dashboard', noPadding = false }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [tenantName, setTenantName] = useState('')
   const location = useLocation()
+
+  useEffect(() => {
+    fetch('/api/tenant').then(r => r.json()).then(j => { if (j.data?.name) setTenantName(j.data.name) }).catch(() => {})
+  }, [])
 
   // Sayfa bağlamını URL'den otomatik çıkar
   const baglam = useMemo(() => {
@@ -37,7 +42,7 @@ export default function MainLayout({ children, title = 'Dashboard', noPadding = 
         }`}
         style={{ flexShrink: 0 }}
       >
-        <Sidebar />
+        <Sidebar firmaAdi={tenantName} />
       </div>
 
       {/* Main content */}

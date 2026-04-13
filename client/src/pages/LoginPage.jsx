@@ -34,12 +34,12 @@ export default function LoginPage() {
         {/* Başlık */}
         <div className="bg-blue-700 px-6 pt-8 pb-6 text-center">
           <div className="text-4xl mb-2">⚡</div>
-          <h1 className="text-2xl font-bold text-white tracking-wide">ElektraTrack</h1>
-          <p className="text-blue-300 text-[13px] mt-1">Elektrik Dağıtım Proje Takip Sistemi</p>
+          <h1 className="text-2xl font-bold text-white tracking-wide">enerjabze</h1>
+          <p className="text-blue-300 text-[13px] mt-1">Elektrik Dağıtım Yönetim Sistemi</p>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-7">
+        <form onSubmit={handleSubmit} style={{ padding: '28px 56px' }}>
 
           {/* Hata mesajı */}
           {hata && (
@@ -54,7 +54,7 @@ export default function LoginPage() {
               Kullanıcı Adı
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base text-gray-400">👤</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-base text-gray-400">👤</span>
               <input
                 type="text"
                 value={kullaniciAdi}
@@ -63,7 +63,7 @@ export default function LoginPage() {
                 autoComplete="username"
                 autoFocus
                 required
-                className="w-full rounded-[10px] border border-gray-300 py-3 pl-10 pr-3 text-[15px] outline-none transition-colors focus:border-blue-500"
+                className="w-full rounded-[10px] border border-gray-300 py-3 pl-4 pr-10 text-[15px] outline-none transition-colors focus:border-blue-500"
               />
             </div>
           </div>
@@ -74,7 +74,7 @@ export default function LoginPage() {
               Şifre
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base text-gray-400">🔒</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-base text-gray-400">🔒</span>
               <input
                 type="password"
                 value={sifre}
@@ -82,7 +82,7 @@ export default function LoginPage() {
                 placeholder="Şifreniz"
                 autoComplete="current-password"
                 required
-                className="w-full rounded-[10px] border border-gray-300 py-3 pl-10 pr-3 text-[15px] outline-none transition-colors focus:border-blue-500"
+                className="w-full rounded-[10px] border border-gray-300 py-3 pl-4 pr-10 text-[15px] outline-none transition-colors focus:border-blue-500"
               />
             </div>
           </div>
@@ -99,7 +99,7 @@ export default function LoginPage() {
 
         {/* Alt bilgi */}
         <div className="pb-5 text-center text-[11px] text-gray-400">
-          ElektraTrack v1.0 &bull; {new Date().getFullYear()}
+          enerjabze &bull; {new Date().getFullYear()}
         </div>
       </div>
     </div>
