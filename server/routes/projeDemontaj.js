@@ -5,7 +5,8 @@ const ExcelJS = require('exceljs');
 const { getDb } = require('../db/database');
 const { basarili, hata } = require('../utils/helpers');
 
-const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
+const { getCurrentTenantSlug } = require('../db/database');
+const getUploadsRoot = () => { const s = getCurrentTenantSlug(); return s ? path.join(__dirname, '../../data/tenants', s, 'uploads') : path.join(__dirname, '../../uploads'); };
 
 // GET /:projeId - Proje demontaj listesi
 router.get('/:projeId', (req, res) => {
@@ -234,11 +235,11 @@ router.post('/:projeId/tutanak-olustur', async (req, res) => {
       ? (kullaniciDosyaAdi.trim().endsWith('.xlsx') ? kullaniciDosyaAdi.trim() : kullaniciDosyaAdi.trim() + '.xlsx')
       : varsayilanAd;
     const relDir = `projeler/${isTipi}/${proje.proje_no}`;
-    const absDir = path.join(UPLOADS_ROOT, relDir);
+    const absDir = path.join(getUploadsRoot(), relDir);
     if (!fs.existsSync(absDir)) fs.mkdirSync(absDir, { recursive: true });
 
     const dosyaYolu = `${relDir}/${dosyaAdi}`;
-    const absYol = path.join(UPLOADS_ROOT, dosyaYolu);
+    const absYol = path.join(getUploadsRoot(), dosyaYolu);
 
     // ExcelJS ile diske yaz (biçimlendirme, birleştirmeler, ölçüler korunur)
     await wb.xlsx.writeFile(absYol);

@@ -155,8 +155,10 @@ router.post('/', (req, res) => {
     try {
       const fs = require('fs');
       const path = require('path');
-      const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
-      const projeKlasoru = path.join(UPLOADS_ROOT, 'projeler', proje_tipi.toUpperCase(), proje_no);
+      const { getCurrentTenantSlug } = require('../db/database');
+      const slug = getCurrentTenantSlug();
+      const uploadsRoot = slug ? path.join(__dirname, '../../data/tenants', slug, 'uploads') : path.join(__dirname, '../../uploads');
+      const projeKlasoru = path.join(uploadsRoot, 'projeler', proje_tipi.toUpperCase(), proje_no);
       fs.mkdirSync(projeKlasoru, { recursive: true });
     } catch (err) {
       console.error('Proje klasörü oluşturulamadı:', err.message);
@@ -325,7 +327,8 @@ router.get('/:id/durum-gecmisi', (req, res) => {
 const fs = require('fs');
 const path = require('path');
 const ExcelJS = require('exceljs');
-const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
+const { getCurrentTenantSlug: _gts } = require('../db/database');
+const _getUploadsRoot = () => { const s = _gts(); return s ? path.join(__dirname, '../../data/tenants', s, 'uploads') : path.join(__dirname, '../../uploads'); };
 const YER_TESLIM_SABLON = path.join(__dirname, '../../doc/tutanaklar/F.411_4 YER TESLİM TUTANAĞI.xlsx');
 
 router.post('/yer-teslim-xlsx', async (req, res) => {
@@ -376,11 +379,11 @@ router.post('/yer-teslim-xlsx', async (req, res) => {
       ? (kullaniciDosyaAdi.trim().endsWith('.xlsx') ? kullaniciDosyaAdi.trim() : kullaniciDosyaAdi.trim() + '.xlsx')
       : varsayilanAd;
     const relDir = 'projeler/teslim-tutanaklari';
-    const absDir = path.join(UPLOADS_ROOT, relDir);
+    const absDir = path.join(_getUploadsRoot(), relDir);
     if (!fs.existsSync(absDir)) fs.mkdirSync(absDir, { recursive: true });
 
     const dosyaYolu = `${relDir}/${dosyaAdi}`;
-    const absYol = path.join(UPLOADS_ROOT, dosyaYolu);
+    const absYol = path.join(_getUploadsRoot(), dosyaYolu);
 
     await wb.xlsx.writeFile(absYol);
     const stat = fs.statSync(absYol);

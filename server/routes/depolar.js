@@ -6,7 +6,8 @@ const { getDb } = require('../db/database');
 const { aktiviteLogla, basarili, hata } = require('../utils/helpers');
 const { authMiddleware } = require('../middleware/auth');
 
-const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
+const { getCurrentTenantSlug } = require('../db/database');
+const getUploadsRoot = () => { const s = getCurrentTenantSlug(); return s ? path.join(__dirname, '../../data/tenants', s, 'uploads') : path.join(__dirname, '../../uploads'); };
 
 // Admin kontrolü: admin kullanıcı veya malzeme silme izni olan kullanıcı
 function adminGerekli(req, res, next) {
@@ -339,10 +340,10 @@ router.post('/:id/excel-aktar', async (req, res) => {
     // Dosya kaydet
     const dosyaAdi = `${depo.depo_adi.replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ\s-]/g, '').trim()}_stok.xlsx`;
     const relDir = 'depo/excel';
-    const absDir = path.join(UPLOADS_ROOT, relDir);
+    const absDir = path.join(getUploadsRoot(), relDir);
     if (!fs.existsSync(absDir)) fs.mkdirSync(absDir, { recursive: true });
     const dosyaYolu = `${relDir}/${dosyaAdi}`;
-    const absYol = path.join(UPLOADS_ROOT, dosyaYolu);
+    const absYol = path.join(getUploadsRoot(), dosyaYolu);
 
     await wb.xlsx.writeFile(absYol);
     const stat = fs.statSync(absYol);

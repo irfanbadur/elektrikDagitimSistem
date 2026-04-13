@@ -1,22 +1,47 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const { AsyncLocalStorage } = require('async_hooks');
 
-const DB_PATH = path.join(__dirname, '../../data/elektratrack.db');
+const DB_BASE = path.join(__dirname, '../../data/tenants');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 const SEED_PATH = path.join(__dirname, 'seed.sql');
 
-let db;
+// ─── Tenant Yönetimi ───────────────────────────
+const tenantStorage = new AsyncLocalStorage();
+const dbCache = new Map();
+
+// Bilinen tenant'lar (JSON dosyasından veya hardcoded)
+const TENANTS = {
+  cakmakgrup: { name: 'Çakmak Grup', active: true },
+};
+
+function setCurrentTenant(slug) {
+  // Script'ler için (AsyncLocalStorage dışında)
+  tenantStorage.enterWith({ tenantSlug: slug });
+}
+
+function getCurrentTenantSlug() {
+  const store = tenantStorage.getStore();
+  if (store?.tenantSlug) return store.tenantSlug;
+  // Fallback: DEFAULT_TENANT env
+  return process.env.DEFAULT_TENANT || null;
+}
 
 function getDb() {
-  if (!db) {
-    const dataDir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  const slug = getCurrentTenantSlug();
+  if (!slug) throw new Error('Tenant belirlenemedi — request context yok');
 
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-  }
+  if (dbCache.has(slug)) return dbCache.get(slug);
+
+  const dbPath = path.join(DB_BASE, slug, 'elektratrack.db');
+  const dataDir = path.dirname(dbPath);
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  dbCache.set(slug, db);
   return db;
 }
 
@@ -434,6 +459,16 @@ function migrateAltAlanFlat(database) {
 }
 
 function initDatabase() {
+  // Tüm tenant'lar için DB başlat
+  for (const slug of Object.keys(TENANTS)) {
+    if (!TENANTS[slug].active) continue;
+    setCurrentTenant(slug);
+    console.log(`[DB] Tenant başlatılıyor: ${slug}`);
+    _initSingleDb();
+  }
+}
+
+function _initSingleDb() {
   const database = getDb();
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   database.exec(schema);
@@ -755,4 +790,4 @@ function fixProjeDurumlari(database) {
   }
 }
 
-module.exports = { getDb, initDatabase };
+module.exports = { getDb, initDatabase, tenantStorage, setCurrentTenant, getCurrentTenantSlug, TENANTS };

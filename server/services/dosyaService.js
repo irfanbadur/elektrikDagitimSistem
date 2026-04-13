@@ -10,8 +10,13 @@ const {
 } = require('./dosyaIsimService');
 const donguService = require('./donguService');
 
-// Uploads kök dizini
-const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
+// Uploads kök dizini — tenant-aware
+const { getCurrentTenantSlug } = require('../db/database');
+function getUploadsRoot() {
+  const slug = getCurrentTenantSlug();
+  if (slug) return path.join(__dirname, '../../data/tenants', slug, 'uploads');
+  return process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
+}
 
 class DosyaService {
 
@@ -98,8 +103,8 @@ class DosyaService {
                 const dosyaBasAdi = path.basename(ilkDosya.dosya_yolu);
                 const ustKlasor = path.dirname(ilkDosya.dosya_yolu).replace(/\\/g, '/');
                 const yeniYol = `${ustKlasor}/${adimKlasoru}/${dosyaBasAdi}`;
-                const eskiTam = path.join(UPLOADS_ROOT, ilkDosya.dosya_yolu);
-                const yeniTam = path.join(UPLOADS_ROOT, yeniYol);
+                const eskiTam = path.join(getUploadsRoot(), ilkDosya.dosya_yolu);
+                const yeniTam = path.join(getUploadsRoot(), yeniYol);
                 fs.mkdirSync(path.dirname(yeniTam), { recursive: true });
                 if (fs.existsSync(eskiTam)) {
                   fs.renameSync(eskiTam, yeniTam);
@@ -109,8 +114,8 @@ class DosyaService {
                   if (ilkDosya.thumbnail_yolu) {
                     const thumbAdi = path.basename(ilkDosya.thumbnail_yolu);
                     const yeniThumbYol = `${ustKlasor}/${adimKlasoru}/thumb/${thumbAdi}`;
-                    const eskiThumbTam = path.join(UPLOADS_ROOT, ilkDosya.thumbnail_yolu);
-                    const yeniThumbTam = path.join(UPLOADS_ROOT, yeniThumbYol);
+                    const eskiThumbTam = path.join(getUploadsRoot(), ilkDosya.thumbnail_yolu);
+                    const yeniThumbTam = path.join(getUploadsRoot(), yeniThumbYol);
                     fs.mkdirSync(path.dirname(yeniThumbTam), { recursive: true });
                     if (fs.existsSync(eskiThumbTam)) {
                       fs.renameSync(eskiThumbTam, yeniThumbTam);
@@ -131,7 +136,7 @@ class DosyaService {
       ? dosyaYoluHesaplaV2({ alan: efektifAlan, altAlan: efektifAltAlan, dosyaAdi, projeNo, projeTipi, personelKodu, ekipmanKodu, ihaleNo, kurumAdi })
       : dosyaYoluHesapla({ projeNo, kategori, dosyaAdi });
 
-    const tamYol = path.join(UPLOADS_ROOT, goreceliYol);
+    const tamYol = path.join(getUploadsRoot(), goreceliYol);
     const klasor = path.dirname(tamYol);
 
     // 4. Klasörü oluştur
@@ -172,7 +177,7 @@ class DosyaService {
 
       // Thumbnail oluştur
       const thumbGoreceliYol = thumbnailYoluHesapla(goreceliYol);
-      const thumbTamYol = path.join(UPLOADS_ROOT, thumbGoreceliYol);
+      const thumbTamYol = path.join(getUploadsRoot(), thumbGoreceliYol);
       fs.mkdirSync(path.dirname(thumbTamYol), { recursive: true });
 
       await sharp(islenmisBuf)
@@ -364,9 +369,9 @@ class DosyaService {
     if (fizikselSil) {
       const dosya = db.prepare('SELECT dosya_yolu, thumbnail_yolu FROM dosyalar WHERE id = ?').get(dosyaId);
       if (dosya) {
-        try { fs.unlinkSync(path.join(UPLOADS_ROOT, dosya.dosya_yolu)); } catch {}
+        try { fs.unlinkSync(path.join(getUploadsRoot(), dosya.dosya_yolu)); } catch {}
         if (dosya.thumbnail_yolu) {
-          try { fs.unlinkSync(path.join(UPLOADS_ROOT, dosya.thumbnail_yolu)); } catch {}
+          try { fs.unlinkSync(path.join(getUploadsRoot(), dosya.thumbnail_yolu)); } catch {}
         }
       }
       db.prepare('DELETE FROM dosyalar WHERE id = ?').run(dosyaId);
@@ -386,9 +391,9 @@ class DosyaService {
 
     if (fizikselSil) {
       for (const d of dosyalar) {
-        try { fs.unlinkSync(path.join(UPLOADS_ROOT, d.dosya_yolu)); } catch {}
+        try { fs.unlinkSync(path.join(getUploadsRoot(), d.dosya_yolu)); } catch {}
         if (d.thumbnail_yolu) {
-          try { fs.unlinkSync(path.join(UPLOADS_ROOT, d.thumbnail_yolu)); } catch {}
+          try { fs.unlinkSync(path.join(getUploadsRoot(), d.thumbnail_yolu)); } catch {}
         }
       }
       if (dosyalar.length > 0) {
@@ -398,7 +403,7 @@ class DosyaService {
       try {
         const ornekYol = dosyalar[0]?.dosya_yolu;
         if (ornekYol) {
-          const klasor = path.join(UPLOADS_ROOT, path.dirname(ornekYol));
+          const klasor = path.join(getUploadsRoot(), path.dirname(ornekYol));
           if (fs.existsSync(klasor) && fs.readdirSync(klasor).length === 0) {
             fs.rmdirSync(klasor, { recursive: true });
           }
@@ -470,7 +475,7 @@ class DosyaService {
   }
 
   dosyaYoluCozumle(goreceliYol) {
-    return path.join(UPLOADS_ROOT, goreceliYol);
+    return path.join(getUploadsRoot(), goreceliYol);
   }
 }
 

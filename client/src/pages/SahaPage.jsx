@@ -914,7 +914,7 @@ function ProjeMarkerKarti({ cizim, gorunur, onToggle }) {
   })
 
   return (
-    <Marker ref={markerRef} position={markerPos} icon={projeMarkerIcon(cizim.projeNo, gorunur)} draggable={true}
+    <Marker ref={markerRef} position={markerPos} icon={projeMarkerIcon(cizim.musteri_adi || cizim.projeNo, gorunur)} draggable={true}
       eventHandlers={{ drag: handleDrag, dragend: handleDragEnd }}>
       <Popup maxWidth={280} minWidth={240}>
         <ProjeKarti cizim={cizim} />

@@ -6,7 +6,8 @@ const { metinTabanliAI } = require('../services/aiParseService');
 const kesifParsePrompt = require('../services/ai-engine/prompts/kesifParsePrompt');
 const XLSX = require('xlsx');
 
-const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
+const { getCurrentTenantSlug } = require('../db/database');
+const getUploadsRoot = () => { const s = getCurrentTenantSlug(); return s ? path.join(__dirname, '../../data/tenants', s, 'uploads') : path.join(__dirname, '../../uploads'); };
 
 // Excel dosyasını oku (.xls ve .xlsx desteği - xlsx paketi ile)
 function excelOku(tamYol) {
@@ -94,7 +95,7 @@ router.post('/:projeId/parse-xls', async (req, res) => {
     const ext = (dosya.orijinal_adi || dosya.dosya_adi || '').split('.').pop().toLowerCase();
     if (!['xls', 'xlsx'].includes(ext)) return hata(res, 'Sadece XLS/XLSX dosyalar desteklenir', 400);
 
-    const tamYol = path.join(UPLOADS_ROOT, dosya.dosya_yolu);
+    const tamYol = path.join(getUploadsRoot(), dosya.dosya_yolu);
 
     // Excel dosyasını oku
     const rows = excelOku(tamYol);

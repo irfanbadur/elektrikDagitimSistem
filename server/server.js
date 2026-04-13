@@ -7,8 +7,17 @@ const { initDatabase } = require('./db/database');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+
+// Tenant middleware — subdomain'den tenant tespit
+const { tenantMiddleware } = require('./middleware/tenant');
+app.use(tenantMiddleware);
+
+// Tenant API — frontend'e tenant bilgisi
+app.get('/api/tenant', (req, res) => {
+  res.json({ success: true, data: { slug: req.tenantSlug, name: req.tenantInfo?.name } });
+});
 
 // Routes
 app.use('/api/ayarlar', require('./routes/ayarlar'));
@@ -32,10 +41,13 @@ app.use('/api/projeler', require('./routes/projeDetay'));
 app.use('/api/dosya', require('./routes/dosya'));
 app.use('/api/veri-paketi', require('./routes/veriPaketi'));
 
-// Uploads static serving (eski yapı: data/uploads)
-app.use('/uploads', express.static(path.join(__dirname, '../data/uploads')));
-// Uploads static serving (yeni yapı: uploads/)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Uploads static serving — tenant-aware
+app.use('/uploads', (req, res, next) => {
+  const slug = req.tenantSlug;
+  if (!slug) return res.status(404).end();
+  const base = path.join(__dirname, '../data/tenants', slug, 'uploads');
+  express.static(base)(req, res, next);
+});
 
 // Saha harita routes
 app.use('/api/saha', require('./routes/saha'));

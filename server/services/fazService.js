@@ -2,7 +2,8 @@ const { getDb } = require('../db/database');
 const path = require('path');
 const fs = require('fs');
 
-const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '../../uploads');
+const { getCurrentTenantSlug } = require('../db/database');
+const getUploadsRoot = () => { const s = getCurrentTenantSlug(); return s ? path.join(__dirname, '../../data/tenants', s, 'uploads') : path.join(__dirname, '../../uploads'); };
 
 class FazService {
 
@@ -61,7 +62,7 @@ class FazService {
 
       // Klasör oluştur
       try {
-        const klasorYolu = path.join(UPLOADS_ROOT, 'projeler', kodUpper);
+        const klasorYolu = path.join(getUploadsRoot(), 'projeler', kodUpper);
         fs.mkdirSync(klasorYolu, { recursive: true });
       } catch (err) {
         console.error('İş tipi klasörü oluşturulamadı:', err.message);
@@ -82,7 +83,7 @@ class FazService {
 
     // Dosya yönetiminde projeler altında iş tipi klasörü oluştur
     try {
-      const klasorYolu = path.join(UPLOADS_ROOT, 'projeler', kod.toUpperCase());
+      const klasorYolu = path.join(getUploadsRoot(), 'projeler', kod.toUpperCase());
       fs.mkdirSync(klasorYolu, { recursive: true });
     } catch (err) {
       console.error('İş tipi klasörü oluşturulamadı:', err.message);
