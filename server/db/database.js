@@ -193,8 +193,11 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'projeler', 'enerjilenme_tarihi', 'DATE');
   addColumnIfNotExists(database, 'projeler', 'pyp', 'TEXT');
 
-  // Proje keşif ilerleme
+  // Proje keşif ilerleme ve excel satır bilgisi
   addColumnIfNotExists(database, 'proje_kesif', 'ilerleme', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'proje_kesif', 'excel_satir', 'INTEGER');
+  addColumnIfNotExists(database, 'proje_kesif', 'kapsayici', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists(database, 'proje_kesif', 'birim_agirlik', 'REAL DEFAULT 0');
 
   // Malzeme kataloğu yeni alanlar
   addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'eski_poz', 'TEXT');

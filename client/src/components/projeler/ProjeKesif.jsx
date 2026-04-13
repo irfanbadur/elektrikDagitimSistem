@@ -564,7 +564,7 @@ function KesifSatiri({ kalem: k, siraNo, secili, birlestirRenk, onSecimDegistir,
   const editCls = 'w-full rounded border border-transparent bg-transparent px-2 py-1 text-xs hover:border-input focus:border-primary focus:outline-none'
 
   return (
-    <tr className={cn('border-b border-input/50 group hover:bg-muted/20 transition-colors', secili && 'bg-primary/5', birlestirRenk && `${birlestirRenk.bg} border-l-4 ${birlestirRenk.border}`)}>
+    <tr className={cn('border-b border-input/50 group hover:bg-muted/20 transition-colors', k.kapsayici && 'bg-sky-50 font-semibold', secili && 'bg-primary/5', birlestirRenk && `${birlestirRenk.bg} border-l-4 ${birlestirRenk.border}`)}>
       <td className="px-1.5 py-1.5 text-center text-xs text-muted-foreground w-8">{siraNo}</td>
       <td className="px-1 py-1.5 text-center w-8">
         <input type="checkbox" checked={secili} onChange={e => onSecimDegistir(e.target.checked)} className="h-3.5 w-3.5 rounded border-gray-300 accent-primary cursor-pointer" />
@@ -619,19 +619,27 @@ function KesifSatiri({ kalem: k, siraNo, secili, birlestirRenk, onSecimDegistir,
       )}
       {gorSutun('miktar') && (
         <td className="px-2 py-1.5">
-          <input type="number" value={k.miktar || ''} onChange={e => onGuncelle({ miktar: Number(e.target.value) || 0 })} className={cn(editCls, 'text-center w-16')} />
+          {k.kapsayici ? (
+            <span className="block text-center text-xs tabular-nums text-sky-700">{(k._hesaplananMiktar ?? k.miktar ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</span>
+          ) : (
+            <input type="number" value={k.miktar || ''} onChange={e => onGuncelle({ miktar: Number(e.target.value) || 0 })} className={cn(editCls, 'text-center w-16')} />
+          )}
         </td>
       )}
       {gorSutun('ilerleme') && (
         <td className="px-2 py-1.5">
-          <input type="number" value={k.ilerleme || ''} max={k.miktar || 0}
-            onChange={e => { const v = Math.min(Number(e.target.value) || 0, k.miktar || 0); onGuncelle({ ilerleme: v }) }}
-            className={cn(editCls, 'text-center w-16')} />
+          {k.kapsayici ? (
+            <span className="block text-center text-xs tabular-nums text-sky-700">{(k._hesaplananIlerleme ?? k.ilerleme ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</span>
+          ) : (
+            <input type="number" value={k.ilerleme || ''} max={k.miktar || 0}
+              onChange={e => { const v = Math.min(Number(e.target.value) || 0, k.miktar || 0); onGuncelle({ ilerleme: v }) }}
+              className={cn(editCls, 'text-center w-16')} />
+          )}
         </td>
       )}
       {gorSutun('kalan') && (
         <td className="px-2 py-1.5 text-center text-xs tabular-nums font-medium">
-          {Math.max((k.miktar || 0) - (k.ilerleme || 0), 0)}
+          {(() => { const m = k.kapsayici ? (k._hesaplananMiktar ?? k.miktar ?? 0) : (k.miktar || 0); const i = k.kapsayici ? (k._hesaplananIlerleme ?? k.ilerleme ?? 0) : (k.ilerleme || 0); return Math.max(m - i, 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) })()}
         </td>
       )}
       {gorSutun('birim_fiyat') && (
@@ -1093,6 +1101,13 @@ export default function ProjeKesif({ projeId }) {
                 </tr>
               ) : (
                 kesifler?.map((k, idx) => {
+                  // Kapsayıcı satır hesaplaması: alt satırların (birim_agirlik × miktar) toplamı
+                  if (k.kapsayici) {
+                    const prefix = k.poz_no || k.okunan_deger || ''
+                    const altSatirlar = kesifler.filter(a => !a.kapsayici && a.poz_no?.startsWith(prefix) && a.poz_no !== prefix)
+                    k._hesaplananMiktar = altSatirlar.reduce((t, a) => t + (a.birim_agirlik || 0) * (a.miktar || 0), 0)
+                    k._hesaplananIlerleme = altSatirlar.reduce((t, a) => t + (a.birim_agirlik || 0) * (a.ilerleme || 0), 0)
+                  }
                   const durum = DURUM_MAP[k.durum] || DURUM_MAP.planli
                   const cins = (k.okunan_deger || '').split(' — ').pop()
                   const birlestirIdx = [...birlestirCinsler].indexOf(cins)

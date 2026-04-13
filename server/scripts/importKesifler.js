@@ -19,19 +19,36 @@ const range = XLSX.utils.decode_range(ws['!ref']);
 
 const cell = (r, c) => ws[XLSX.utils.encode_cell({ r, c })]?.v || null;
 
-// 2. Sol taraftaki malzeme listesini oku (B sütunu: poz, D: malzeme kodu, F: cinsi, G: ölçü)
+// 2. Sol taraftaki malzeme listesini oku — kapsayıcı tespit, demontaj filtresi
 console.log('2. Malzeme listesi okunuyor...');
 const malzemeSatirlari = [];
 for (let r = 4; r <= range.e.r; r++) {
+  const filtre = cell(r, 0); // A sütunu
+  // Demontaj satırlarını atla (1756. satırdan sonrası)
+  if (filtre && String(filtre).toUpperCase().includes('DEMONTAJ')) break;
+
   const poz = cell(r, 1); // B
   const malzemeKodu = cell(r, 3); // D
   const cinsi = cell(r, 5); // F
   const olcu = cell(r, 6); // G
-  if (poz) {
-    malzemeSatirlari.push({ r, poz: String(poz), malzemeKodu: malzemeKodu ? String(malzemeKodu) : null, cinsi: cinsi ? String(cinsi) : '', olcu: olcu ? String(olcu) : 'Ad' });
-  }
+  const agirlik = cell(r, 7); // H
+  if (!poz) continue;
+
+  // Kapsayıcı tespit: ölçü yok VEYA (ölçü=kg ve ağırlık yok → toplam kg satırı)
+  const isKapsayici = !olcu || (String(olcu).toLowerCase() === 'kg' && !agirlik);
+
+  malzemeSatirlari.push({
+    r,
+    excelSatir: r + 1, // 1-based satır numarası
+    poz: String(poz),
+    malzemeKodu: malzemeKodu ? String(malzemeKodu) : null,
+    cinsi: cinsi ? String(cinsi) : '',
+    olcu: olcu ? String(olcu) : '',
+    agirlik: agirlik || null,
+    kapsayici: isKapsayici,
+  });
 }
-console.log(`   ${malzemeSatirlari.length} malzeme satırı bulundu.\n`);
+console.log(`   ${malzemeSatirlari.length} malzeme satırı (demontaj hariç), ${malzemeSatirlari.filter(m => m.kapsayici).length} kapsayıcı.\n`);
 
 // 3. Projeleri bul (8 sütun aralıklarla, col 30'dan başlayarak)
 console.log('3. Projeler taranıyor...');
@@ -78,8 +95,8 @@ function projeEslestir(excelProje) {
 console.log('5. Keşifler import ediliyor...\n');
 
 const insertKesif = db.prepare(`
-  INSERT INTO proje_kesif (proje_id, malzeme_kodu, poz_no, malzeme_adi, birim, miktar, ilerleme, birim_fiyat, durum, okunan_deger)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planli', ?)
+  INSERT INTO proje_kesif (proje_id, malzeme_kodu, poz_no, malzeme_adi, birim, miktar, ilerleme, birim_fiyat, durum, okunan_deger, excel_satir, kapsayici, birim_agirlik)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planli', ?, ?, ?, ?)
 `);
 
 // Malzeme katalogdan fiyat çekme
@@ -103,13 +120,43 @@ const importAll = db.transaction(() => {
     // Bu projenin mevcut keşiflerini sil
     db.prepare('DELETE FROM proje_kesif WHERE proje_id = ?').run(dbProje.id);
 
-    // AF sütunu (c+1): YER TESLİMİ / UYGULAMA PROJESİ miktarlarını oku
-    let projeKesifSayisi = 0;
+    // AF sütunu (c+1): YER TESLİMİ, AG (c+2): İLERLEME
+    // Önce hangi satırlarda veri var tespit et
+    const veriOlanSatirlar = new Set();
     for (const m of malzemeSatirlari) {
-      const miktar = cell(m.r, proje.col + 1); // AF sütunu (YER TESLİMİ)
-      const ilerleme = cell(m.r, proje.col + 2); // AG sütunu (İLERLEME)
-      if ((!miktar || typeof miktar !== 'number' || miktar <= 0) &&
-          (!ilerleme || typeof ilerleme !== 'number' || ilerleme <= 0)) continue;
+      const miktar = cell(m.r, proje.col + 1);
+      const ilerleme = cell(m.r, proje.col + 2);
+      if ((miktar && typeof miktar === 'number' && miktar > 0) ||
+          (ilerleme && typeof ilerleme === 'number' && ilerleme > 0)) {
+        veriOlanSatirlar.add(m.r);
+      }
+    }
+
+    // Alt satır eklendiğinde kapsayıcı üst satırları da ekle
+    const eklenenPozlar = new Set();
+    let projeKesifSayisi = 0;
+
+    for (const m of malzemeSatirlari) {
+      const miktar = cell(m.r, proje.col + 1);
+      const ilerleme = cell(m.r, proje.col + 2);
+      const hasMiktar = miktar && typeof miktar === 'number' && miktar > 0;
+      const hasIlerleme = ilerleme && typeof ilerleme === 'number' && ilerleme > 0;
+
+      if (m.kapsayici) {
+        // Kapsayıcı satır: altındaki herhangi bir alt satırda veri varsa ekle
+        const pozPrefix = m.poz;
+        const altSatirVar = malzemeSatirlari.some(alt =>
+          !alt.kapsayici && alt.poz.startsWith(pozPrefix) && alt.poz !== pozPrefix && veriOlanSatirlar.has(alt.r)
+        );
+        // Kapsayıcının kendisinde de veri olabilir (kg toplam)
+        if (!altSatirVar && !hasMiktar && !hasIlerleme) continue;
+      } else {
+        // Normal satır: veri yoksa atla
+        if (!hasMiktar && !hasIlerleme) continue;
+      }
+
+      if (eklenenPozlar.has(m.poz)) continue; // Duplikat engelle
+      eklenenPozlar.add(m.poz);
 
       const fiyat = katalogFiyat.get(m.poz);
       const birimFiyat = (fiyat?.malzeme_birim_fiyat || 0) + (fiyat?.montaj_birim_fiyat || 0);
@@ -119,11 +166,14 @@ const importAll = db.transaction(() => {
         m.malzemeKodu,
         m.poz,
         m.cinsi,
-        m.olcu,
-        (typeof miktar === 'number' && miktar > 0) ? miktar : 0,
-        (typeof ilerleme === 'number' && ilerleme > 0) ? ilerleme : 0,
+        m.kapsayici ? (m.olcu || 'kg') : (m.olcu || 'Ad'),
+        hasMiktar ? miktar : 0,
+        hasIlerleme ? ilerleme : 0,
         birimFiyat,
-        m.poz // okunan_deger
+        m.poz, // okunan_deger
+        m.excelSatir,
+        m.kapsayici ? 1 : 0,
+        m.agirlik || 0
       );
       projeKesifSayisi++;
     }
