@@ -73,6 +73,9 @@ export default function DosyaListesi({
   const [hata, setHata] = useState(null)
   const [gorunum, setGorunum] = useState('liste') // 'liste' | 'grid'
   const [arama, setArama] = useState('')
+  const [klasorModalAcik, setKlasorModalAcik] = useState(false)
+  const [yeniKlasorAdi, setYeniKlasorAdi] = useState('')
+  const [klasorOlusturuluyor, setKlasorOlusturuluyor] = useState(false)
 
   // Klasor navigasyonu — alt_alan parcalarindan yol izleme
   const [aktifYol, setAktifYol] = useState([]) // ['gelen', 'Ambar_Ana_Depo_2026-03-11']
@@ -233,6 +236,28 @@ export default function DosyaListesi({
     else setSeciliIdler(new Set(dosyalarBurada.map(d => d.id)))
   }
 
+  const handleKlasorOlustur = async () => {
+    if (!yeniKlasorAdi.trim()) return
+    setKlasorOlusturuluyor(true)
+    try {
+      const altAlan = aktifYol.length > 0 ? aktifYol.join('/') : ''
+      const r = await fetch('/api/dosya/klasor-olustur', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alan: filtreler.alan || 'genel', alt_alan: altAlan, klasor_adi: yeniKlasorAdi.trim() })
+      })
+      const j = await r.json()
+      if (j.success) {
+        setYeniKlasorAdi('')
+        setKlasorModalAcik(false)
+        verileriYukle()
+      } else {
+        alert(j.error || 'Klasör oluşturulamadı')
+      }
+    } catch { alert('Bağlantı hatası') }
+    finally { setKlasorOlusturuluyor(false) }
+  }
+
   const klasoreGir = (klasorAdi) => {
     setAktifYol(prev => [...prev, klasorAdi])
     setSeciliIdler(new Set())
@@ -300,6 +325,12 @@ export default function DosyaListesi({
               title="Grid"
             >▦</button>
           </div>
+          {/* Klasör Oluştur */}
+          {!gizleYukleButon && (
+            <button onClick={() => setKlasorModalAcik(true)} style={{ ...S.yukleBtn, background: '#6366f1' }}>
+              📁 Klasör
+            </button>
+          )}
           {/* Yukle */}
           {!gizleYukleButon && (
             <button onClick={() => setYukleModalAcik(true)} style={S.yukleBtn}>
@@ -395,6 +426,33 @@ export default function DosyaListesi({
                 style={{ ...S.modalSil, opacity: siliniyor ? 0.5 : 1 }}
               >
                 {siliniyor ? 'Siliniyor...' : 'Sil'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── KLASÖR OLUŞTUR MODAL ─── */}
+      {klasorModalAcik && (
+        <div style={S.modalOverlay} onClick={() => !klasorOlusturuluyor && setKlasorModalAcik(false)}>
+          <div style={S.modalKutu} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '12px' }}>Yeni Klasör</div>
+            <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '8px' }}>
+              Konum: {filtreler.alan || 'genel'}{aktifYol.length > 0 ? ' / ' + aktifYol.join(' / ') : ''}
+            </div>
+            <input
+              value={yeniKlasorAdi}
+              onChange={e => setYeniKlasorAdi(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleKlasorOlustur()}
+              placeholder="Klasör adı..."
+              autoFocus
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none', marginBottom: '16px' }}
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => { setKlasorModalAcik(false); setYeniKlasorAdi('') }} disabled={klasorOlusturuluyor} style={S.modalIptal}>Vazgeç</button>
+              <button onClick={handleKlasorOlustur} disabled={klasorOlusturuluyor || !yeniKlasorAdi.trim()}
+                style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#6366f1', color: 'white', fontWeight: 600, fontSize: '13px', cursor: 'pointer', opacity: klasorOlusturuluyor || !yeniKlasorAdi.trim() ? 0.5 : 1 }}>
+                {klasorOlusturuluyor ? 'Oluşturuluyor...' : 'Oluştur'}
               </button>
             </div>
           </div>

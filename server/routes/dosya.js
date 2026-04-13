@@ -509,6 +509,33 @@ router.post('/klasor-sil', (req, res) => {
   }
 });
 
+// POST /api/dosya/klasor-olustur — Yeni klasör oluştur (placeholder kayıt ile)
+router.post('/klasor-olustur', (req, res) => {
+  try {
+    const db = getDb();
+    const { alan, alt_alan, klasor_adi } = req.body;
+    if (!alan || !klasor_adi) return res.status(400).json({ success: false, error: 'alan ve klasor_adi zorunludur' });
+
+    const yeniAltAlan = alt_alan ? `${alt_alan}/${klasor_adi}` : klasor_adi;
+
+    // Aynı yolda klasör var mı kontrol
+    const mevcut = db.prepare(`SELECT COUNT(*) as c FROM dosyalar WHERE alan = ? AND alt_alan LIKE ? AND durum = 'aktif'`).get(alan, `${yeniAltAlan}%`);
+    if (mevcut.c > 0) return res.status(409).json({ success: false, error: 'Bu klasör zaten mevcut' });
+
+    // Placeholder dosya kaydı oluştur (klasörü temsil eder)
+    db.prepare(`
+      INSERT INTO dosyalar (dosya_adi, orijinal_adi, dosya_yolu, dosya_boyutu, mime_tipi, kategori,
+        alan, alt_alan, durum, olusturma_tarihi)
+      VALUES (?, ?, '', 0, 'inode/directory', 'klasor', ?, ?, 'aktif', datetime('now'))
+    `).run(`_klasor_${klasor_adi}`, klasor_adi, alan, yeniAltAlan);
+
+    res.json({ success: true, data: { alan, alt_alan: yeniAltAlan } });
+  } catch (error) {
+    console.error('Klasör oluşturma hatası:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // DELETE /api/dosya/:id — Dosya silme
 router.delete('/:id', (req, res) => {
   try {
