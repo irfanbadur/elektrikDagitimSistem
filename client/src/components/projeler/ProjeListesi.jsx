@@ -398,6 +398,9 @@ export default function ProjeListesi() {
         columns={columns}
         data={projeler || []}
         searchPlaceholder="Proje ara..."
+        pagination={false}
+        stickyHeader
+        rowNumber
       />
 
       {silmeHatasi && (

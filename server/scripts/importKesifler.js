@@ -78,8 +78,8 @@ function projeEslestir(excelProje) {
 console.log('5. Keşifler import ediliyor...\n');
 
 const insertKesif = db.prepare(`
-  INSERT INTO proje_kesif (proje_id, malzeme_kodu, poz_no, malzeme_adi, birim, miktar, birim_fiyat, durum, okunan_deger)
-  VALUES (?, ?, ?, ?, ?, ?, ?, 'planli', ?)
+  INSERT INTO proje_kesif (proje_id, malzeme_kodu, poz_no, malzeme_adi, birim, miktar, ilerleme, birim_fiyat, durum, okunan_deger)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planli', ?)
 `);
 
 // Malzeme katalogdan fiyat çekme
@@ -106,10 +106,11 @@ const importAll = db.transaction(() => {
     // AF sütunu (c+1): YER TESLİMİ / UYGULAMA PROJESİ miktarlarını oku
     let projeKesifSayisi = 0;
     for (const m of malzemeSatirlari) {
-      const miktar = cell(m.r, proje.col + 1); // AF sütunu
-      if (!miktar || typeof miktar !== 'number' || miktar <= 0) continue;
+      const miktar = cell(m.r, proje.col + 1); // AF sütunu (YER TESLİMİ)
+      const ilerleme = cell(m.r, proje.col + 2); // AG sütunu (İLERLEME)
+      if ((!miktar || typeof miktar !== 'number' || miktar <= 0) &&
+          (!ilerleme || typeof ilerleme !== 'number' || ilerleme <= 0)) continue;
 
-      // Fiyat bilgisini katalogdan çek
       const fiyat = katalogFiyat.get(m.poz);
       const birimFiyat = (fiyat?.malzeme_birim_fiyat || 0) + (fiyat?.montaj_birim_fiyat || 0);
 
@@ -119,7 +120,8 @@ const importAll = db.transaction(() => {
         m.poz,
         m.cinsi,
         m.olcu,
-        miktar,
+        (typeof miktar === 'number' && miktar > 0) ? miktar : 0,
+        (typeof ilerleme === 'number' && ilerleme > 0) ? ilerleme : 0,
         birimFiyat,
         m.poz // okunan_deger
       );

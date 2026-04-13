@@ -246,12 +246,12 @@ router.post('/:projeId/toplu', (req, res) => {
 router.put('/:projeId/:id', (req, res) => {
   try {
     const db = getDb();
-    const { malzeme_kodu, poz_no, malzeme_adi, birim, miktar, birim_fiyat, durum, notlar } = req.body;
+    const { malzeme_kodu, poz_no, malzeme_adi, birim, miktar, ilerleme, birim_fiyat, durum, notlar } = req.body;
 
     db.prepare(`
-      UPDATE proje_kesif SET malzeme_kodu=?, poz_no=?, malzeme_adi=?, birim=?, miktar=?, birim_fiyat=?, durum=?, notlar=?, guncelleme_tarihi=CURRENT_TIMESTAMP
+      UPDATE proje_kesif SET malzeme_kodu=?, poz_no=?, malzeme_adi=?, birim=?, miktar=?, ilerleme=?, birim_fiyat=?, durum=?, notlar=?, guncelleme_tarihi=CURRENT_TIMESTAMP
       WHERE id=? AND proje_id=?
-    `).run(malzeme_kodu, poz_no, malzeme_adi, birim, miktar, birim_fiyat, durum, notlar, req.params.id, req.params.projeId);
+    `).run(malzeme_kodu, poz_no, malzeme_adi, birim, miktar, ilerleme || 0, birim_fiyat, durum, notlar, req.params.id, req.params.projeId);
 
     const guncellenen = db.prepare('SELECT * FROM proje_kesif WHERE id = ?').get(req.params.id);
     basarili(res, guncellenen);

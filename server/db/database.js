@@ -193,6 +193,9 @@ function runMigrations(database) {
   addColumnIfNotExists(database, 'projeler', 'enerjilenme_tarihi', 'DATE');
   addColumnIfNotExists(database, 'projeler', 'pyp', 'TEXT');
 
+  // Proje keşif ilerleme
+  addColumnIfNotExists(database, 'proje_kesif', 'ilerleme', 'REAL DEFAULT 0');
+
   // Malzeme kataloğu yeni alanlar
   addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'eski_poz', 'TEXT');
   addColumnIfNotExists(database, 'depo_malzeme_katalogu', 'malzeme_birim_fiyat', 'REAL DEFAULT 0');

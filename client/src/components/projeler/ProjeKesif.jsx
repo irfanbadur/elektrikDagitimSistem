@@ -21,6 +21,8 @@ const TUM_SUTUNLAR = [
   { key: 'malzeme_adi',  label: 'Malzeme Adı',   varsayilan: true,  zorunlu: true },
   { key: 'birim',        label: 'Birim',          varsayilan: true  },
   { key: 'miktar',       label: 'Miktar',         varsayilan: true  },
+  { key: 'ilerleme',     label: 'İlerleme',       varsayilan: true  },
+  { key: 'kalan',        label: 'Kalan',          varsayilan: true  },
   { key: 'birim_fiyat',  label: 'Birim Fiyat',   varsayilan: true  },
   { key: 'toplam_tutar', label: 'Toplam Tutar',  varsayilan: true  },
   { key: 'alinan_miktar',label: 'Alınan Miktar', varsayilan: false },
@@ -620,6 +622,18 @@ function KesifSatiri({ kalem: k, siraNo, secili, birlestirRenk, onSecimDegistir,
           <input type="number" value={k.miktar || ''} onChange={e => onGuncelle({ miktar: Number(e.target.value) || 0 })} className={cn(editCls, 'text-center w-16')} />
         </td>
       )}
+      {gorSutun('ilerleme') && (
+        <td className="px-2 py-1.5">
+          <input type="number" value={k.ilerleme || ''} max={k.miktar || 0}
+            onChange={e => { const v = Math.min(Number(e.target.value) || 0, k.miktar || 0); onGuncelle({ ilerleme: v }) }}
+            className={cn(editCls, 'text-center w-16')} />
+        </td>
+      )}
+      {gorSutun('kalan') && (
+        <td className="px-2 py-1.5 text-center text-xs tabular-nums font-medium">
+          {Math.max((k.miktar || 0) - (k.ilerleme || 0), 0)}
+        </td>
+      )}
       {gorSutun('birim_fiyat') && (
         <td className="px-2 py-1.5">
           <input type="number" value={k.birim_fiyat || ''} onChange={e => onGuncelle({ birim_fiyat: Number(e.target.value) || 0 })} className={cn(editCls, 'text-center w-16')} />
@@ -800,6 +814,12 @@ function KesifFormSatiri({ onKaydet, onIptal, gorSutun }) {
           <input type="number" value={form.miktar} onChange={e => setForm({ ...form, miktar: e.target.value })} placeholder="0" className="w-20 rounded border border-input bg-background px-2 py-1 text-xs" />
         </td>
       )}
+      {gorSutun('ilerleme') && (
+        <td className="px-3 py-2">
+          <input type="number" value={form.ilerleme || ''} onChange={e => setForm({ ...form, ilerleme: e.target.value })} placeholder="0" className="w-20 rounded border border-input bg-background px-2 py-1 text-xs" />
+        </td>
+      )}
+      {gorSutun('kalan') && <td className="px-3 py-2 text-xs text-muted-foreground">-</td>}
       {gorSutun('birim_fiyat') && (
         <td className="px-3 py-2">
           <input type="number" value={form.birim_fiyat} onChange={e => setForm({ ...form, birim_fiyat: e.target.value })} placeholder="0" className="w-20 rounded border border-input bg-background px-2 py-1 text-xs" />
@@ -927,9 +947,17 @@ export default function ProjeKesif({ projeId }) {
           const durumIdx = parsed.indexOf('durum')
           parsed.splice(durumIdx >= 0 ? durumIdx + 1 : parsed.length, 0, 'depo')
         }
-        if (!parsed.includes('birim_fiyat')) {
+        if (!parsed.includes('ilerleme')) {
           const miktarIdx = parsed.indexOf('miktar')
-          parsed.splice(miktarIdx >= 0 ? miktarIdx + 1 : parsed.length, 0, 'birim_fiyat')
+          parsed.splice(miktarIdx >= 0 ? miktarIdx + 1 : parsed.length, 0, 'ilerleme')
+        }
+        if (!parsed.includes('kalan')) {
+          const ilerlemeIdx = parsed.indexOf('ilerleme')
+          parsed.splice(ilerlemeIdx >= 0 ? ilerlemeIdx + 1 : parsed.length, 0, 'kalan')
+        }
+        if (!parsed.includes('birim_fiyat')) {
+          const kalanIdx = parsed.indexOf('kalan')
+          parsed.splice(ilerlemeIdx >= 0 ? ilerlemeIdx + 1 : parsed.length, 0, 'birim_fiyat')
         }
         if (!parsed.includes('toplam_tutar')) {
           const bfIdx = parsed.indexOf('birim_fiyat')
@@ -1025,6 +1053,8 @@ export default function ProjeKesif({ projeId }) {
                 {gorSutun('malzeme_adi') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Malzeme Adı</th>}
                 {gorSutun('birim') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim</th>}
                 {gorSutun('miktar') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Miktar</th>}
+                {gorSutun('ilerleme') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">İlerleme</th>}
+                {gorSutun('kalan') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Kalan</th>}
                 {gorSutun('birim_fiyat') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim Fiyat</th>}
                 {gorSutun('toplam_tutar') && <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Toplam Tutar</th>}
                 {gorSutun('alinan_miktar') && <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Alınan Miktar</th>}
@@ -1111,6 +1141,8 @@ export default function ProjeKesif({ projeId }) {
                   )}
                   {gorSutun('birim') && <td />}
                   {gorSutun('miktar') && <td />}
+                  {gorSutun('ilerleme') && <td />}
+                  {gorSutun('kalan') && <td />}
                   {gorSutun('birim_fiyat') && <td />}
                   {gorSutun('toplam_tutar') && (
                     <td className="px-3 py-2 text-left text-sm font-bold text-primary tabular-nums">

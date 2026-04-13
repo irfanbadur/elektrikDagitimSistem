@@ -99,7 +99,7 @@ function SutunSecici({ table }) {
   )
 }
 
-export default function DataTable({ columns, data = [], searchable = true, searchPlaceholder = 'Ara...', pagination = true, pageSize = 25, onRowDoubleClick, columnToggle = true }) {
+export default function DataTable({ columns, data = [], searchable = true, searchPlaceholder = 'Ara...', pagination = true, pageSize = 25, onRowDoubleClick, columnToggle = true, stickyHeader = false, rowNumber = false }) {
   const [sorting, setSorting] = useState([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [columnVisibility, setColumnVisibility] = useState({})
@@ -139,11 +139,12 @@ export default function DataTable({ columns, data = [], searchable = true, searc
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
+      <div className={cn("rounded-lg border border-border bg-card shadow-sm", stickyHeader ? "overflow-auto" : "overflow-x-auto")} style={stickyHeader ? { maxHeight: 'calc(100vh - 220px)' } : undefined}>
         <table className="w-full text-sm">
-          <thead>
+          <thead className={stickyHeader ? "sticky top-0 z-10" : ""}>
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id} className="border-b-2 border-border bg-muted/70">
+              <tr key={hg.id} className={cn("border-b-2 border-border", stickyHeader ? "bg-muted/95 backdrop-blur-sm" : "bg-muted/70")}>
+                {rowNumber && <th className="w-10 px-3 py-3.5 text-center text-xs font-semibold text-muted-foreground">#</th>}
                 {hg.headers.map((header) => (
                   <th key={header.id} className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {header.isPlaceholder ? null : (
@@ -176,6 +177,7 @@ export default function DataTable({ columns, data = [], searchable = true, searc
                     i % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'
                   } hover:bg-primary/5 ${onRowDoubleClick ? 'cursor-pointer' : ''}`}
                 >
+                  {rowNumber && <td className="px-3 py-3.5 text-center text-xs text-muted-foreground">{i + 1}</td>}
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3.5">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
