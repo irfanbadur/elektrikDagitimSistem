@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import useDropdownNav from '@/hooks/useDropdownNav'
-import { Plus, Trash2, Search, Package, Check, Clock, X, Columns3, ChevronDown, ChevronUp, Loader2, Combine } from 'lucide-react'
+import { Plus, Trash2, Search, Package, Check, Clock, X, Columns3, ChevronDown, ChevronUp, Loader2, Combine, FileSpreadsheet } from 'lucide-react'
 import { useProjeKesif, useProjeKesifEkle, useProjeKesifGuncelle, useProjeKesifSil, useProjeKesifOzet } from '@/hooks/useProjeKesif'
 import { useProje } from '@/hooks/useProjeler'
 import { useDepolar } from '@/hooks/useDepolar'
@@ -938,6 +938,18 @@ export default function ProjeKesif({ projeId }) {
     finally { setDxfYukleniyor(false) }
   }
 
+  const [excelAktariliyor, setExcelAktariliyor] = useState(false)
+  const handleExcelAktar = async (tip = 'ilerleme') => {
+    if (!kesifler?.length) return alert('Keşif listesi boş')
+    setExcelAktariliyor(true)
+    try {
+      const r = await api.post(`/proje-kesif/${projeId}/excel-aktar`, { tip })
+      const d = r?.data || r
+      alert(`${d.yazilanSatir || 0} kalem ${tip === 'ilerleme' ? 'ilerleme' : 'miktar'} olarak Excel'e aktarıldı.\nDosya: ihale/YB-KET/`)
+    } catch (err) { alert(err?.response?.data?.error || err.message || 'Excel aktarma hatası') }
+    finally { setExcelAktariliyor(false) }
+  }
+
   const [gorunurSutunlar, setGorunurSutunlar] = useState(() => {
     try {
       const saved = localStorage.getItem('proje_kesif_sutunlar')
@@ -1029,6 +1041,16 @@ export default function ProjeKesif({ projeId }) {
           </button>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {kesifler?.length > 0 && (
+            <div className="relative group">
+              <button disabled={excelAktariliyor}
+                onClick={() => handleExcelAktar('ilerleme')}
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors">
+                {excelAktariliyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                Excel'e Aktar
+              </button>
+            </div>
+          )}
           <SutunSecici gorunurSutunlar={gorunurSutunlar} setGorunurSutunlar={setGorunurSutunlar} />
           <BirlestirSecici kesifler={kesifler} onBirlestir={handleBirlestir} seciliCinsler={birlestirCinsler} setSeciliCinsler={setBirlestirCinsler} />
           <button onClick={() => setYeniSatir(true)} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90">

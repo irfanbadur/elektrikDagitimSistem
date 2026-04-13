@@ -37,7 +37,9 @@ const PROJE_SELECT = `SELECT p.*, b.bolge_adi, e.ekip_adi,
   (SELECT k.ad_soyad FROM kullanici_rolleri kr JOIN kullanicilar k ON kr.kullanici_id = k.id
    WHERE kr.rol_id = COALESCE(itf_kod.sorumlu_rol_id, itf_sira.sorumlu_rol_id, pad.sorumlu_rol_id) AND k.durum = 'aktif'
    ORDER BY k.ad_soyad LIMIT 1) AS aktif_sorumlu_adi,
-  dk.ad_soyad AS teslim_eden_adi, dk.unvan AS teslim_eden_unvan, dk.kurum AS teslim_eden_kurum
+  dk.ad_soyad AS teslim_eden_adi, dk.unvan AS teslim_eden_unvan, dk.kurum AS teslim_eden_kurum,
+  (SELECT CASE WHEN SUM(pk.miktar) > 0 THEN ROUND(SUM(pk.ilerleme) * 100.0 / SUM(pk.miktar)) ELSE 0 END FROM proje_kesif pk WHERE pk.proje_id = p.id AND pk.kapsayici = 0) AS kesif_ilerleme_yuzdesi,
+  (SELECT COUNT(*) FROM proje_kesif pk2 WHERE pk2.proje_id = p.id AND pk2.kapsayici = 0) AS kesif_kalem_sayisi
   FROM projeler p
   LEFT JOIN bolgeler b ON p.bolge_id = b.id
   LEFT JOIN ekipler e ON p.ekip_id = e.id

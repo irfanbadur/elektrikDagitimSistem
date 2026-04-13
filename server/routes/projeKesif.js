@@ -271,4 +271,27 @@ router.delete('/:projeId/:id', (req, res) => {
   }
 });
 
+// POST /:projeId/excel-aktar — Keşif verilerini Yatırım Takip Excel'e aktar
+router.post('/:projeId/excel-aktar', (req, res) => {
+  try {
+    const { projeKesifExceleAktar } = require('../services/excelAktarService');
+    const { tip } = req.body; // 'miktar' veya 'ilerleme'
+    const sonuc = projeKesifExceleAktar(parseInt(req.params.projeId), tip || 'ilerleme');
+    basarili(res, sonuc);
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// GET /:projeId/aktarim-durumu — Projenin ilerleme ve aktarım durumu
+router.get('/:projeId/aktarim-durumu', (req, res) => {
+  try {
+    const { projeAktarimDurumu } = require('../services/excelAktarService');
+    const durum = projeAktarimDurumu(parseInt(req.params.projeId));
+    basarili(res, durum);
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
 module.exports = router;

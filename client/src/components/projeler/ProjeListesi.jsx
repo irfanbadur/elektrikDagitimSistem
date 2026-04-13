@@ -208,26 +208,24 @@ export default function ProjeListesi() {
         },
       },
       {
-        accessorKey: 'tamamlanma_yuzdesi',
-        header: 'Ilerleme',
-        cell: ({ getValue }) => {
-          const v = getValue() || 0
+        accessorKey: 'kesif_ilerleme_yuzdesi',
+        header: 'İlerleme',
+        cell: ({ row }) => {
+          const v = row.original.kesif_ilerleme_yuzdesi || 0
+          const kalem = row.original.kesif_kalem_sayisi || 0
           return (
             <div className="flex items-center gap-2">
               <div className="h-2 w-16 rounded-full bg-gray-200">
                 <div
                   className={cn(
                     'h-2 rounded-full',
-                    v >= 100
-                      ? 'bg-emerald-500'
-                      : v >= 50
-                        ? 'bg-primary'
-                        : 'bg-amber-500'
+                    v >= 100 ? 'bg-emerald-500' : v >= 50 ? 'bg-primary' : v > 0 ? 'bg-amber-500' : 'bg-gray-300'
                   )}
                   style={{ width: `${Math.min(v, 100)}%` }}
                 />
               </div>
               <span className="text-xs text-muted-foreground">%{v}</span>
+              {kalem === 0 && <span className="text-[10px] text-red-400" title="Keşif yok">!</span>}
             </div>
           )
         },
