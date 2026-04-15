@@ -5,7 +5,6 @@ import { useDepoKatalog } from '@/hooks/useDepoKatalog'
 import useDropdownNav from '@/hooks/useDropdownNav'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
-import DemontajKrokisi from './DemontajKrokisi'
 
 const DURUM_MAP = {
   planli: { label: 'Planli', renk: 'bg-slate-100 text-slate-700', icon: Clock },
@@ -275,10 +274,7 @@ export default function ProjeDemontaj({ projeId }) {
 
   return (
     <div>
-      {/* Demontaj Krokisi — Mevcut / Yeni Durum DXF Overlay */}
-      <DemontajKrokisi projeId={projeId} />
-
-      <div className="mb-4 mt-6 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Demontaj Listesi</h3>
           <p className="text-sm text-muted-foreground">Projede sokulmesi gereken malzemeler</p>

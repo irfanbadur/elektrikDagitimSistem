@@ -345,13 +345,17 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
 // DXF Viewer — fontlar: NotoSans (text) + B_CAD (semboller) — stil bazlı seçim otomatik
 const DXF_FONTS = ['/fonts/NotoSans.ttf', '/fonts/B_CAD.ttf', '/fonts/T_ROMANS.ttf']
 
-function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotSil }) {
+function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotSil, overlayUrl }) {
   const qc = useQueryClient()
   const containerRef = useRef(null)
   const viewerRef = useRef(null)
   const rendererRef = useRef(null)
   const direklerRef = useRef([])
   const threeRef = useRef(null)
+  // Overlay refs (demontaj krokisi modu)
+  const mevcutGroupRef = useRef(null)
+  const yeniGroupRef = useRef(null)
+  const [overlayKatmanlar, setOverlayKatmanlar] = useState([])
   const spritelerRef = useRef({}) // { key: sprite }
   const spriteKonumRef = useRef({}) // { key: { x, y } } — sürüklenen konumlar
   const dragRef = useRef(null) // { sprite, startPos, startMouse }
@@ -462,6 +466,82 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
           viewer.FitView(b.minX - o.x, b.maxX - o.x, b.minY - o.y, b.maxY - o.y)
         }
 
+        // ── Overlay modu: ikinci DXF'i yükle (demontaj krokisi) ──
+        if (overlayUrl && !cancelled) {
+          try {
+            setIlerleme('Overlay DXF yukleniyor...')
+            const scene = viewer.GetScene?.() || viewer.scene
+            if (scene) {
+              // Ana DXF nesnelerini "mevcut_durum" grubuna al ve renklendir
+              const mevcutGroup = new three.Group()
+              mevcutGroup.name = 'mevcut_durum'
+              ;[...scene.children].filter(c => !c.isLight).forEach(c => mevcutGroup.add(c))
+              // Güvenli renklendirme
+              mevcutGroup.traverse(obj => {
+                if (!obj.material || obj.isLight) return
+                try {
+                  const apply = m => { const c = m.clone(); if (c.color?.set) c.color.set(0xf87171); return c }
+                  obj.material = Array.isArray(obj.material) ? obj.material.map(apply) : apply(obj.material)
+                } catch {}
+              })
+              scene.add(mevcutGroup)
+              mevcutGroupRef.current = mevcutGroup
+
+              // Gizli viewer'da overlay DXF'i yükle
+              const hiddenDiv = document.createElement('div')
+              hiddenDiv.style.cssText = 'position:fixed;top:0;left:-9999px;width:800px;height:600px;pointer-events:none;overflow:hidden'
+              document.body.appendChild(hiddenDiv)
+              const hiddenRenderer = new three.WebGLRenderer({ antialias: false })
+              hiddenRenderer.setSize(800, 600)
+              hiddenDiv.appendChild(hiddenRenderer.domElement)
+              const { DxfViewer: DxfViewerClass } = await import('dxf-viewer')
+              const hiddenViewer = new DxfViewerClass(hiddenDiv, {
+                clearColor: new three.Color('#000'), autoResize: false, renderer: hiddenRenderer,
+              })
+              const overlayResponse = await fetch(overlayUrl)
+              const overlayBlob = await overlayResponse.blob()
+              const overlayBlobUrl = URL.createObjectURL(overlayBlob)
+              await hiddenViewer.Load({ url: overlayBlobUrl, fonts: DXF_FONTS,
+                progressCbk: (phase) => { if (phase === 'parse') setIlerleme('Overlay parse ediliyor...') }
+              })
+              URL.revokeObjectURL(overlayBlobUrl)
+
+              // Klonla ve yeşile boya
+              const hiddenScene = hiddenViewer.GetScene?.() || hiddenViewer.scene
+              const yeniGroup = new three.Group()
+              yeniGroup.name = 'yeni_durum'
+              if (hiddenScene) {
+                ;[...hiddenScene.children].filter(c => !c.isLight).forEach(child => {
+                  try { yeniGroup.add(child.clone(true)) } catch {}
+                })
+              }
+              yeniGroup.traverse(obj => {
+                if (!obj.material || obj.isLight) return
+                try {
+                  const apply = m => { const c = m.clone(); if (c.color?.set) c.color.set(0x4ade80); return c }
+                  obj.material = Array.isArray(obj.material) ? obj.material.map(apply) : apply(obj.material)
+                } catch {}
+              })
+              scene.add(yeniGroup)
+              yeniGroupRef.current = yeniGroup
+
+              // Temizle
+              try { hiddenViewer.Clear() } catch {}
+              try { hiddenRenderer.dispose() } catch {}
+              try { document.body.removeChild(hiddenDiv) } catch {}
+
+              // Overlay katmanlarını ayarla
+              setOverlayKatmanlar([
+                { id: 'mevcut_durum', ad: 'Mevcut Durum', renk: '#f87171', gorunur: true },
+                { id: 'yeni_durum', ad: 'Yeni Durum', renk: '#4ade80', gorunur: true },
+              ])
+              viewer.Render()
+            }
+          } catch (overlayErr) {
+            console.warn('[DXF] Overlay yükleme hatası:', overlayErr.message)
+          }
+        }
+
         // Direk listesini yükle ve tıklama event'i ekle
         if (dosyaId) {
           try {
@@ -509,7 +589,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
         viewerRef.current = null
       }
     }
-  }, [src])
+  }, [src, overlayUrl])
 
   // Bileşen unmount olduğunda renderer'ı temizle
   useEffect(() => {
@@ -520,6 +600,16 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
       }
     }
   }, [])
+
+  // Overlay katman görünürlük kontrolü
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || !overlayUrl || yukleniyor || !overlayKatmanlar.length) return
+    const m = mevcutGroupRef.current, y = yeniGroupRef.current
+    if (m) m.visible = overlayKatmanlar.find(k => k.id === 'mevcut_durum')?.gorunur ?? true
+    if (y) y.visible = overlayKatmanlar.find(k => k.id === 'yeni_durum')?.gorunur ?? true
+    viewer.Render()
+  }, [overlayKatmanlar, overlayUrl, yukleniyor])
 
   // direkNotlari veya katman ayarları değiştiğinde sprite'ları senkronize et
   useEffect(() => {
@@ -692,6 +782,38 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
               <button onClick={() => setKatmanPanelAcik(false)} className="p-0.5 rounded hover:bg-muted"><X className="h-3 w-3" /></button>
             </div>
             <div className="p-2 space-y-2">
+              {/* Overlay katmanları (demontaj krokisi modu) */}
+              {overlayKatmanlar.length > 0 && (
+                <>
+                  {overlayKatmanlar.map(k => (
+                    <div key={k.id} className="flex items-center gap-2">
+                      <button onClick={() => setOverlayKatmanlar(prev => prev.map(p => p.id === k.id ? { ...p, gorunur: !p.gorunur } : p))}
+                        className={cn('p-0.5 rounded', k.gorunur ? 'text-foreground' : 'text-muted-foreground/40')}>
+                        {k.gorunur ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                      </button>
+                      <div className="w-4 h-4 rounded-sm border border-border/50 shrink-0 relative overflow-hidden">
+                        <input type="color" value={k.renk}
+                          onChange={e => {
+                            const hex = parseInt(e.target.value.replace('#', ''), 16)
+                            setOverlayKatmanlar(prev => prev.map(p => p.id === k.id ? { ...p, renk: e.target.value } : p))
+                            const grp = k.id === 'mevcut_durum' ? mevcutGroupRef.current : yeniGroupRef.current
+                            if (grp) {
+                              grp.traverse(obj => {
+                                if (!obj.material || obj.isLight) return
+                                try { if (Array.isArray(obj.material)) obj.material.forEach(m => { if (m.color?.set) m.color.set(hex) }); else if (obj.material.color?.set) obj.material.color.set(hex) } catch {}
+                              })
+                              viewerRef.current?.Render()
+                            }
+                          }}
+                          className="absolute inset-0 w-8 h-8 -top-1 -left-1 cursor-pointer border-0" />
+                      </div>
+                      <span className={cn('text-xs font-medium flex-1', !k.gorunur && 'text-muted-foreground/50 line-through')}>{k.ad}</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-border my-1" />
+                </>
+              )}
+              {/* Sprite katmanları (keşif/demontaj/metraj) */}
               {katmanlar.map(k => (
                 <div key={k.id} className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -1254,12 +1376,20 @@ export default function ProjeDonguBar({ projeId }) {
   const { data: ilerleme } = useProjeFazIlerleme(projeId)
   const scrollRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
-  const [seciliDosya, setSeciliDosya] = useState(null) // { id, adi, adimAdi }
-  const [seciliDirek, setSeciliDirek] = useState(null) // { sembol, sembolAdi, etiket, ekranX, ekranY }
-  const [direkNotlari, setDirekNotlari] = useState({}) // { key: { x, y, malzemeler: [{adi, miktar}] } }
-  // Dosya değiştiğinde direk notlarını ve seçili direği temizle
+  const [seciliDosya, setSeciliDosya] = useState(null) // { id, adi, adimAdi, overlayId? }
+  const [seciliDirek, setSeciliDirek] = useState(null)
+  const [direkNotlari, setDirekNotlari] = useState({})
   useEffect(() => { setDirekNotlari({}); setSeciliDirek(null) }, [seciliDosya?.id])
   const dragState = useRef({ startX: 0, scrollLeft: 0 })
+
+  // Demontaj Krokisi — mevcut/yeni durum DXF dosya bilgilerini al
+  const { data: demontajKrokiData } = useQuery({
+    queryKey: ['demontaj-kroki-dosyalar', projeId],
+    queryFn: () => api.get(`/dosya/proje/${projeId}/demontaj-kroki`),
+    select: (res) => res.data || res,
+    enabled: !!projeId,
+  })
+  const demontajHazir = demontajKrokiData?.mevcutDurum?.id && demontajKrokiData?.yeniDurum?.id
 
   const handleWheel = useCallback((e) => {
     const el = scrollRef.current
@@ -1405,6 +1535,36 @@ export default function ProjeDonguBar({ projeId }) {
         })}
       </div>
 
+      {/* ─── Demontaj Krokisi Butonu ─── */}
+      {demontajHazir && (
+        <div className="border-t border-border px-5 py-2 flex items-center justify-between bg-gradient-to-r from-red-50/50 to-green-50/50">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-amber-600" />
+            <span className="text-xs font-semibold text-foreground">Demontaj Krokisi</span>
+            <span className="text-[10px] text-muted-foreground">— Mevcut / Yeni Durum karşılaştırma</span>
+          </div>
+          <button
+            onClick={() => setSeciliDosya({
+              id: demontajKrokiData.mevcutDurum.id,
+              adi: 'Demontaj Krokisi',
+              adimAdi: 'Demontaj Krokisi',
+              adimKodu: 'demontaj_kroki',
+              dxf: true,
+              overlayId: demontajKrokiData.yeniDurum.id,
+            })}
+            className={cn(
+              'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+              seciliDosya?.adimKodu === 'demontaj_kroki'
+                ? 'bg-amber-600 text-white'
+                : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+            )}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {seciliDosya?.adimKodu === 'demontaj_kroki' ? 'Görüntüleniyor' : 'Görüntüle'}
+          </button>
+        </div>
+      )}
+
       {/* ─── Dosya Ön İzleme Paneli ─── */}
       {seciliDosya && (
         <div className="border-t border-border">
@@ -1433,6 +1593,7 @@ export default function ProjeDonguBar({ projeId }) {
                   src={`/api/dosya/${seciliDosya.id}/dosya`}
                   dosyaId={seciliDosya.id}
                   projeId={projeId}
+                  overlayUrl={seciliDosya.overlayId ? `/api/dosya/${seciliDosya.overlayId}/dosya` : null}
                   onDirekTikla={seciliDosya.adimKodu === 'kesif' ? (d) => { if (!seciliDirek) setSeciliDirek(d) } : undefined}
                   direkNotlari={seciliDosya.adimKodu === 'kesif' ? direkNotlari : undefined}
                   onNotSil={seciliDosya.adimKodu === 'kesif' ? (key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y }) : undefined}
