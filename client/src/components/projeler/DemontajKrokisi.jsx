@@ -51,15 +51,81 @@ function _entityToPoints(three, entity, origin) {
   return pts
 }
 
-// ── Entity listesini Three.js Line nesnelerine dönüştür ──
+// ── INSERT/TEXT/POINT → daire + artı işareti marker ──
+function _markerLines(three, x, y, origin, r) {
+  const ox = origin?.x || 0, oy = origin?.y || 0
+  const cx = x - ox, cy = y - oy
+  const segments = []
+  // Daire
+  const circlePts = []
+  for (let i = 0; i <= 24; i++) {
+    const a = (i / 24) * Math.PI * 2
+    circlePts.push(new three.Vector3(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0))
+  }
+  segments.push(circlePts)
+  // Artı (+) işareti
+  segments.push([
+    new three.Vector3(cx - r * 0.6, cy, 0),
+    new three.Vector3(cx + r * 0.6, cy, 0),
+  ])
+  segments.push([
+    new three.Vector3(cx, cy - r * 0.6, 0),
+    new three.Vector3(cx, cy + r * 0.6, 0),
+  ])
+  return segments
+}
+
+// ── Entity listesini Three.js nesnelerine dönüştür (çizgi + marker) ──
 function _buildEntityGroup(three, entities, origin, color) {
   const group = new three.Group()
-  const mat = new three.LineBasicMaterial({ color })
+  const lineMat = new three.LineBasicMaterial({ color })
+  // INSERT/TEXT marker boyutu — çizim birimlerinde
+  const MARKER_R = 3
+
   for (const ent of entities) {
+    // INSERT — blok referansı (direkler, ekipman semboleri)
+    if (ent.type === 'INSERT' && ent.x != null && ent.y != null) {
+      const segs = _markerLines(three, ent.x, ent.y, origin, MARKER_R)
+      for (const pts of segs) {
+        const geo = new three.BufferGeometry().setFromPoints(pts)
+        const line = new three.Line(geo, lineMat)
+        line.userData = { entity: ent }
+        group.add(line)
+      }
+      continue
+    }
+
+    // TEXT/MTEXT — direk stili olanlar marker, diğerleri küçük nokta
+    if ((ent.type === 'TEXT' || ent.type === 'MTEXT') && ent.x != null && ent.y != null) {
+      const isDirek = (ent.style || '').toLowerCase() === 'direk'
+      const r = isDirek ? MARKER_R : MARKER_R * 0.5
+      const segs = _markerLines(three, ent.x, ent.y, origin, r)
+      for (const pts of segs) {
+        const geo = new three.BufferGeometry().setFromPoints(pts)
+        const line = new three.Line(geo, lineMat)
+        line.userData = { entity: ent }
+        group.add(line)
+      }
+      continue
+    }
+
+    // POINT — küçük marker
+    if (ent.type === 'POINT' && ent.x != null && ent.y != null) {
+      const segs = _markerLines(three, ent.x, ent.y, origin, MARKER_R * 0.4)
+      for (const pts of segs) {
+        const geo = new three.BufferGeometry().setFromPoints(pts)
+        const line = new three.Line(geo, lineMat)
+        line.userData = { entity: ent }
+        group.add(line)
+      }
+      continue
+    }
+
+    // Geometrik entity'ler (LINE, CIRCLE, ARC, POLYLINE)
     const pts = _entityToPoints(three, ent, origin)
     if (pts.length < 2) continue
     const geo = new three.BufferGeometry().setFromPoints(pts)
-    const line = new three.Line(geo, mat)
+    const line = new three.Line(geo, lineMat)
     line.userData = { entity: ent }
     group.add(line)
   }

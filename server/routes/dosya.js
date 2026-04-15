@@ -997,6 +997,7 @@ router.get('/proje/:projeId/demontaj-kroki', (req, res) => {
 // ── DXF entity ayrıştırma yardımcıları ──
 
 function _parseDxfEntities(content) {
+  const SUPPORTED = ['LINE', 'CIRCLE', 'ARC', 'LWPOLYLINE', 'POLYLINE', 'INSERT', 'TEXT', 'MTEXT', 'POINT'];
   const lines = content.split(/\r?\n/);
   const entities = [];
   let inEntities = false;
@@ -1015,7 +1016,7 @@ function _parseDxfEntities(content) {
         entities.push(cur);
       }
       curType = val; vertices = [];
-      cur = ['LINE', 'CIRCLE', 'ARC', 'LWPOLYLINE', 'POLYLINE'].includes(val) ? { type: val } : null;
+      cur = SUPPORTED.includes(val) ? { type: val } : null;
       continue;
     }
     if (!cur) continue;
@@ -1043,6 +1044,29 @@ function _parseDxfEntities(content) {
         if (code === 20 && vertices.length > 0) vertices[vertices.length - 1].y = parseFloat(val);
         if (code === 8) cur.layer = val;
         break;
+      case 'INSERT':
+        if (code === 2) cur.block = val;      // Blok adı
+        if (code === 10) cur.x = parseFloat(val);
+        if (code === 20) cur.y = parseFloat(val);
+        if (code === 41) cur.scaleX = parseFloat(val);
+        if (code === 42) cur.scaleY = parseFloat(val);
+        if (code === 50) cur.rotation = parseFloat(val);
+        if (code === 8) cur.layer = val;
+        break;
+      case 'TEXT':
+      case 'MTEXT':
+        if (code === 1) cur.text = val;
+        if (code === 7) cur.style = val;      // Stil adı (ör. "Direk")
+        if (code === 10) cur.x = parseFloat(val);
+        if (code === 20) cur.y = parseFloat(val);
+        if (code === 40) cur.height = parseFloat(val);
+        if (code === 8) cur.layer = val;
+        break;
+      case 'POINT':
+        if (code === 10) cur.x = parseFloat(val);
+        if (code === 20) cur.y = parseFloat(val);
+        if (code === 8) cur.layer = val;
+        break;
     }
   }
   if (cur && curType) {
@@ -1060,6 +1084,10 @@ function _entityFingerprint(e) {
     case 'ARC': return `A:${r(e.cx)},${r(e.cy)},${r(e.r)},${Math.round(e.startAngle || 0)},${Math.round(e.endAngle || 0)}`;
     case 'LWPOLYLINE':
     case 'POLYLINE': return `P:${(e.vertices || []).map(v => `${r(v.x)},${r(v.y)}`).join(';')}`;
+    case 'INSERT': return `I:${e.block || ''},${r(e.x)},${r(e.y)}`;
+    case 'TEXT':
+    case 'MTEXT': return `T:${e.style || ''},${e.text || ''},${r(e.x)},${r(e.y)}`;
+    case 'POINT': return `D:${r(e.x)},${r(e.y)}`;
     default: return null;
   }
 }
