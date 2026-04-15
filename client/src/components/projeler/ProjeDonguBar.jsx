@@ -658,35 +658,30 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
     secimStartRef.current = null
     setSecimRect(null)
 
-    // mevcutGroup ve yeniGroup'taki tüm mesh/line nesnelerini topla
+    // SADECE mevcutGroup'tan seçim — yeniGroup dahil edilmez
     const allObjects = []
-    const collectObjects = (group) => {
-      if (!group) return
-      group.traverse(obj => { if (obj.geometry && obj !== group) allObjects.push(obj) })
+    const testGroup = mevcutGroupRef.current
+    if (testGroup) {
+      testGroup.traverse(obj => { if (obj.geometry && obj !== testGroup) allObjects.push(obj) })
     }
-    collectObjects(mevcutGroupRef.current)
-    // yeniGroup'tan da seçilebilir
-    collectObjects(yeniGroupRef.current)
 
-    if (allObjects.length === 0) {
-      console.warn('[Secim] Sahnede secilecek nesne bulunamadi')
-      return
-    }
+    if (allObjects.length === 0) return
 
     const camera = viewer.GetCamera()
     const raycaster = new three.Raycaster()
+    raycaster.params.Line = { threshold: 3 }   // çizgi yakalama mesafesi (world unit)
+    raycaster.params.Points = { threshold: 3 }
     const mouse = new three.Vector2()
     const yeniSecim = new Set(seciliNesneler)
 
-    // NDC dönüşümü
     const toNdcX = (px) => (px / r.width) * 2 - 1
     const toNdcY = (py) => -(py / r.height) * 2 + 1
 
     if (isDrag) {
-      // Dikdörtgen seçim: seçim alanı içinde ızgara noktalarından ray cast et
-      const steps = 8 // 8x8 ızgara
+      // 20x20 ızgara + kenar taraması → çizgileri de yakalar
       const minPx = Math.min(sx, cx), maxPx = Math.max(sx, cx)
       const minPy = Math.min(sy, cy), maxPy = Math.max(sy, cy)
+      const steps = 20
       for (let xi = 0; xi <= steps; xi++) {
         for (let yi = 0; yi <= steps; yi++) {
           const px = minPx + (maxPx - minPx) * (xi / steps)
@@ -698,7 +693,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
         }
       }
     } else {
-      // Tek tıklama: tıklama noktasından ray cast
+      // Tek tıklama
       mouse.set(toNdcX(cx), toNdcY(cy))
       raycaster.setFromCamera(mouse, camera)
       const hits = raycaster.intersectObjects(allObjects, false)
@@ -717,8 +712,8 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
     const seciliSet = new Set(seciliNesneler)
     const hasSelection = seciliSet.size > 0
 
-    // Her iki gruptaki tüm nesnelere uygula
-    const groups = [mevcutGroupRef.current, yeniGroupRef.current].filter(Boolean)
+    // Sadece mevcutGroup'a uygula — yeniGroup etkilenmez
+    const groups = [mevcutGroupRef.current].filter(Boolean)
     for (const grp of groups) {
       grp.traverse(obj => {
         if (!obj.material || obj === grp) return
