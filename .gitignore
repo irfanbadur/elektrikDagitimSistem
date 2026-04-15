@@ -12,3 +12,15 @@ server/media/analysis/
 server/media/documents/
 server/catalog/reference-images/
 nul
+doc/projeler/*.xlsm
+doc/projeler/*.xlsx
+
+doc/
+*.xlsm
+*.mdb
+*.bin
+*.bpr
+*.eds
+doc/
+uploads/
+server/database.sqlite

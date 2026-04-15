@@ -74,6 +74,9 @@ app.use('/api/dongu', require('./routes/dongu'));
 // İş Tipleri (faz/adım tabanlı yaşam döngüsü) routes
 app.use('/api/is-tipleri', require('./routes/isTipleri'));
 
+// Gemini AI Chat
+app.use('/api/gemini', require('./routes/geminiChat'));
+
 // Departman routes
 app.use('/api/departmanlar', require('./routes/departmanlar'));
 
