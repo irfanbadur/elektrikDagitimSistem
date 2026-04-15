@@ -8,7 +8,8 @@ import { useProjeFazIlerleme, useAdimMetaGuncelle } from '@/hooks/useDongu'
 import {
   FileText, Image, File, Upload, MapPin, Zap, X, Navigation, Clock,
   CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus, Sparkles,
-  ZoomIn, ZoomOut, RotateCcw, Loader2, Trash2, Save, Layers, Eye, EyeOff
+  ZoomIn, ZoomOut, RotateCcw, Loader2, Trash2, Save, Layers, Eye, EyeOff,
+  Crosshair, CheckCheck, Ban
 } from 'lucide-react'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -369,6 +370,13 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
   const [katmanPanelAcik, setKatmanPanelAcik] = useState(false)
   const katmanlarRef = useRef(katmanlar)
   katmanlarRef.current = katmanlar
+  // ── Demontaj seçim modu ──
+  const [secimModu, setSecimModu] = useState(false)
+  const [secimRect, setSecimRect] = useState(null) // { x1,y1,x2,y2 } piksel
+  const secimStartRef = useRef(null)
+  const [seciliNesneler, setSeciliNesneler] = useState([]) // Three.js objeleri
+  const orijinalMatRef = useRef(new Map()) // obj → orijinal materyal
+  const demontajGroupRef = useRef(null)
 
   const handleMetrajKaydet = async () => {
     if (!direkNotlari || !Object.keys(direkNotlari).length) return alert('Henüz direk malzemesi eklenmemiş')
@@ -605,11 +613,168 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
   useEffect(() => {
     const viewer = viewerRef.current
     if (!viewer || !overlayUrl || yukleniyor || !overlayKatmanlar.length) return
-    const m = mevcutGroupRef.current, y = yeniGroupRef.current
+    const m = mevcutGroupRef.current, y = yeniGroupRef.current, d = demontajGroupRef.current
     if (m) m.visible = overlayKatmanlar.find(k => k.id === 'mevcut_durum')?.gorunur ?? true
     if (y) y.visible = overlayKatmanlar.find(k => k.id === 'yeni_durum')?.gorunur ?? true
+    if (d) d.visible = overlayKatmanlar.find(k => k.id === 'demontaj')?.gorunur ?? true
     viewer.Render()
   }, [overlayKatmanlar, overlayUrl, yukleniyor])
+
+  // ── Demontaj seçim — mouse event'leri ──
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || !secimModu) return
+    const three = threeRef.current
+    const viewer = viewerRef.current
+    if (!three || !viewer) return
+
+    const onDown = (e) => {
+      if (e.button !== 0) return // sadece sol tık
+      const r = container.getBoundingClientRect()
+      secimStartRef.current = { x: e.clientX - r.left, y: e.clientY - r.top }
+      setSecimRect(null)
+    }
+    const onMove = (e) => {
+      if (!secimStartRef.current) return
+      const r = container.getBoundingClientRect()
+      const cx = e.clientX - r.left, cy = e.clientY - r.top
+      const sx = secimStartRef.current.x, sy = secimStartRef.current.y
+      setSecimRect({ x1: Math.min(sx, cx), y1: Math.min(sy, cy), x2: Math.max(sx, cx), y2: Math.max(sy, cy) })
+    }
+    const onUp = (e) => {
+      if (!secimStartRef.current) return
+      const r = container.getBoundingClientRect()
+      const cx = e.clientX - r.left, cy = e.clientY - r.top
+      const sx = secimStartRef.current.x, sy = secimStartRef.current.y
+      const isDrag = Math.abs(cx - sx) > 5 || Math.abs(cy - sy) > 5
+      secimStartRef.current = null
+      setSecimRect(null)
+
+      // NDC koordinatları hesapla
+      const toNdcX = (px) => (px / r.width) * 2 - 1
+      const toNdcY = (py) => -(py / r.height) * 2 + 1
+      const camera = viewer.GetCamera()
+
+      const testGroup = mevcutGroupRef.current
+      if (!testGroup) return
+
+      const yeniSecim = new Set(seciliNesneler)
+      testGroup.traverse(obj => {
+        if (!obj.geometry || obj === testGroup) return
+        try {
+          if (!obj.geometry.boundingBox) obj.geometry.computeBoundingBox()
+          const bb = obj.geometry.boundingBox
+          if (!bb || bb.isEmpty()) return
+          const center = new three.Vector3()
+          bb.getCenter(center)
+          obj.localToWorld(center)
+          center.project(camera)
+
+          if (isDrag) {
+            const minX = Math.min(toNdcX(sx), toNdcX(cx)), maxX = Math.max(toNdcX(sx), toNdcX(cx))
+            const minY = Math.min(toNdcY(sy), toNdcY(cy)), maxY = Math.max(toNdcY(sy), toNdcY(cy))
+            if (center.x >= minX && center.x <= maxX && center.y >= minY && center.y <= maxY) yeniSecim.add(obj)
+          } else {
+            const dist = Math.sqrt((center.x - toNdcX(cx)) ** 2 + (center.y - toNdcY(cy)) ** 2)
+            if (dist < 0.03) yeniSecim.add(obj)
+          }
+        } catch {}
+      })
+      setSeciliNesneler([...yeniSecim])
+    }
+
+    container.addEventListener('pointerdown', onDown, true)
+    container.addEventListener('pointermove', onMove, true)
+    container.addEventListener('pointerup', onUp, true)
+    return () => {
+      container.removeEventListener('pointerdown', onDown, true)
+      container.removeEventListener('pointermove', onMove, true)
+      container.removeEventListener('pointerup', onUp, true)
+    }
+  }, [secimModu, seciliNesneler])
+
+  // ── Seçili nesneleri vurgula (bold = parlak sarı) ──
+  useEffect(() => {
+    const viewer = viewerRef.current, three = threeRef.current
+    if (!viewer || !three) return
+    const highlightColor = 0xffffff
+    const seciliSet = new Set(seciliNesneler)
+
+    // Önceki vurguleri temizle
+    for (const [obj, origMat] of orijinalMatRef.current) {
+      if (!seciliSet.has(obj)) {
+        obj.material = origMat
+        orijinalMatRef.current.delete(obj)
+      }
+    }
+    // Yeni vurguleri uygula
+    for (const obj of seciliNesneler) {
+      if (!orijinalMatRef.current.has(obj)) {
+        orijinalMatRef.current.set(obj, obj.material)
+      }
+      try {
+        const bold = (obj.material?.clone ? obj.material.clone() : new three.LineBasicMaterial())
+        if (bold.color?.set) bold.color.set(highlightColor)
+        bold.transparent = true
+        bold.opacity = 1
+        bold.depthTest = false // her zaman üstte görünsün
+        obj.material = bold
+      } catch {}
+    }
+    viewer.Render()
+  }, [seciliNesneler])
+
+  // ── Demontaj seçimi onayla ──
+  const handleSecimOnayla = useCallback(() => {
+    const viewer = viewerRef.current, three = threeRef.current
+    const scene = viewer?.GetScene?.() || viewer?.scene
+    if (!viewer || !three || !scene || !seciliNesneler.length) return
+
+    // Demontaj grubu oluştur (yoksa)
+    let dGroup = demontajGroupRef.current
+    if (!dGroup) {
+      dGroup = new three.Group()
+      dGroup.name = 'demontaj'
+      scene.add(dGroup)
+      demontajGroupRef.current = dGroup
+      // Overlay katmanlarına ekle
+      setOverlayKatmanlar(prev => {
+        if (prev.find(k => k.id === 'demontaj')) return prev
+        return [...prev, { id: 'demontaj', ad: 'Demontaj', renk: '#facc15', gorunur: true }]
+      })
+    }
+
+    // Seçili nesneleri demontaj grubuna taşı, orijinal materyali geri yükle + demontaj rengi uygula
+    for (const obj of seciliNesneler) {
+      const origMat = orijinalMatRef.current.get(obj)
+      if (origMat) obj.material = origMat
+      orijinalMatRef.current.delete(obj)
+      // Demontaj grubuna taşı
+      dGroup.add(obj)
+      // Demontaj rengi
+      try {
+        const apply = m => { const c = m.clone(); if (c.color?.set) c.color.set(0xfacc15); return c }
+        obj.material = Array.isArray(obj.material) ? obj.material.map(apply) : apply(obj.material)
+      } catch {}
+    }
+
+    setSeciliNesneler([])
+    setSecimModu(false)
+    viewer.Render()
+  }, [seciliNesneler])
+
+  // ── Demontaj seçimi iptal ──
+  const handleSecimIptal = useCallback(() => {
+    const viewer = viewerRef.current
+    // Orijinal materyalleri geri yükle
+    for (const [obj, origMat] of orijinalMatRef.current) {
+      obj.material = origMat
+    }
+    orijinalMatRef.current.clear()
+    setSeciliNesneler([])
+    setSecimModu(false)
+    viewer?.Render()
+  }, [])
 
   // direkNotlari veya katman ayarları değiştiğinde sprite'ları senkronize et
   useEffect(() => {
@@ -762,6 +927,14 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
             title="Katmanlar">
             <Layers className="h-3.5 w-3.5" /> Katmanlar
           </button>
+          {/* Demontaj Seç butonu — overlay modunda */}
+          {overlayUrl && !secimModu && (
+            <button onClick={() => setSecimModu(true)}
+              className="flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-amber-600"
+              title="Dikdörtgen ile demontaj elemanlarını seç">
+              <Crosshair className="h-3.5 w-3.5" /> Demontaj Seç
+            </button>
+          )}
           {direkNotlari && Object.keys(direkNotlari).length > 0 && (
             <button
               onClick={handleMetrajKaydet}
@@ -796,7 +969,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
                           onChange={e => {
                             const hex = parseInt(e.target.value.replace('#', ''), 16)
                             setOverlayKatmanlar(prev => prev.map(p => p.id === k.id ? { ...p, renk: e.target.value } : p))
-                            const grp = k.id === 'mevcut_durum' ? mevcutGroupRef.current : yeniGroupRef.current
+                            const grp = k.id === 'mevcut_durum' ? mevcutGroupRef.current : k.id === 'yeni_durum' ? yeniGroupRef.current : demontajGroupRef.current
                             if (grp) {
                               grp.traverse(obj => {
                                 if (!obj.material || obj.isLight) return
@@ -842,7 +1015,41 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
         )}
         </>
       )}
-      <div ref={containerRef} style={{ height: 400, width: '100%' }} />
+      {/* Seçim dikdörtgeni overlay */}
+      {secimModu && secimRect && (
+        <div style={{
+          position: 'absolute', pointerEvents: 'none', zIndex: 15,
+          left: secimRect.x1, top: secimRect.y1,
+          width: secimRect.x2 - secimRect.x1, height: secimRect.y2 - secimRect.y1,
+          border: '2px dashed #facc15', background: 'rgba(250,204,21,0.1)', borderRadius: 2,
+        }} />
+      )}
+      {/* Seçim modu bilgi paneli */}
+      {secimModu && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-15 flex items-center gap-2 rounded-lg bg-gray-900/90 px-4 py-2 shadow-lg backdrop-blur-sm">
+          <Crosshair className="h-4 w-4 text-amber-400" />
+          <span className="text-xs text-white font-medium">
+            {seciliNesneler.length > 0
+              ? `${seciliNesneler.length} eleman seçildi`
+              : 'Dikdörtgen çizerek veya tıklayarak seçin'}
+          </span>
+          {seciliNesneler.length > 0 && (
+            <>
+              <button onClick={handleSecimOnayla} className="flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-emerald-700">
+                <CheckCheck className="h-3.5 w-3.5" /> Onayla
+              </button>
+              <button onClick={() => { for (const [o, m] of orijinalMatRef.current) o.material = m; orijinalMatRef.current.clear(); setSeciliNesneler([]); viewerRef.current?.Render() }}
+                className="rounded bg-gray-700 px-2.5 py-1 text-[11px] text-gray-300 hover:bg-gray-600">
+                Temizle
+              </button>
+            </>
+          )}
+          <button onClick={handleSecimIptal} className="flex items-center gap-1 rounded bg-red-600/80 px-2.5 py-1 text-[11px] text-white hover:bg-red-600">
+            <Ban className="h-3.5 w-3.5" /> Kapat
+          </button>
+        </div>
+      )}
+      <div ref={containerRef} style={{ height: 400, width: '100%', cursor: secimModu ? 'crosshair' : undefined }} />
     </div>
   )
 }
