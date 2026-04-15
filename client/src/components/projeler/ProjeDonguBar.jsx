@@ -1849,12 +1849,12 @@ export default function ProjeDonguBar({ projeId }) {
                   dosyaId={seciliDosya.id}
                   projeId={projeId}
                   overlayUrl={seciliDosya.overlayId ? `/api/dosya/${seciliDosya.overlayId}/dosya` : null}
-                  onDirekTikla={seciliDosya.adimKodu === 'kesif' ? (d) => { if (!seciliDirek) setSeciliDirek(d) } : undefined}
-                  direkNotlari={seciliDosya.adimKodu === 'kesif' ? direkNotlari : undefined}
-                  onNotSil={seciliDosya.adimKodu === 'kesif' ? (key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y }) : undefined}
+                  onDirekTikla={seciliDosya.dxf ? (d) => { if (!seciliDirek) setSeciliDirek(d) } : undefined}
+                  direkNotlari={seciliDosya.dxf ? direkNotlari : undefined}
+                  onNotSil={seciliDosya.dxf ? (key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y }) : undefined}
                 />
-                {/* Direk popup — sadece Keşif adımında */}
-                {seciliDosya.adimKodu === 'kesif' && seciliDirek && (
+                {/* Direk popup — tüm DXF dosyalarında */}
+                {seciliDosya.dxf && seciliDirek && (
                   <DirekMalzemePopup
                     direk={seciliDirek}
                     projeId={projeId}
