@@ -15,7 +15,7 @@ import PersonelPage from '@/pages/PersonelPage'
 import PuantajPage from '@/pages/PuantajPage'
 import TaleplerPage from '@/pages/TaleplerPage'
 import RaporlarPage from '@/pages/RaporlarPage'
-import VeriPaketleriPage from '@/pages/VeriPaketleriPage'
+// import VeriPaketleriPage from '@/pages/VeriPaketleriPage' // Kaldırıldı
 import KatalogPage from '@/pages/KatalogPage'
 import SahaPage from '@/pages/SahaPage'
 import SahaMesajPage from '@/pages/SahaMesajPage'
@@ -68,7 +68,7 @@ function AppRoutes() {
         <Route path="/talepler/*" element={<TaleplerPage />} />
         <Route path="/gorevler" element={<GorevlerPage />} />
         <Route path="/raporlar" element={<RaporlarPage />} />
-        <Route path="/veri-paketleri/*" element={<VeriPaketleriPage />} />
+        {/* <Route path="/veri-paketleri/*" element={<VeriPaketleriPage />} /> Kaldırıldı */}
         <Route path="/katalog" element={<KatalogPage />} />
         <Route path="/saha" element={<SahaPage />} />
         <Route path="/saha-mesaj" element={<SahaMesajPage />} />

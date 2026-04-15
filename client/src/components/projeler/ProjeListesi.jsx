@@ -231,6 +231,14 @@ export default function ProjeListesi() {
         },
       },
       {
+        accessorKey: 'teslim_tarihi',
+        header: 'Yer Teslim',
+        cell: ({ getValue }) => {
+          const v = getValue()
+          return v ? <span className="text-xs">{v.slice(0, 10)}</span> : <span className="text-muted-foreground">-</span>
+        },
+      },
+      {
         accessorKey: 'oncelik',
         header: 'Oncelik',
         cell: ({ getValue }) => <OncelikBadge oncelik={getValue()} />,

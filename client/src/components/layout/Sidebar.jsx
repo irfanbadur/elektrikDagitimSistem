@@ -52,7 +52,6 @@ const navGroups = [
     items: [
       { label: 'Dosya Yonetimi', icon: FolderOpen, path: '/dosya-yonetimi', modul: 'dosyalar', aksiyon: 'okuma' },
       { label: 'Raporlar', icon: BarChart3, path: '/raporlar', modul: 'raporlar', aksiyon: 'genel' },
-      { label: 'Veri Paketleri', icon: Camera, path: '/veri-paketleri', modul: 'veri_paketi', aksiyon: 'okuma' },
     ],
   },
   {
