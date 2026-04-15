@@ -959,4 +959,170 @@ router.post('/:id/dxf-metraj-kaydet', (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// DEMONTAJ KROKİSİ — Mevcut/Yeni Durum DXF overlay & fark analizi
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/dosya/proje/:projeId/demontaj-kroki — Her iki DXF dosya bilgisini getir
+router.get('/proje/:projeId/demontaj-kroki', (req, res) => {
+  try {
+    const db = getDb();
+    const projeId = parseInt(req.params.projeId);
+
+    const adimlar = db.prepare(`
+      SELECT pa.id AS adim_id, pa.adim_kodu,
+        (SELECT d.id FROM dosyalar d WHERE d.proje_adim_id = pa.id AND d.durum = 'aktif'
+         AND LOWER(d.dosya_adi) LIKE '%.dxf' ORDER BY d.olusturma_tarihi DESC LIMIT 1) AS dosya_id,
+        (SELECT d.dosya_adi FROM dosyalar d WHERE d.proje_adim_id = pa.id AND d.durum = 'aktif'
+         AND LOWER(d.dosya_adi) LIKE '%.dxf' ORDER BY d.olusturma_tarihi DESC LIMIT 1) AS dosya_adi
+      FROM proje_adimlari pa
+      WHERE pa.proje_id = ? AND pa.adim_kodu IN ('mevcut_durum_proje', 'yeni_durum_proje')
+    `).all(projeId);
+
+    const mevcut = adimlar.find(a => a.adim_kodu === 'mevcut_durum_proje');
+    const yeni = adimlar.find(a => a.adim_kodu === 'yeni_durum_proje');
+
+    res.json({
+      success: true,
+      data: {
+        mevcutDurum: mevcut?.dosya_id ? { id: mevcut.dosya_id, dosya_adi: mevcut.dosya_adi, adim_id: mevcut.adim_id } : null,
+        yeniDurum: yeni?.dosya_id ? { id: yeni.dosya_id, dosya_adi: yeni.dosya_adi, adim_id: yeni.adim_id } : null,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── DXF entity ayrıştırma yardımcıları ──
+
+function _parseDxfEntities(content) {
+  const lines = content.split(/\r?\n/);
+  const entities = [];
+  let inEntities = false;
+  let cur = null, curType = null, vertices = [];
+
+  for (let i = 0; i < lines.length - 1; i += 2) {
+    const code = parseInt(lines[i].trim());
+    const val = lines[i + 1]?.trim();
+    if (code === 2 && val === 'ENTITIES') { inEntities = true; continue; }
+    if (code === 0 && val === 'ENDSEC' && inEntities) break;
+    if (!inEntities) continue;
+
+    if (code === 0) {
+      if (cur && curType) {
+        if ((curType === 'LWPOLYLINE' || curType === 'POLYLINE') && vertices.length > 0) cur.vertices = vertices;
+        entities.push(cur);
+      }
+      curType = val; vertices = [];
+      cur = ['LINE', 'CIRCLE', 'ARC', 'LWPOLYLINE', 'POLYLINE'].includes(val) ? { type: val } : null;
+      continue;
+    }
+    if (!cur) continue;
+
+    switch (curType) {
+      case 'LINE':
+        if (code === 10) cur.x1 = parseFloat(val);
+        if (code === 20) cur.y1 = parseFloat(val);
+        if (code === 11) cur.x2 = parseFloat(val);
+        if (code === 21) cur.y2 = parseFloat(val);
+        if (code === 8) cur.layer = val;
+        break;
+      case 'CIRCLE':
+      case 'ARC':
+        if (code === 10) cur.cx = parseFloat(val);
+        if (code === 20) cur.cy = parseFloat(val);
+        if (code === 40) cur.r = parseFloat(val);
+        if (code === 50) cur.startAngle = parseFloat(val);
+        if (code === 51) cur.endAngle = parseFloat(val);
+        if (code === 8) cur.layer = val;
+        break;
+      case 'LWPOLYLINE':
+      case 'POLYLINE':
+        if (code === 10) vertices.push({ x: parseFloat(val) });
+        if (code === 20 && vertices.length > 0) vertices[vertices.length - 1].y = parseFloat(val);
+        if (code === 8) cur.layer = val;
+        break;
+    }
+  }
+  if (cur && curType) {
+    if ((curType === 'LWPOLYLINE' || curType === 'POLYLINE') && vertices.length > 0) cur.vertices = vertices;
+    entities.push(cur);
+  }
+  return entities;
+}
+
+function _entityFingerprint(e) {
+  const r = (n) => Math.round((n || 0) * 2) / 2;
+  switch (e.type) {
+    case 'LINE': return `L:${r(e.x1)},${r(e.y1)}-${r(e.x2)},${r(e.y2)}`;
+    case 'CIRCLE': return `C:${r(e.cx)},${r(e.cy)},${r(e.r)}`;
+    case 'ARC': return `A:${r(e.cx)},${r(e.cy)},${r(e.r)},${Math.round(e.startAngle || 0)},${Math.round(e.endAngle || 0)}`;
+    case 'LWPOLYLINE':
+    case 'POLYLINE': return `P:${(e.vertices || []).map(v => `${r(v.x)},${r(v.y)}`).join(';')}`;
+    default: return null;
+  }
+}
+
+// GET /api/dosya/:id/dxf-entity-list — Tek DXF dosyasındaki tüm geometrik entity'leri döndür
+router.get('/:id/dxf-entity-list', (req, res) => {
+  try {
+    const fs = require('fs');
+    const dosya = dosyaService.dosyaGetir(parseInt(req.params.id));
+    if (!dosya) return res.status(404).json({ success: false, error: 'Dosya bulunamadı' });
+    const tamYol = dosyaService.dosyaYoluCozumle(dosya.dosya_yolu);
+    const icerik = fs.readFileSync(tamYol, 'latin1');
+    const entities = _parseDxfEntities(icerik);
+    res.json({ success: true, data: { entities, toplam: entities.length } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/dosya/dxf-fark — İki DXF arasındaki çakışmayan entity'leri bul
+router.post('/dxf-fark', (req, res) => {
+  try {
+    const fs = require('fs');
+    const { mevcut_dosya_id, yeni_dosya_id } = req.body;
+    if (!mevcut_dosya_id || !yeni_dosya_id) return res.status(400).json({ success: false, error: 'Her iki dosya ID gerekli' });
+
+    const mevcutDosya = dosyaService.dosyaGetir(parseInt(mevcut_dosya_id));
+    const yeniDosya = dosyaService.dosyaGetir(parseInt(yeni_dosya_id));
+    if (!mevcutDosya || !yeniDosya) return res.status(404).json({ success: false, error: 'Dosya bulunamadı' });
+
+    const mevcutIcerik = fs.readFileSync(dosyaService.dosyaYoluCozumle(mevcutDosya.dosya_yolu), 'latin1');
+    const yeniIcerik = fs.readFileSync(dosyaService.dosyaYoluCozumle(yeniDosya.dosya_yolu), 'latin1');
+
+    const mevcutEntities = _parseDxfEntities(mevcutIcerik);
+    const yeniEntities = _parseDxfEntities(yeniIcerik);
+
+    // Fingerprint bazlı set karşılaştırması
+    const yeniFpSet = new Set(yeniEntities.map(e => _entityFingerprint(e)).filter(Boolean));
+    const mevcutFpSet = new Set(mevcutEntities.map(e => _entityFingerprint(e)).filter(Boolean));
+
+    const sadeceMevcut = mevcutEntities.filter(e => {
+      const fp = _entityFingerprint(e);
+      return fp && !yeniFpSet.has(fp);
+    });
+    const sadeceYeni = yeniEntities.filter(e => {
+      const fp = _entityFingerprint(e);
+      return fp && !mevcutFpSet.has(fp);
+    });
+
+    res.json({
+      success: true,
+      data: {
+        sadeceMevcut,
+        sadeceYeni,
+        mevcutToplam: mevcutEntities.length,
+        yeniToplam: yeniEntities.length,
+        ortakTahmini: mevcutEntities.length - sadeceMevcut.length,
+      }
+    });
+  } catch (err) {
+    console.error('DXF fark analizi hatası:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
