@@ -166,11 +166,11 @@ export default function ProjeDetay() {
               </p>
             )}
             {/* Progress bar */}
-            <div className="mt-4 flex items-center gap-3">
-              <div className="h-2.5 w-48 rounded-full bg-gray-200">
+            <div className="mt-3 flex items-center gap-3">
+              <div className="h-2 w-36 rounded-full bg-gray-200">
                 <div
                   className={cn(
-                    'h-2.5 rounded-full transition-all',
+                    'h-2 rounded-full transition-all',
                     tamamlanma >= 100
                       ? 'bg-emerald-500'
                       : tamamlanma >= 50
@@ -180,7 +180,7 @@ export default function ProjeDetay() {
                   style={{ width: `${Math.min(tamamlanma, 100)}%` }}
                 />
               </div>
-              <span className="text-sm font-medium">{formatYuzde(tamamlanma)}</span>
+              <span className="text-xs font-medium">{formatYuzde(tamamlanma)}</span>
             </div>
           </div>
 
@@ -188,9 +188,9 @@ export default function ProjeDetay() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigate(`/projeler/${id}/duzenle`)}
-              className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm font-medium hover:bg-muted"
+              className="inline-flex items-center gap-1.5 rounded-md border border-input px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
             >
-              <Edit className="h-4 w-4" />
+              <Edit className="h-3.5 w-3.5" />
               Duzenle
             </button>
 
@@ -198,10 +198,10 @@ export default function ProjeDetay() {
             <div className="relative">
               <button
                 onClick={() => setDurumMenuAcik(!durumMenuAcik)}
-                className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-white hover:bg-primary/90"
               >
                 Durum Degistir
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className="h-3.5 w-3.5" />
               </button>
               {durumMenuAcik && (
                 <>
@@ -268,62 +268,34 @@ export default function ProjeDetay() {
 
             <button
               onClick={() => setSilmeDialogAcik(true)}
-              className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-3.5 w-3.5" />
               Sil
             </button>
           </div>
         </div>
-      </div>
 
-      {/* Info Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FileText className="h-4 w-4" />
-            Proje Tipi
-          </div>
-          <p className="mt-1 font-medium">{proje.proje_tipi || '-'}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="h-4 w-4" />
-            Bolge
-          </div>
-          <p className="mt-1 font-medium">{proje.bolge_adi || '-'}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Users className="h-4 w-4" />
-            Ekip
-          </div>
-          <p className="mt-1 font-medium">{proje.ekip_adi || '-'}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Calendar className="h-4 w-4" />
-            Tahmini Sure
-          </div>
-          <p className="mt-1 font-medium">
-            {proje.tahmini_sure_gun ? `${proje.tahmini_sure_gun} gun` : '-'}
-          </p>
-        </div>
-      </div>
-
-      {/* Date row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Baslama Tarihi</p>
-          <p className="mt-1 font-medium">{formatTarih(proje.baslama_tarihi)}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Bitis Tarihi</p>
-          <p className="mt-1 font-medium">{formatTarih(proje.bitis_tarihi)}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Teslim Tarihi</p>
-          <p className="mt-1 font-medium">{formatTarih(proje.teslim_tarihi)}</p>
+        {/* Bilgi satırı — Proje Tipi, Bölge, Ekip, Tahmini Süre, Tarihler */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border pt-3 text-xs">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <FileText className="h-3.5 w-3.5" /> <span className="font-medium text-foreground">{proje.proje_tipi || '-'}</span>
+          </span>
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <MapPin className="h-3.5 w-3.5" /> <span className="font-medium text-foreground">{proje.bolge_adi || '-'}</span>
+          </span>
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <Users className="h-3.5 w-3.5" /> <span className="font-medium text-foreground">{proje.ekip_adi || '-'}</span>
+          </span>
+          {proje.tahmini_sure_gun && (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Clock className="h-3.5 w-3.5" /> <span className="font-medium text-foreground">{proje.tahmini_sure_gun} gun</span>
+            </span>
+          )}
+          <span className="text-muted-foreground/30">|</span>
+          <span className="text-muted-foreground">Baslama: <span className="font-medium text-foreground">{formatTarih(proje.baslama_tarihi)}</span></span>
+          <span className="text-muted-foreground">Bitis: <span className="font-medium text-foreground">{formatTarih(proje.bitis_tarihi)}</span></span>
+          <span className="text-muted-foreground">Teslim: <span className="font-medium text-foreground">{formatTarih(proje.teslim_tarihi)}</span></span>
         </div>
       </div>
 
