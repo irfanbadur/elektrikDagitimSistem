@@ -299,36 +299,42 @@ export default function ProjeDetay() {
         </div>
       </div>
 
-      {/* Yatay Dongu Bar */}
-      <ProjeDonguBar projeId={id} />
-
-      {/* Tabs */}
-      <div className="border-b border-border overflow-x-auto">
-        <div className="flex gap-3 min-w-max">
-          {TABS.map((tab) => {
-            const Icon = tab.icon
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setAktifTab(tab.key)}
-                className={cn(
-                  'flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                  aktifTab === tab.key
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            )
-          })}
+      {/* Responsive: genis ekranda yan yana, dar ekranda alt alta */}
+      <div className="flex flex-col xl:flex-row xl:gap-4 xl:items-start">
+        {/* DXF Viewer — genis ekranda olabildigince buyuk */}
+        <div className="xl:flex-1 xl:min-w-0">
+          <ProjeDonguBar projeId={id} />
         </div>
-      </div>
 
-      {/* Tab Content */}
-      <TabErrorBoundary tabKey={aktifTab}>
-      <div>
+        {/* Sekmeler + Icerik — genis ekranda sabit genislik sidebar */}
+        <div className="xl:w-[420px] xl:flex-shrink-0 xl:max-h-[calc(100vh-120px)] xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card">
+          {/* Tabs */}
+          <div className="border-b border-border overflow-x-auto xl:sticky xl:top-0 xl:z-10 xl:bg-card">
+            <div className="flex gap-1 min-w-max xl:flex-wrap xl:min-w-0 xl:gap-0">
+              {TABS.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setAktifTab(tab.key)}
+                    className={cn(
+                      'flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors whitespace-nowrap',
+                      aktifTab === tab.key
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Tab Content */}
+          <TabErrorBoundary tabKey={aktifTab}>
+          <div className="xl:p-3">
         {aktifTab === 'detay' && (
           <div className="space-y-6">
             {/* Address Info */}
@@ -498,6 +504,8 @@ export default function ProjeDetay() {
         )}
       </div>
       </TabErrorBoundary>
+        </div>
+      </div>
 
       {/* Delete Confirmation */}
       <ConfirmDialog
