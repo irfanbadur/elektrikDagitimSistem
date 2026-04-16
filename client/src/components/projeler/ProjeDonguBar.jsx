@@ -1913,18 +1913,8 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
                   overlayId: demontajKrokiData.yeniDurum.id,
                 })
               } else if (val === 'hak_edis_krokisi') {
-                // Varsa aç, yoksa oluştur
-                if (hakEdisKrokiDxf) {
-                  setSeciliDosya({
-                    id: hakEdisKrokiDxf.id,
-                    adi: hakEdisKrokiDxf.orijinal_adi || hakEdisKrokiDxf.dosya_adi,
-                    adimAdi: 'Hak Ediş Krokisi',
-                    adimKodu: 'hak_edis_krokisi',
-                    dxf: true,
-                  })
-                } else {
-                  handleHakEdisKrokiOlustur()
-                }
+                // Her zaman server'a sor — yoksa oluşturur, varsa döndürür
+                handleHakEdisKrokiOlustur()
               } else {
                 const dosya = tumDxfler?.find(d => String(d.id) === val)
                 if (dosya) setSeciliDosya({
@@ -1942,9 +1932,9 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
             {demontajHazir && (
               <option value="demontaj_kroki">⚡ Demontaj Krokisi — Mevcut / Yeni Durum karşılaştırma</option>
             )}
-            {demontajKrokiData?.mevcutDurum?.id && (
+            {demontajKrokiData?.yeniDurum?.id && (
               <option value="hak_edis_krokisi">
-                📐 Hak Ediş Krokisi — {hakEdisKrokiDxf ? 'Güncelle' : 'Oluştur'}
+                📐 Hak Ediş Krokisi — Oluştur / Güncelle
               </option>
             )}
             {tumDxfler?.map(d => (
