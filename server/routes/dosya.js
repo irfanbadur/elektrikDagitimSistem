@@ -597,16 +597,20 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
     const NUMARA_RE = /^[A-Z]\d{1,3}$/i;
     // Direk tipi pattern: G-10I, G-K1, G-12I(P) vb.
     const TIP_RE = /^G-/i;
+    // İletken pattern: 3x70, AER, ROSE, PANSY, SWALLOW vb.
+    const ILETKEN_RE = /(\d+x\d+|AER|ROSE|PANSY|ASTER|SWALLOW|RAVEN|PIGEON|HAWK|SW\b)/i;
 
     // Direk + yakınındaki etiketleri eşleştir — EN YAKIN olanı seç
     const sonuc = direkler.map(d => {
       let numara = null, numaraMesafe = Infinity;
       let tip = null, tipMesafe = Infinity;
       let enYakinEtiket = null, enYakinMesafe = Infinity;
+      const iletkenler = []; // yakındaki iletken text'leri
+
       for (const et of etiketler) {
         const dx = (et.x||0) - (d.x||0), dy = (et.y||0) - (d.y||0);
         const mesafe = Math.sqrt(dx*dx + dy*dy);
-        if (mesafe > 25) continue; // Max 25 birim yakınlık
+        if (mesafe > 25) continue;
         // Direk numarası (A01, B02...) — en yakın olanı seç
         if (NUMARA_RE.test(et.text) && mesafe < numaraMesafe) {
           numara = et.text;
@@ -616,6 +620,10 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
         if (TIP_RE.test(et.text) && mesafe < tipMesafe) {
           tip = et.text;
           tipMesafe = mesafe;
+        }
+        // İletken text'leri (3x70+95 AER, ROSE vb.)
+        if (ILETKEN_RE.test(et.text)) {
+          iletkenler.push({ text: et.text, mesafe: Math.round(mesafe * 10) / 10 });
         }
         // En yakın genel etiket
         if (mesafe < enYakinMesafe) {
@@ -632,8 +640,20 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
         numara: numara || null,
         tip: tip || null,
         etiket: enYakinEtiket?.text || null,
+        iletkenler: iletkenler.length ? iletkenler : [],
       };
     });
+
+    // Komşu direk mesafeleri hesapla (aynı numara serisindeki en yakın 2 komşu)
+    for (const d of sonuc) {
+      if (!d.numara) continue;
+      const komsular = sonuc
+        .filter(k => k !== d && k.numara && k.numara[0] === d.numara[0]) // aynı seri (A, B, C...)
+        .map(k => ({ numara: k.numara, mesafe: Math.round(Math.sqrt((k.x - d.x) ** 2 + (k.y - d.y) ** 2) * 10) / 10 }))
+        .sort((a, b) => a.mesafe - b.mesafe)
+        .slice(0, 3);
+      d.komsular = komsular;
+    }
 
     res.json({ success: true, data: { elemanlar: sonuc, toplamDirek: direkler.length, toplamEtiket: etiketler.length } });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }

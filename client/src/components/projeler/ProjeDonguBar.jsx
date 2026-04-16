@@ -275,91 +275,162 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
     } catch (err) { alert(err.message) }
   }
 
+  // İletken listesi (DXF'ten otomatik + manuel eklenen)
+  const [iletkenListesi, setIletkenListesi] = useState(() =>
+    (direk.iletkenler || []).map(il => ({ adi: il.text, mesafe: 0 }))
+  )
+  const [iletkenArama, setIletkenArama] = useState('')
+
+  const handleIletkenEkle = (text) => {
+    if (!text.trim()) return
+    setIletkenListesi(prev => [...prev, { adi: text.trim(), mesafe: 0 }])
+    setIletkenArama('')
+  }
+
+  const handleIletkenMesafe = (idx, mesafe) => {
+    setIletkenListesi(prev => prev.map((il, i) => i === idx ? { ...il, mesafe: Number(mesafe) || 0 } : il))
+  }
+
+  const handleIletkenSil = (idx) => {
+    setIletkenListesi(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  // Metraj'a aktar — direk + malzeme + iletken birlikte
+  const handleMetrajAktar = async () => {
+    try {
+      const komsu = direk.komsular?.[0]
+      await api.post(`/hak-edis-metraj/${projeId}`, {
+        nokta1: direk.numara || direk.etiket || '',
+        nokta2: komsu?.numara || '',
+        nokta_durum: 'Yeni',
+        direk_tur: direk.sembolAdi || '',
+        direk_tip: direk.tip || '',
+        ara_mesafe: komsu?.mesafe || 0,
+        ag_iletken: iletkenListesi.filter(il => /AG|ROSE|PANSY|ASTER/i.test(il.adi)).map(il => il.adi).join(', ') || null,
+        og_iletken: iletkenListesi.filter(il => /OG|SWALLOW|RAVEN|PIGEON|HAWK/i.test(il.adi)).map(il => il.adi).join(', ') || null,
+        kaynak: 'kroki',
+        kaynak_direk_x: direk.x,
+        kaynak_direk_y: direk.y,
+        notlar: [
+          ...malzemeler.map(m => `${m.miktar}x ${m.adi}`),
+          ...iletkenListesi.map(il => `İletken: ${il.adi}${il.mesafe ? ' (' + il.mesafe + 'm)' : ''}`),
+        ].join('\n'),
+      })
+      alert('Metraj satırı eklendi: ' + (direk.numara || direk.etiket))
+    } catch (err) { alert('Hata: ' + err.message) }
+  }
+
   return (
-    <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 380, maxHeight: 480, overflow: 'auto' }}
+    <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 520, maxHeight: 520, overflow: 'auto' }}
       onMouseDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+      {/* Başlık — Direk bilgileri */}
       <div className="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/30">
         <div className="flex items-center gap-2">
           {direk.numara && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-bold text-primary">{direk.numara}</span>}
           <span className="text-xs font-bold">{direk.sembolAdi}</span>
           {direk.tip && <span className="text-xs text-emerald-600 font-medium">{direk.tip}</span>}
           {!direk.numara && !direk.tip && direk.etiket && <span className="text-xs text-muted-foreground">{direk.etiket}</span>}
+          {direk.komsular?.length > 0 && (
+            <span className="text-[10px] text-muted-foreground">→ {direk.komsular[0].numara} ({direk.komsular[0].mesafe}m)</span>
+          )}
         </div>
         <button onClick={onKapat} className="rounded p-0.5 hover:bg-muted"><X className="h-3.5 w-3.5" /></button>
       </div>
 
-      {/* Arama */}
-      <div className="p-2 border-b border-border">
-        <input ref={inputRef} value={arama} onChange={e => { setArama(e.target.value); ara(e.target.value) }}
-          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onKapat() } else if (gosterilen.length > 0) handleKeyDown(e) }}
-          placeholder="Malzeme katalogda ara..."
-          className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" />
-      </div>
-
-      {/* Arama sonuçları */}
-      {(araniyor || sonuclar.length > 0) && (
-        <div className="max-h-32 overflow-y-auto border-b border-border">
-          {araniyor ? <div className="px-3 py-2 text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Aranıyor...</div> : (
-            gosterilen.map((item, i) => (
-              <button key={item.id} onClick={() => handleMalzemeEkle(item)}
-                className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs border-b border-border/30 transition-colors', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
-                <span className="font-mono text-blue-600 w-20 shrink-0">{item.malzeme_kodu || '-'}</span>
-                <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
-                <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
-              </button>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* Direk malzeme listesi — DXF ile senkron */}
-      <div className="p-2">
-        <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">
-          Direk Malzeme Listesi {malzemeler.length > 0 && `(${malzemeler.length})`}
-        </div>
-        {malzemeler.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground/60 py-2 text-center">Yukarıdan malzeme arayıp ekleyin</p>
-        ) : (
-          <>
-            {malzemeler.map((m, i) => (
-              <div key={i} className="flex items-center gap-1.5 py-1 border-b border-border/30">
-                <span className="flex-1 text-xs truncate" title={m.adi}>{m.adi}</span>
-                <input type="number" value={m.miktar} onChange={e => handleMiktarDegistir(i, e.target.value)} min="1"
-                  className="w-12 rounded border border-input px-1 py-0.5 text-center text-xs" />
-                <span className="text-[10px] text-muted-foreground w-5">{m.birim || 'Ad'}</span>
-                <button onClick={() => handleSil(i)} className="text-red-400 hover:text-red-600 p-0.5">
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-            <div className="mt-2 flex gap-2">
-              <button onClick={handleKesifEkle}
-                className="flex-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
-                Keşife Ekle ({malzemeler.length})
-              </button>
-              {adimKodu === 'hak_edis_krokisi' && (
-                <button onClick={async () => {
-                  try {
-                    await api.post(`/hak-edis-metraj/${projeId}`, {
-                      nokta1: direk.numara || direk.etiket || '',
-                      nokta_durum: 'Yeni',
-                      direk_tur: direk.sembolAdi || '',
-                      direk_tip: direk.tip || '',
-                      ag_iletken: malzemeler.filter(m => /iletken|kablo|aer|rose|pansy|aster|swallow/i.test(m.adi)).map(m => m.adi).join(', ') || null,
-                      kaynak: 'kroki',
-                      kaynak_direk_x: direk.x,
-                      kaynak_direk_y: direk.y,
-                      notlar: malzemeler.map(m => `${m.miktar}x ${m.adi}`).join('\n'),
-                    })
-                    alert('Metraj satırı eklendi: ' + (direk.numara || direk.etiket))
-                  } catch (err) { alert('Hata: ' + err.message) }
-                }}
-                  className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
-                  Metraj'a Aktar
-                </button>
+      {/* İki sütunlu içerik */}
+      <div className="flex divide-x divide-border" style={{ minHeight: 200 }}>
+        {/* SOL — Direk Malzemeleri */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="px-2 py-1.5 border-b border-border bg-red-50/50">
+            <span className="text-[10px] font-bold text-red-700 uppercase">Direk Malzemeleri</span>
+          </div>
+          {/* Malzeme arama */}
+          <div className="p-1.5 border-b border-border">
+            <input ref={inputRef} value={arama} onChange={e => { setArama(e.target.value); ara(e.target.value) }}
+              onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onKapat() } else if (gosterilen.length > 0) handleKeyDown(e) }}
+              placeholder="Malzeme ara..."
+              className="w-full rounded border border-input bg-background px-2 py-1 text-[11px] focus:border-primary focus:outline-none" />
+          </div>
+          {/* Arama sonuçları */}
+          {(araniyor || sonuclar.length > 0) && (
+            <div className="max-h-24 overflow-y-auto border-b border-border">
+              {araniyor ? <div className="px-2 py-1.5 text-[10px] text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...</div> : (
+                gosterilen.map((item, i) => (
+                  <button key={item.id} onClick={() => handleMalzemeEkle(item)}
+                    className={cn('flex w-full items-center gap-1.5 px-2 py-1 text-left text-[10px] border-b border-border/30', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
+                    <span className="font-mono text-blue-600 w-16 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
+                    <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
+                    <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
+                  </button>
+                ))
               )}
             </div>
-          </>
+          )}
+          {/* Malzeme listesi */}
+          <div className="flex-1 p-1.5 overflow-y-auto">
+            {malzemeler.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground/60 py-4 text-center">Malzeme arayip ekleyin</p>
+            ) : (
+              malzemeler.map((m, i) => (
+                <div key={i} className="flex items-center gap-1 py-0.5 border-b border-border/20">
+                  <span className="flex-1 text-[10px] truncate" title={m.adi}>{m.adi}</span>
+                  <input type="number" value={m.miktar} onChange={e => handleMiktarDegistir(i, e.target.value)} min="1"
+                    className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
+                  <span className="text-[9px] text-muted-foreground w-4">{m.birim || 'Ad'}</span>
+                  <button onClick={() => handleSil(i)} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-2.5 w-2.5" /></button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* SAĞ — İletken */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="px-2 py-1.5 border-b border-border bg-blue-50/50">
+            <span className="text-[10px] font-bold text-blue-700 uppercase">Iletken</span>
+          </div>
+          {/* İletken arama/ekleme */}
+          <div className="p-1.5 border-b border-border">
+            <div className="flex gap-1">
+              <input value={iletkenArama} onChange={e => setIletkenArama(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { handleIletkenEkle(iletkenArama); } }}
+                placeholder="Iletken tipi gir..."
+                className="flex-1 rounded border border-input bg-background px-2 py-1 text-[11px] focus:border-blue-400 focus:outline-none" />
+              <button onClick={() => handleIletkenEkle(iletkenArama)} className="rounded bg-blue-500 px-2 text-white text-[10px] hover:bg-blue-600">+</button>
+            </div>
+          </div>
+          {/* İletken listesi */}
+          <div className="flex-1 p-1.5 overflow-y-auto">
+            {iletkenListesi.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground/60 py-4 text-center">
+                {direk.iletkenler?.length ? 'DXF\'ten tespit edilemedi' : 'Iletken tipi girin'}
+              </p>
+            ) : (
+              iletkenListesi.map((il, i) => (
+                <div key={i} className="flex items-center gap-1 py-0.5 border-b border-border/20">
+                  <span className="flex-1 text-[10px] truncate font-medium text-blue-700" title={il.adi}>{il.adi}</span>
+                  <input type="number" value={il.mesafe} onChange={e => handleIletkenMesafe(i, e.target.value)} placeholder="m"
+                    className="w-12 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
+                  <span className="text-[9px] text-muted-foreground">m</span>
+                  <button onClick={() => handleIletkenSil(i)} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-2.5 w-2.5" /></button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Alt butonlar */}
+      <div className="border-t border-border p-2 flex gap-2">
+        <button onClick={handleKesifEkle} disabled={!malzemeler.length}
+          className="flex-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40">
+          Kesife Ekle ({malzemeler.length})
+        </button>
+        {adimKodu === 'hak_edis_krokisi' && (
+          <button onClick={handleMetrajAktar} disabled={!malzemeler.length && !iletkenListesi.length}
+            className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40">
+            Metraj'a Aktar
+          </button>
         )}
       </div>
     </div>
