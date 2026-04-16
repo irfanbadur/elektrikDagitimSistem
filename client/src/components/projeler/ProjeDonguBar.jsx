@@ -210,6 +210,31 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   const [direkTip, setDirekTip] = useState(direk.tip || '')
   const [direkTur, setDirekTur] = useState(direk.sembolAdi || '')
 
+  // Direk arama (katalogdan)
+  const [direkArama, setDirekArama] = useState('')
+  const [direkSonuclar, setDirekSonuclar] = useState([])
+  const [direkAraniyor, setDirekAraniyor] = useState(false)
+  const direkTimerRef = useRef(null)
+
+  const direkAra = (text) => {
+    if (direkTimerRef.current) clearTimeout(direkTimerRef.current)
+    if (!text || text.length < 2) { setDirekSonuclar([]); return }
+    setDirekAraniyor(true)
+    direkTimerRef.current = setTimeout(async () => {
+      try {
+        const r = await api.get('/malzeme-katalog', { params: { arama: text } })
+        const sonuc = Array.isArray(r) ? r : (r?.data || [])
+        // Direk ile ilgili sonuçları filtrele
+        setDirekSonuclar(sonuc.filter(s =>
+          /direk|travers|toprak|armat/i.test(s.malzeme_cinsi || s.malzeme_tanimi_sap || '')
+        ).slice(0, 10))
+      } catch { setDirekSonuclar([]) }
+      setDirekAraniyor(false)
+    }, 300)
+  }
+
+  useEffect(() => () => { if (direkTimerRef.current) clearTimeout(direkTimerRef.current) }, [])
+
   const [arama, setArama] = useState('')
   const [sonuclar, setSonuclar] = useState([])
   const [araniyor, setAraniyor] = useState(false)
@@ -326,21 +351,45 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   return (
     <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 520, maxHeight: 520, overflow: 'auto' }}
       onMouseDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
-      {/* Başlık — Düzenlenebilir direk bilgileri */}
+      {/* Başlık — Direk bilgileri + katalog arama */}
       <div className="border-b border-border px-3 py-2 bg-muted/30">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase">Direk Bilgileri</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase">Direk</span>
+            <input value={direkNumara} onChange={e => setDirekNumara(e.target.value)} placeholder="No"
+              className="w-14 rounded border border-input bg-white px-1.5 py-0.5 text-xs font-bold text-primary focus:border-primary focus:outline-none" />
+            <input value={direkTur} onChange={e => setDirekTur(e.target.value)} placeholder="Tur"
+              className="w-20 rounded border border-input bg-white px-1.5 py-0.5 text-xs focus:border-primary focus:outline-none" />
+            <input value={direkTip} onChange={e => setDirekTip(e.target.value)} placeholder="Tip (G-10I)"
+              className="w-24 rounded border border-input bg-white px-1.5 py-0.5 text-xs text-emerald-600 font-medium focus:border-primary focus:outline-none" />
+            {direk.komsular?.length > 0 && (
+              <span className="text-[10px] text-muted-foreground">→ {direk.komsular[0].numara} ({direk.komsular[0].mesafe}m)</span>
+            )}
+          </div>
           <button onClick={onKapat} className="rounded p-0.5 hover:bg-muted"><X className="h-3.5 w-3.5" /></button>
         </div>
-        <div className="flex items-center gap-1.5">
-          <input value={direkNumara} onChange={e => setDirekNumara(e.target.value)} placeholder="No"
-            className="w-14 rounded border border-input bg-white px-1.5 py-0.5 text-xs font-bold text-primary focus:border-primary focus:outline-none" />
-          <input value={direkTur} onChange={e => setDirekTur(e.target.value)} placeholder="Tur"
-            className="w-16 rounded border border-input bg-white px-1.5 py-0.5 text-xs focus:border-primary focus:outline-none" />
-          <input value={direkTip} onChange={e => setDirekTip(e.target.value)} placeholder="Tip (G-10I)"
-            className="w-20 rounded border border-input bg-white px-1.5 py-0.5 text-xs text-emerald-600 font-medium focus:border-primary focus:outline-none" />
-          {direk.komsular?.length > 0 && (
-            <span className="text-[10px] text-muted-foreground ml-auto">→ {direk.komsular[0].numara} ({direk.komsular[0].mesafe}m)</span>
+        {/* Direk katalog arama */}
+        <div className="relative">
+          <input value={direkArama} onChange={e => { setDirekArama(e.target.value); direkAra(e.target.value) }}
+            placeholder="Direk malzemesi ara (katalog)..."
+            className="w-full rounded border border-input bg-white px-2 py-1.5 text-xs focus:border-primary focus:outline-none" />
+          {(direkAraniyor || direkSonuclar.length > 0) && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-full max-h-36 overflow-y-auto rounded-lg border border-border bg-white shadow-xl">
+              {direkAraniyor ? (
+                <div className="px-3 py-2 text-[10px] text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...</div>
+              ) : direkSonuclar.map((item, i) => (
+                <button key={item.id} onClick={() => {
+                  handleMalzemeEkle(item)
+                  setDirekArama('')
+                  setDirekSonuclar([])
+                }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[10px] border-b border-border/30 hover:bg-primary/5">
+                  <span className="font-mono text-blue-600 w-20 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
+                  <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
+                  <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
+                </button>
+              ))}
+            </div>
           )}
         </div>
       </div>
