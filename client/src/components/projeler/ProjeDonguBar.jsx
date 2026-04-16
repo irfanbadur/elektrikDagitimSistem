@@ -224,10 +224,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
       try {
         const r = await api.get('/malzeme-katalog', { params: { arama: text } })
         const sonuc = Array.isArray(r) ? r : (r?.data || [])
-        // Direk ile ilgili sonuçları filtrele
-        setDirekSonuclar(sonuc.filter(s =>
-          /direk|travers|toprak|armat/i.test(s.malzeme_cinsi || s.malzeme_tanimi_sap || '')
-        ).slice(0, 10))
+        setDirekSonuclar(sonuc.slice(0, 15))
       } catch { setDirekSonuclar([]) }
       setDirekAraniyor(false)
     }, 300)
