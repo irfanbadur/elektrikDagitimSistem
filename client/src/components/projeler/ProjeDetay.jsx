@@ -303,13 +303,13 @@ export default function ProjeDetay() {
       {/* Yasam Dongusu — her zaman tam genislik */}
       <ProjeDonguBar projeId={id} previewPortalRef={previewRef} />
 
-      {/* Viewer + Sekmeler: genis ekranda yan yana %50/%50, dar ekranda alt alta */}
-      <div className="flex flex-col xl:flex-row xl:gap-4 xl:items-start">
+      {/* Viewer + Sekmeler: genis ekranda yan yana %50/%50, dar ekranda alt alta %100 */}
+      <div className="flex flex-col xl:flex-row xl:gap-4 xl:h-[calc(100vh-280px)]">
         {/* DXF Viewer onizleme — ProjeDonguBar portal ile buraya render eder */}
-        <div ref={previewRef} className="xl:w-1/2 xl:min-w-0" />
+        <div ref={previewRef} className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-y-auto" />
 
-        {/* Sekmeler + Icerik — genis ekranda %50 */}
-        <div className="xl:w-1/2 xl:min-w-0 xl:max-h-[calc(100vh-120px)] xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card">
+        {/* Sekmeler + Icerik */}
+        <div className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card">
           {/* Tabs */}
           <div className="border-b border-border overflow-x-auto xl:sticky xl:top-0 xl:z-10 xl:bg-card">
             <div className="flex gap-1 min-w-max xl:flex-wrap xl:min-w-0 xl:gap-0">
