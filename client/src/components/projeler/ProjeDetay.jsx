@@ -129,7 +129,7 @@ export default function ProjeDetay() {
   const tamamlanma = proje.tamamlanma_yuzdesi || 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 h-[calc(100vh-64px)] overflow-hidden flex flex-col">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link to="/projeler" className="hover:text-foreground">
@@ -140,7 +140,7 @@ export default function ProjeDetay() {
       </nav>
 
       {/* Header */}
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="rounded-lg border border-border bg-card p-4 flex-shrink-0">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1">
             <div className="flex flex-wrap items-center gap-3">
@@ -301,15 +301,17 @@ export default function ProjeDetay() {
       </div>
 
       {/* Yasam Dongusu — her zaman tam genislik */}
-      <ProjeDonguBar projeId={id} previewPortalRef={previewRef} />
+      <div className="flex-shrink-0">
+        <ProjeDonguBar projeId={id} previewPortalRef={previewRef} />
+      </div>
 
       {/* Viewer + Sekmeler: genis ekranda yan yana %50/%50, dar ekranda alt alta %100 */}
-      <div className="flex flex-col xl:flex-row xl:gap-4 xl:h-[calc(100vh-280px)] pb-6">
+      <div className="flex flex-col xl:flex-row xl:gap-4 flex-1 min-h-0">
         {/* DXF Viewer onizleme — ProjeDonguBar portal ile buraya render eder */}
-        <div ref={previewRef} className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-y-auto mb-4 xl:mb-0" />
+        <div ref={previewRef} className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-hidden" />
 
         {/* Sekmeler + Icerik */}
-        <div className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card mb-4 xl:mb-0">
+        <div className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card">
           {/* Tabs */}
           <div className="border-b border-border overflow-x-auto xl:sticky xl:top-0 xl:z-10 xl:bg-card">
             <div className="flex gap-1 min-w-max xl:flex-wrap xl:min-w-0 xl:gap-0">
