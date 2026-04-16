@@ -200,7 +200,7 @@ function _notCizgisiGuncelle(three, sprite) {
   line.computeLineDistances()
 }
 
-function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle }) {
+function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle, adimKodu }) {
   const direkKey = [direk.numara, direk.tip].filter(Boolean).join(' ') || direk.etiket || 'Direk'
   const mevcutNot = direkNotlari?.[direkKey]
   const malzemeler = mevcutNot?.malzemeler || []
@@ -332,10 +332,33 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
                 </button>
               </div>
             ))}
-            <button onClick={handleKesifEkle}
-              className="mt-2 w-full rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
-              Keşife Ekle ({malzemeler.length})
-            </button>
+            <div className="mt-2 flex gap-2">
+              <button onClick={handleKesifEkle}
+                className="flex-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
+                Keşife Ekle ({malzemeler.length})
+              </button>
+              {adimKodu === 'hak_edis_krokisi' && (
+                <button onClick={async () => {
+                  try {
+                    await api.post(`/hak-edis-metraj/${projeId}`, {
+                      nokta1: direk.numara || direk.etiket || '',
+                      nokta_durum: 'Yeni',
+                      direk_tur: direk.sembolAdi || '',
+                      direk_tip: direk.tip || '',
+                      ag_iletken: malzemeler.filter(m => /iletken|kablo|aer|rose|pansy|aster|swallow/i.test(m.adi)).map(m => m.adi).join(', ') || null,
+                      kaynak: 'kroki',
+                      kaynak_direk_x: direk.x,
+                      kaynak_direk_y: direk.y,
+                      notlar: malzemeler.map(m => `${m.miktar}x ${m.adi}`).join('\n'),
+                    })
+                    alert('Metraj satırı eklendi: ' + (direk.numara || direk.etiket))
+                  } catch (err) { alert('Hata: ' + err.message) }
+                }}
+                  className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
+                  Metraj'a Aktar
+                </button>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -1774,6 +1797,7 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
               <DirekMalzemePopup
                 direk={seciliDirek}
                 projeId={projeId}
+                adimKodu={seciliDosya.adimKodu}
                 onKapat={() => setSeciliDirek(null)}
                 direkNotlari={direkNotlari}
                 onMalzemeGuncelle={(not) => setDirekNotlari(prev => ({
