@@ -963,6 +963,23 @@ router.post('/:id/dxf-metraj-kaydet', (req, res) => {
 // DEMONTAJ KROKİSİ — Mevcut/Yeni Durum DXF overlay & fark analizi
 // ═══════════════════════════════════════════════════════════════
 
+// GET /api/dosya/proje/:projeId/dxf-listesi — Projedeki tüm DXF dosyalarını listele
+router.get('/proje/:projeId/dxf-listesi', (req, res) => {
+  try {
+    const db = getDb();
+    const dosyalar = db.prepare(`
+      SELECT d.id, d.dosya_adi, d.orijinal_adi, pa.adim_adi, pa.adim_kodu, pa.faz_adi, pa.faz_kodu
+      FROM dosyalar d
+      JOIN proje_adimlari pa ON d.proje_adim_id = pa.id
+      WHERE pa.proje_id = ? AND d.durum = 'aktif' AND LOWER(d.dosya_adi) LIKE '%.dxf'
+      ORDER BY pa.sira_global, d.olusturma_tarihi DESC
+    `).all(parseInt(req.params.projeId));
+    res.json({ success: true, data: dosyalar });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/dosya/proje/:projeId/demontaj-kroki — Her iki DXF dosya bilgisini getir
 router.get('/proje/:projeId/demontaj-kroki', (req, res) => {
   try {

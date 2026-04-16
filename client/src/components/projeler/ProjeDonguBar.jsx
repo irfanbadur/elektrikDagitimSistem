@@ -1641,6 +1641,14 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
   })
   const demontajHazir = demontajKrokiData?.mevcutDurum?.id && demontajKrokiData?.yeniDurum?.id
 
+  // Tüm DXF dosyalarını al (select box için)
+  const { data: tumDxfler } = useQuery({
+    queryKey: ['proje-dxf-listesi', projeId],
+    queryFn: () => api.get(`/dosya/proje/${projeId}/dxf-listesi`),
+    select: (res) => res.data || [],
+    enabled: !!projeId,
+  })
+
   const handleWheel = useCallback((e) => {
     const el = scrollRef.current
     if (!el) return
@@ -1852,33 +1860,56 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
         })}
       </div>
 
-      {/* ─── Demontaj Krokisi Butonu ─── */}
-      {demontajHazir && (
-        <div className="border-t border-border px-5 py-2 flex items-center justify-between bg-gradient-to-r from-red-50/50 to-green-50/50">
-          <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 text-amber-600" />
-            <span className="text-xs font-semibold text-foreground">Demontaj Krokisi</span>
-            <span className="text-[10px] text-muted-foreground">— Mevcut / Yeni Durum karşılaştırma</span>
-          </div>
-          <button
-            onClick={() => setSeciliDosya({
-              id: demontajKrokiData.mevcutDurum.id,
-              adi: 'Demontaj Krokisi',
-              adimAdi: 'Demontaj Krokisi',
-              adimKodu: 'demontaj_kroki',
-              dxf: true,
-              overlayId: demontajKrokiData.yeniDurum.id,
-            })}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-              seciliDosya?.adimKodu === 'demontaj_kroki'
-                ? 'bg-amber-600 text-white'
-                : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-            )}
+      {/* ─── DXF Dosya Seçici ─── */}
+      {(tumDxfler?.length > 0 || demontajHazir) && (
+        <div className="border-t border-border px-5 py-2 flex items-center gap-3 bg-muted/20">
+          <FileText className="h-4 w-4 text-primary flex-shrink-0" />
+          <select
+            value={
+              seciliDosya?.adimKodu === 'demontaj_kroki' ? 'demontaj_kroki'
+              : seciliDosya?.dxf ? String(seciliDosya.id)
+              : ''
+            }
+            onChange={(e) => {
+              const val = e.target.value
+              if (!val) { setSeciliDosya(null); return }
+              if (val === 'demontaj_kroki') {
+                setSeciliDosya({
+                  id: demontajKrokiData.mevcutDurum.id,
+                  adi: 'Demontaj Krokisi',
+                  adimAdi: 'Demontaj Krokisi',
+                  adimKodu: 'demontaj_kroki',
+                  dxf: true,
+                  overlayId: demontajKrokiData.yeniDurum.id,
+                })
+              } else {
+                const dosya = tumDxfler?.find(d => String(d.id) === val)
+                if (dosya) setSeciliDosya({
+                  id: dosya.id,
+                  adi: dosya.orijinal_adi || dosya.dosya_adi,
+                  adimAdi: dosya.adim_adi,
+                  adimKodu: dosya.adim_kodu,
+                  dxf: true,
+                })
+              }
+            }}
+            className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium focus:border-primary focus:outline-none"
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            {seciliDosya?.adimKodu === 'demontaj_kroki' ? 'Görüntüleniyor' : 'Görüntüle'}
-          </button>
+            <option value="">DXF dosyası seçin...</option>
+            {demontajHazir && (
+              <option value="demontaj_kroki">⚡ Demontaj Krokisi — Mevcut / Yeni Durum karşılaştırma</option>
+            )}
+            {tumDxfler?.map(d => (
+              <option key={d.id} value={String(d.id)}>
+                {d.faz_adi} › {d.adim_adi} — {d.orijinal_adi || d.dosya_adi}
+              </option>
+            ))}
+          </select>
+          {seciliDosya && (
+            <button onClick={() => setSeciliDosya(null)} className="rounded p-1 hover:bg-muted flex-shrink-0" title="Kapat">
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          )}
         </div>
       )}
 
