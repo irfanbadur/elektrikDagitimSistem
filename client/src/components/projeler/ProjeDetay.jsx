@@ -129,7 +129,7 @@ export default function ProjeDetay() {
   const tamamlanma = proje.tamamlanma_yuzdesi || 0
 
   return (
-    <div className="space-y-3 h-[calc(100vh-64px)] overflow-hidden flex flex-col">
+    <div className="space-y-3 flex-1 min-h-0 overflow-hidden flex flex-col px-6 pt-4">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link to="/projeler" className="hover:text-foreground">

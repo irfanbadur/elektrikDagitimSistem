@@ -6,13 +6,11 @@ import ProjeForm from '@/components/projeler/ProjeForm'
 
 export default function ProjelerPage() {
   return (
-    <MainLayout title="Projeler">
-      <Routes>
-        <Route index element={<ProjeListesi />} />
-        <Route path="yeni" element={<ProjeForm />} />
-        <Route path=":id" element={<ProjeDetay />} />
-        <Route path=":id/duzenle" element={<ProjeForm />} />
-      </Routes>
-    </MainLayout>
+    <Routes>
+      <Route index element={<MainLayout title="Projeler"><ProjeListesi /></MainLayout>} />
+      <Route path="yeni" element={<MainLayout title="Projeler"><ProjeForm /></MainLayout>} />
+      <Route path=":id" element={<MainLayout title="Projeler" noPadding><ProjeDetay /></MainLayout>} />
+      <Route path=":id/duzenle" element={<MainLayout title="Projeler"><ProjeForm /></MainLayout>} />
+    </Routes>
   )
 }
