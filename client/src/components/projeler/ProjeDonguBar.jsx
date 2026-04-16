@@ -1092,7 +1092,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
           </button>
         </div>
       )}
-      <div ref={containerRef} style={{ height: 400, width: '100%' }} />
+      <div ref={containerRef} style={{ height: '100%', minHeight: 400, width: '100%' }} />
     </div>
   )
 }
@@ -1702,8 +1702,8 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
 
   // Preview paneli içeriği — portal veya inline render için
   const previewIcerik = seciliDosya ? (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-2 bg-muted/30">
+    <div className="rounded-lg border border-border bg-card overflow-hidden h-full flex flex-col">
+      <div className="flex items-center justify-between px-5 py-2 bg-muted/30 flex-shrink-0">
         <div className="flex items-center gap-2">
           {dosyaIkonu(seciliDosya.adi, 'h-4 w-4')}
           <span className="text-xs font-semibold">{seciliDosya.adi}</span>
@@ -1719,7 +1719,7 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
           </button>
         </div>
       </div>
-      <div className="bg-gray-50 p-4" style={{ minHeight: 200 }}>
+      <div className="bg-gray-50 p-4 flex-1 min-h-0">
         {seciliDosya.gorsel ? (
           <PanZoomResim src={`/api/dosya/${seciliDosya.id}/dosya`} alt={seciliDosya.adi} />
         ) : seciliDosya.dxf ? (
