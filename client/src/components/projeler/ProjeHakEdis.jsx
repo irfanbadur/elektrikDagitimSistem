@@ -1,100 +1,203 @@
-import { useProjeKesif, useProjeKesifOzet } from '@/hooks/useProjeKesif'
-import { BarChart3, Package, TrendingUp, Check } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, Trash2, BarChart3, Ruler, MapPin } from 'lucide-react'
+import { useHakEdisMetraj, useHakEdisMetrajOzet, useHakEdisMetrajEkle, useHakEdisMetrajGuncelle, useHakEdisMetrajSil } from '@/hooks/useHakEdisMetraj'
 import { cn } from '@/lib/utils'
 
-export default function ProjeHakEdis({ projeId }) {
-  const { data: kesifler, isLoading } = useProjeKesif(projeId)
-  const { data: ozet } = useProjeKesifOzet(projeId)
+const DURUM_SECENEKLERI = ['Yeni', 'Mevcut', 'Demontaj']
 
-  const toplamTutar = kesifler?.reduce((t, k) => t + (k.miktar || 0) * (k.birim_fiyat || 0), 0) || 0
-  const alinanTutar = kesifler?.filter(k => k.durum === 'alindi' || k.durum === 'sahaya_verildi').reduce((t, k) => t + (k.miktar || 0) * (k.birim_fiyat || 0), 0) || 0
+function DuzenlenebilirHucre({ deger, onKaydet, type = 'text', secenekler, className }) {
+  const [duzenle, setDuzenle] = useState(false)
+  const [val, setVal] = useState(deger ?? '')
+
+  const kaydet = () => {
+    setDuzenle(false)
+    const yeni = type === 'number' ? (Number(val) || 0) : val
+    if (yeni !== deger) onKaydet(yeni)
+  }
+
+  if (!duzenle) {
+    return (
+      <div
+        onClick={() => { setVal(deger ?? ''); setDuzenle(true) }}
+        className={cn('min-h-[24px] min-w-[40px] cursor-pointer rounded px-1 py-0.5 hover:bg-primary/10 hover:ring-1 hover:ring-primary/30', className)}
+        title="Duzenlemek icin tikla"
+      >
+        {type === 'number' && deger ? Number(deger).toLocaleString('tr-TR') : (deger || '-')}
+      </div>
+    )
+  }
+
+  if (secenekler) {
+    return (
+      <select
+        value={val}
+        onChange={e => { setVal(e.target.value); }}
+        onBlur={kaydet}
+        autoFocus
+        className="w-full rounded border border-primary bg-background px-1 py-0.5 text-[11px] focus:outline-none"
+      >
+        <option value="">-</option>
+        {secenekler.map(s => <option key={s} value={s}>{s}</option>)}
+      </select>
+    )
+  }
+
+  return (
+    <input
+      type={type}
+      value={val}
+      onChange={e => setVal(e.target.value)}
+      onBlur={kaydet}
+      onKeyDown={e => { if (e.key === 'Enter') kaydet(); if (e.key === 'Escape') setDuzenle(false) }}
+      autoFocus
+      className="w-full rounded border border-primary bg-background px-1 py-0.5 text-[11px] focus:outline-none"
+    />
+  )
+}
+
+export default function ProjeHakEdis({ projeId }) {
+  const { data: satirlar, isLoading } = useHakEdisMetraj(projeId)
+  const { data: ozet } = useHakEdisMetrajOzet(projeId)
+  const ekle = useHakEdisMetrajEkle(projeId)
+  const guncelle = useHakEdisMetrajGuncelle(projeId)
+  const sil = useHakEdisMetrajSil(projeId)
+  const [yeniSatir, setYeniSatir] = useState(false)
+
+  const handleYeniSatir = async () => {
+    await ekle.mutateAsync({ nokta_durum: 'Yeni', kaynak: 'manuel' })
+    setYeniSatir(false)
+  }
+
+  const handleGuncelle = (id, alan, deger) => {
+    guncelle.mutate({ id, [alan]: deger })
+  }
 
   return (
     <div>
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold">Hak Edis</h3>
-        <p className="text-sm text-muted-foreground">Kesif listesi uzerinden hak edis ozeti</p>
+      {/* Baslik + Ekle butonu */}
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Sebeke Metraji</h3>
+          <p className="text-sm text-muted-foreground">Hak edis icin direk-direk aciklik verileri</p>
+        </div>
+        <button
+          onClick={handleYeniSatir}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
+        >
+          <Plus className="h-4 w-4" /> Satir Ekle
+        </button>
       </div>
 
-      {/* Ozet Kartlari */}
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-lg border border-input bg-card px-4 py-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" />Kesif Tutari</div>
-          <p className="mt-1 text-lg font-bold">{toplamTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
+      {/* Ozet */}
+      {ozet && (
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border border-input bg-card px-4 py-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Ruler className="h-3.5 w-3.5" />Toplam Aciklik</div>
+            <p className="mt-1 text-lg font-bold">{ozet.toplam_satir || 0}</p>
+          </div>
+          <div className="rounded-lg border border-input bg-card px-4 py-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground"><MapPin className="h-3.5 w-3.5" />Toplam Mesafe</div>
+            <p className="mt-1 text-lg font-bold">{(ozet.toplam_mesafe || 0).toLocaleString('tr-TR')} m</p>
+          </div>
+          <div className="rounded-lg border border-input bg-card px-4 py-3">
+            <p className="text-xs text-muted-foreground">Yeni Nokta</p>
+            <p className="mt-1 text-lg font-bold text-emerald-600">{ozet.yeni_nokta || 0}</p>
+          </div>
+          <div className="rounded-lg border border-input bg-card px-4 py-3">
+            <p className="text-xs text-muted-foreground">Demontaj Nokta</p>
+            <p className="mt-1 text-lg font-bold text-red-600">{ozet.demontaj_nokta || 0}</p>
+          </div>
         </div>
-        <div className="rounded-lg border border-input bg-card px-4 py-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5" />Alinan Tutar</div>
-          <p className="mt-1 text-lg font-bold text-emerald-600">{alinanTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
-        </div>
-        <div className="rounded-lg border border-input bg-card px-4 py-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" />Gerceklesme</div>
-          <p className="mt-1 text-lg font-bold text-blue-600">{toplamTutar > 0 ? Math.round(alinanTutar / toplamTutar * 100) : 0}%</p>
-        </div>
-        <div className="rounded-lg border border-input bg-card px-4 py-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground"><BarChart3 className="h-3.5 w-3.5" />Kalan</div>
-          <p className="mt-1 text-lg font-bold text-amber-600">{(toplamTutar - alinanTutar).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
-        </div>
-      </div>
+      )}
 
-      {/* Kesif - Hak Edis Karsilastirma Tablosu */}
+      {/* Tablo */}
       <div className="overflow-hidden rounded-lg border border-input bg-card">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-[11px]">
             <thead>
+              {/* Ust header — gruplar */}
+              <tr className="border-b border-input bg-muted/70">
+                <th colSpan={4} className="border-r border-input px-2 py-1.5 text-center text-[10px] font-bold text-muted-foreground uppercase">Giris</th>
+                <th colSpan={2} className="border-r border-input px-2 py-1.5 text-center text-[10px] font-bold text-muted-foreground uppercase">Direk</th>
+                <th colSpan={4} className="border-r border-input px-2 py-1.5 text-center text-[10px] font-bold text-muted-foreground uppercase">Iletken</th>
+                <th className="px-2 py-1.5 text-center text-[10px] font-bold text-muted-foreground uppercase w-8"></th>
+              </tr>
+              {/* Alt header — sütunlar */}
               <tr className="border-b border-input bg-muted/50">
-                <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Poz No</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Malzeme</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Kesif Miktari</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Alinan</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Fark</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Birim Fiyat</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Tutar</th>
+                <th className="px-2 py-2 text-left font-semibold text-muted-foreground w-8">#</th>
+                <th className="px-2 py-2 text-left font-semibold text-muted-foreground">1.Nokta</th>
+                <th className="px-2 py-2 text-left font-semibold text-muted-foreground">2.Nokta</th>
+                <th className="px-2 py-2 text-left font-semibold text-muted-foreground border-r border-input">Durum</th>
+                <th className="px-2 py-2 text-left font-semibold text-muted-foreground">Tur</th>
+                <th className="px-2 py-2 text-left font-semibold text-muted-foreground border-r border-input">Tip</th>
+                <th className="px-2 py-2 text-right font-semibold text-muted-foreground">Mesafe</th>
+                <th className="px-2 py-2 text-left font-semibold text-muted-foreground">AG Durum</th>
+                <th className="px-2 py-2 text-left font-semibold text-muted-foreground">AG Iletken</th>
+                <th className="px-2 py-2 text-left font-semibold text-muted-foreground border-r border-input">OG Iletken</th>
+                <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-8"></th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
+                Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="border-b border-input/50">
-                    {Array.from({ length: 8 }).map((_, j) => (
-                      <td key={j} className="px-3 py-2.5"><div className="skeleton h-4 w-full rounded" /></td>
+                    {Array.from({ length: 11 }).map((_, j) => (
+                      <td key={j} className="px-2 py-2"><div className="skeleton h-4 w-full rounded" /></td>
                     ))}
                   </tr>
                 ))
-              ) : !kesifler?.length ? (
+              ) : !satirlar?.length ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-12 text-center">
+                  <td colSpan={11} className="px-3 py-12 text-center">
                     <BarChart3 className="mx-auto mb-2 h-10 w-10 text-muted-foreground/40" />
-                    <p className="text-sm text-muted-foreground">Once Kesif sekmesinden malzeme listesi olusturun</p>
+                    <p className="text-sm font-medium text-muted-foreground">Sebeke metraji bos</p>
+                    <p className="mt-1 text-xs text-muted-foreground/70">Hak Edis Krokisi uzerinden direk tikla veya manuel ekle</p>
                   </td>
                 </tr>
               ) : (
-                <>
-                  {kesifler.map((k) => {
-                    const alinan = k.alinan_miktar || 0
-                    const fark = k.miktar - alinan
-                    const tutar = k.miktar * (k.birim_fiyat || 0)
-                    return (
-                      <tr key={k.id} className="border-b border-input/50 hover:bg-muted/30">
-                        <td className="px-3 py-2 font-mono text-xs text-blue-600">{k.poz_no || '-'}</td>
-                        <td className="px-3 py-2 text-xs font-medium">{k.malzeme_adi}</td>
-                        <td className="px-3 py-2 text-xs text-muted-foreground">{k.birim}</td>
-                        <td className="px-3 py-2 text-right text-xs tabular-nums">{k.miktar?.toLocaleString('tr-TR')}</td>
-                        <td className="px-3 py-2 text-right text-xs tabular-nums text-emerald-600 font-medium">{alinan > 0 ? alinan.toLocaleString('tr-TR') : '-'}</td>
-                        <td className={cn('px-3 py-2 text-right text-xs tabular-nums font-medium', fark > 0 ? 'text-amber-600' : fark === 0 ? 'text-emerald-600' : 'text-red-600')}>
-                          {fark !== 0 ? fark.toLocaleString('tr-TR') : '-'}
-                        </td>
-                        <td className="px-3 py-2 text-right text-xs tabular-nums">{k.birim_fiyat ? k.birim_fiyat.toLocaleString('tr-TR', { minimumFractionDigits: 2 }) : '-'}</td>
-                        <td className="px-3 py-2 text-right text-xs tabular-nums font-medium">{tutar > 0 ? tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 }) : '-'}</td>
-                      </tr>
-                    )
-                  })}
-                  {/* Toplam Satiri */}
-                  <tr className="bg-muted/50 font-semibold">
-                    <td colSpan={7} className="px-3 py-2 text-right text-xs">Toplam:</td>
-                    <td className="px-3 py-2 text-right text-xs tabular-nums">{toplamTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</td>
+                satirlar.map((s) => (
+                  <tr key={s.id} className="border-b border-input/50 hover:bg-muted/30 transition-colors">
+                    <td className="px-2 py-1.5 text-muted-foreground tabular-nums">{s.sira}</td>
+                    <td className="px-2 py-1.5">
+                      <DuzenlenebilirHucre deger={s.nokta1} onKaydet={v => handleGuncelle(s.id, 'nokta1', v)} className="font-mono text-blue-600" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <DuzenlenebilirHucre deger={s.nokta2} onKaydet={v => handleGuncelle(s.id, 'nokta2', v)} className="font-mono text-blue-600" />
+                    </td>
+                    <td className="px-2 py-1.5 border-r border-input/30">
+                      <DuzenlenebilirHucre deger={s.nokta_durum} onKaydet={v => handleGuncelle(s.id, 'nokta_durum', v)} secenekler={DURUM_SECENEKLERI}
+                        className={cn(
+                          s.nokta_durum === 'Yeni' && 'text-emerald-600 font-medium',
+                          s.nokta_durum === 'Demontaj' && 'text-red-600 font-medium',
+                          s.nokta_durum === 'Mevcut' && 'text-blue-600',
+                        )}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <DuzenlenebilirHucre deger={s.direk_tur} onKaydet={v => handleGuncelle(s.id, 'direk_tur', v)} />
+                    </td>
+                    <td className="px-2 py-1.5 border-r border-input/30">
+                      <DuzenlenebilirHucre deger={s.direk_tip} onKaydet={v => handleGuncelle(s.id, 'direk_tip', v)} className="font-mono" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <DuzenlenebilirHucre deger={s.ara_mesafe} onKaydet={v => handleGuncelle(s.id, 'ara_mesafe', v)} type="number" className="text-right tabular-nums font-medium" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <DuzenlenebilirHucre deger={s.ag_iletken_durum} onKaydet={v => handleGuncelle(s.id, 'ag_iletken_durum', v)} secenekler={DURUM_SECENEKLERI} />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <DuzenlenebilirHucre deger={s.ag_iletken} onKaydet={v => handleGuncelle(s.id, 'ag_iletken', v)} />
+                    </td>
+                    <td className="px-2 py-1.5 border-r border-input/30">
+                      <DuzenlenebilirHucre deger={s.og_iletken} onKaydet={v => handleGuncelle(s.id, 'og_iletken', v)} />
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <button onClick={() => sil.mutate(s.id)} className="rounded p-0.5 text-muted-foreground hover:bg-red-50 hover:text-red-600" title="Sil">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </td>
                   </tr>
-                </>
+                ))
               )}
             </tbody>
           </table>
