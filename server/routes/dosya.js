@@ -1003,16 +1003,16 @@ router.post('/proje/:projeId/hak-edis-krokisi-olustur', (req, res) => {
       return res.json({ success: true, data: { dosya_id: mevcutDxf.id, adim_id: hedefAdim.id, yeni: false } });
     }
 
-    // mevcut_durum_proje DXF'ini bul
+    // yeni_durum_proje DXF'ini bul
     const kaynakDosya = db.prepare(`
       SELECT d.id, d.dosya_adi, d.dosya_yolu, d.dosya_boyutu, d.orijinal_adi
       FROM dosyalar d
       JOIN proje_adimlari pa ON d.proje_adim_id = pa.id
-      WHERE pa.proje_id = ? AND pa.adim_kodu = 'mevcut_durum_proje'
+      WHERE pa.proje_id = ? AND pa.adim_kodu = 'yeni_durum_proje'
         AND d.durum = 'aktif' AND LOWER(d.dosya_adi) LIKE '%.dxf'
       ORDER BY d.olusturma_tarihi DESC LIMIT 1
     `).get(projeId);
-    if (!kaynakDosya) return res.status(404).json({ success: false, error: 'Mevcut Durum DXF dosyası bulunamadı' });
+    if (!kaynakDosya) return res.status(404).json({ success: false, error: 'Yeni Durum DXF dosyası bulunamadı' });
 
     // Proje bilgisi
     const proje = db.prepare('SELECT proje_no, proje_tipi FROM projeler WHERE id = ?').get(projeId);
