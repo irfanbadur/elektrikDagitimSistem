@@ -980,6 +980,68 @@ router.get('/proje/:projeId/dxf-listesi', (req, res) => {
   }
 });
 
+// POST /api/dosya/proje/:projeId/hak-edis-krokisi-olustur — Mevcut durum DXF'ini hak_edis_krokisi adımına kopyala
+router.post('/proje/:projeId/hak-edis-krokisi-olustur', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const db = getDb();
+    const projeId = parseInt(req.params.projeId);
+
+    // hak_edis_krokisi adımını bul
+    const hedefAdim = db.prepare(
+      "SELECT id, adim_adi FROM proje_adimlari WHERE proje_id = ? AND adim_kodu = 'hak_edis_krokisi' LIMIT 1"
+    ).get(projeId);
+    if (!hedefAdim) return res.status(404).json({ success: false, error: 'Hak Ediş Krokisi adımı bulunamadı' });
+
+    // Zaten DXF var mı?
+    const mevcutDxf = db.prepare(
+      "SELECT id FROM dosyalar WHERE proje_adim_id = ? AND durum = 'aktif' AND LOWER(dosya_adi) LIKE '%.dxf' LIMIT 1"
+    ).get(hedefAdim.id);
+    if (mevcutDxf) {
+      // Varsa direkt döndür (güncelleme modu)
+      return res.json({ success: true, data: { dosya_id: mevcutDxf.id, adim_id: hedefAdim.id, yeni: false } });
+    }
+
+    // mevcut_durum_proje DXF'ini bul
+    const kaynakDosya = db.prepare(`
+      SELECT d.id, d.dosya_adi, d.dosya_yolu, d.dosya_boyutu, d.orijinal_adi
+      FROM dosyalar d
+      JOIN proje_adimlari pa ON d.proje_adim_id = pa.id
+      WHERE pa.proje_id = ? AND pa.adim_kodu = 'mevcut_durum_proje'
+        AND d.durum = 'aktif' AND LOWER(d.dosya_adi) LIKE '%.dxf'
+      ORDER BY d.olusturma_tarihi DESC LIMIT 1
+    `).get(projeId);
+    if (!kaynakDosya) return res.status(404).json({ success: false, error: 'Mevcut Durum DXF dosyası bulunamadı' });
+
+    // Proje bilgisi
+    const proje = db.prepare('SELECT proje_no, proje_tipi FROM projeler WHERE id = ?').get(projeId);
+    const projeKlasor = proje ? `${proje.proje_tipi}/${proje.proje_no}` : `proje_${projeId}`;
+
+    // Dosyayı kopyala
+    const kaynakYol = dosyaService.dosyaYoluCozumle(kaynakDosya.dosya_yolu);
+    const yeniAdi = `${proje?.proje_no || 'proje'}_Hak-Edis-Krokisi.dxf`;
+    const goreceliYol = `projeler/${projeKlasor}/hak_edis_krokisi/${yeniAdi}`;
+    const hedefYol = dosyaService.dosyaYoluCozumle(goreceliYol);
+
+    fs.mkdirSync(path.dirname(hedefYol), { recursive: true });
+    fs.copyFileSync(kaynakYol, hedefYol);
+
+    // DB kaydı
+    const result = db.prepare(`
+      INSERT INTO dosyalar (dosya_adi, orijinal_adi, dosya_yolu, dosya_boyutu, mime_tipi, kategori,
+        alan, alt_alan, proje_id, proje_adim_id, durum, olusturma_tarihi)
+      VALUES (?, ?, ?, ?, 'application/dxf', 'cizim', 'proje', ?, ?, ?, 'aktif', datetime('now'))
+    `).run(yeniAdi, yeniAdi, goreceliYol, kaynakDosya.dosya_boyutu || 0,
+      `${proje?.proje_tipi || ''}/${proje?.proje_no || ''}/hak_edis_krokisi`, projeId, hedefAdim.id);
+
+    res.json({ success: true, data: { dosya_id: result.lastInsertRowid, adim_id: hedefAdim.id, yeni: true } });
+  } catch (err) {
+    console.error('Hak Ediş Krokisi oluşturma hatası:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/dosya/proje/:projeId/demontaj-kroki — Her iki DXF dosya bilgisini getir
 router.get('/proje/:projeId/demontaj-kroki', (req, res) => {
   try {
