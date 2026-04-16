@@ -409,31 +409,9 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
         {/* SOL — Direk Malzemeleri */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="px-2 py-1.5 border-b border-border bg-red-50/50">
-            <span className="text-[10px] font-bold text-red-700 uppercase">Direk Malzemeleri</span>
+            <span className="text-[10px] font-bold text-red-700 uppercase">Direk Malzemeleri ({malzemeler.length})</span>
           </div>
-          {/* Malzeme arama */}
-          <div className="p-1.5 border-b border-border">
-            <input ref={inputRef} value={arama} onChange={e => { setArama(e.target.value); ara(e.target.value) }}
-              onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onKapat() } else if (gosterilen.length > 0) handleKeyDown(e) }}
-              placeholder="Malzeme ara..."
-              className="w-full rounded border border-input bg-background px-2 py-1 text-[11px] focus:border-primary focus:outline-none" />
-          </div>
-          {/* Arama sonuçları */}
-          {(araniyor || sonuclar.length > 0) && (
-            <div className="max-h-24 overflow-y-auto border-b border-border">
-              {araniyor ? <div className="px-2 py-1.5 text-[10px] text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...</div> : (
-                gosterilen.map((item, i) => (
-                  <button key={item.id} onClick={() => handleMalzemeEkle(item)}
-                    className={cn('flex w-full items-center gap-1.5 px-2 py-1 text-left text-[10px] border-b border-border/30', i === seciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
-                    <span className="font-mono text-blue-600 w-16 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
-                    <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
-                    <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-          {/* Malzeme listesi */}
+          {/* Malzeme listesi — arama üst çubuktan yapılır */}
           <div className="flex-1 p-1.5 overflow-y-auto">
             {malzemeler.length === 0 ? (
               <p className="text-[10px] text-muted-foreground/60 py-4 text-center">Malzeme arayip ekleyin</p>
