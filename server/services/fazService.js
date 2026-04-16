@@ -127,6 +127,7 @@ class FazService {
           { adim_adi: 'Metraj', adim_kodu: 'metraj', tahmini_gun: 5 },
           { adim_adi: 'Hesap', adim_kodu: 'hesap', tahmini_gun: 5 },
           { adim_adi: 'Kurum Şablon', adim_kodu: 'kurum_sablon', tahmini_gun: 5 },
+          { adim_adi: 'Hak Ediş Krokisi', adim_kodu: 'hak_edis_krokisi', tahmini_gun: 3 },
         ]},
       { sira: 6, faz_adi: 'Kabul', faz_kodu: 'kabul', ikon: '✅', renk: '#14b8a6', sorumlu: 'koordinator', tahmini_gun: 30,
         adimlar: [

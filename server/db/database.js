@@ -536,6 +536,9 @@ function _initSingleDb() {
   // Fazlardaki eksik sorumlu_rol_id'leri doldur (pozisyonlar sonradan seed edildiyse)
   fixFazSorumluRol(database);
 
+  // Hak Ediş Krokisi adımını tüm iş tiplerine ve projelere ekle
+  migrateHakEdisKrokisi(database);
+
   // Mevcut verileri yeni faz sistemine taşı
   migrateToFazSistemi(database);
 
@@ -578,6 +581,88 @@ function fixFazSorumluRol(database) {
     }
   } catch (err) {
     // Sessizce atla
+  }
+}
+
+function migrateHakEdisKrokisi(database) {
+  try {
+    // faz_adimlari ve proje_adimlari'nda zaten varsa atla
+    const fazMevcut = database.prepare(
+      "SELECT COUNT(*) as c FROM faz_adimlari WHERE adim_kodu = 'hak_edis_krokisi'"
+    ).get();
+    const projeMevcut = database.prepare(
+      "SELECT COUNT(*) as c FROM proje_adimlari WHERE adim_kodu = 'hak_edis_krokisi'"
+    ).get();
+    if (fazMevcut.c > 0 && projeMevcut.c > 0) return;
+
+    // 1) Tüm iş tiplerindeki hak_edis fazlarına adım ekle (yoksa)
+    let fazEklenen = 0;
+    if (fazMevcut.c === 0) {
+      const hakEdisFazlari = database.prepare(
+        "SELECT id, is_tipi_id FROM is_tipi_fazlari WHERE faz_kodu = 'hak_edis'"
+      ).all();
+
+      const adimStmt = database.prepare(
+        `INSERT INTO faz_adimlari (faz_id, sira, adim_adi, adim_kodu, tahmini_gun, komponent_tipi)
+         VALUES (?, ?, 'Hak Ediş Krokisi', 'hak_edis_krokisi', 3, 'dosya_yukleme')`
+      );
+
+      for (const faz of hakEdisFazlari) {
+        const maxSira = database.prepare('SELECT COALESCE(MAX(sira), 0) as m FROM faz_adimlari WHERE faz_id = ?').get(faz.id);
+        adimStmt.run(faz.id, maxSira.m + 1);
+        fazEklenen++;
+      }
+    }
+
+    // 2) Mevcut projelerin hak_edis fazındaki adımlarına ekle (yoksa)
+    if (projeMevcut.c > 0) { if (fazEklenen > 0) console.log(`✅ Hak Ediş Krokisi: ${fazEklenen} iş tipi`); return; }
+    const projeler = database.prepare(
+      `SELECT DISTINCT proje_id, faz_sira, renk, ikon, sorumlu_rol_id,
+         MAX(sira_global) as max_global, MAX(adim_sira) as max_adim_sira
+       FROM proje_adimlari WHERE faz_kodu = 'hak_edis'
+       GROUP BY proje_id`
+    ).all();
+
+    const projeAdimStmt = database.prepare(
+      `INSERT INTO proje_adimlari (
+         proje_id, sira_global, faz_sira, adim_sira,
+         faz_adi, faz_kodu, adim_adi, adim_kodu,
+         renk, ikon, tahmini_gun, durum, sorumlu_rol_id, komponent_tipi
+       ) VALUES (?, ?, ?, ?, 'Hak Ediş', 'hak_edis', 'Hak Ediş Krokisi', 'hak_edis_krokisi',
+         ?, ?, 3, 'bekliyor', ?, 'dosya_yukleme')`
+    );
+
+    let projeEklenen = 0;
+    for (const p of projeler) {
+      // UNIQUE (proje_id, sira_global) constraint: önce büyük offset ile kaydır, sonra düzelt
+      database.prepare(
+        'UPDATE proje_adimlari SET sira_global = sira_global + 10000 WHERE proje_id = ? AND sira_global > ?'
+      ).run(p.proje_id, p.max_global);
+
+      // Yeni adımı ekle
+      projeAdimStmt.run(
+        p.proje_id,
+        p.max_global + 1,
+        p.faz_sira,
+        p.max_adim_sira + 1,
+        p.renk || '#3b82f6',
+        p.ikon || '💰',
+        p.sorumlu_rol_id
+      );
+
+      // Offset'i düzelt: 10000 → 1 (net +1 kaydırma)
+      database.prepare(
+        'UPDATE proje_adimlari SET sira_global = sira_global - 9999 WHERE proje_id = ? AND sira_global > 9999'
+      ).run(p.proje_id);
+
+      projeEklenen++;
+    }
+
+    if (fazEklenen > 0 || projeEklenen > 0) {
+      console.log(`✅ Hak Ediş Krokisi eklendi: ${fazEklenen} iş tipi, ${projeEklenen} proje`);
+    }
+  } catch (err) {
+    console.error('Hak Ediş Krokisi migration hatası:', err.message);
   }
 }
 
