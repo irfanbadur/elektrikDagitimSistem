@@ -474,7 +474,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
 // DXF Viewer — fontlar: NotoSans (text) + B_CAD (semboller) — stil bazlı seçim otomatik
 const DXF_FONTS = ['/fonts/NotoSans.ttf', '/fonts/B_CAD.ttf', '/fonts/T_ROMANS.ttf']
 
-function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotSil, overlayUrl }) {
+function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotSil, overlayUrl, onDireklerYuklendi }) {
   const qc = useQueryClient()
   const containerRef = useRef(null)
   const viewerRef = useRef(null)
@@ -684,6 +684,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
             const elemanRes = await api.get(`/dosya/${dosyaId}/dxf-elemanlar`)
             const elemanData = elemanRes?.data || elemanRes
             direklerRef.current = elemanData?.elemanlar || []
+            onDireklerYuklendi?.(direklerRef.current)
           } catch {}
 
           viewer.Subscribe('pointerup', (evt) => {
@@ -1757,6 +1758,7 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
   const [seciliDosya, setSeciliDosya] = useState(null) // { id, adi, adimAdi, overlayId? }
   const [seciliDirek, setSeciliDirek] = useState(null)
   const [direkNotlari, setDirekNotlari] = useState({})
+  const [direkListesi, setDirekListesi] = useState([]) // DxfOnizleme'den gelen tüm direkler
   useEffect(() => { setDirekNotlari({}); setSeciliDirek(null) }, [seciliDosya?.id])
   const dragState = useRef({ startX: 0, scrollLeft: 0 })
 
@@ -1897,13 +1899,14 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
               onDirekTikla={seciliDosya.dxf ? (d) => { if (!seciliDirek) setSeciliDirek(d) } : undefined}
               direkNotlari={seciliDosya.dxf ? direkNotlari : undefined}
               onNotSil={seciliDosya.dxf ? (key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y }) : undefined}
+              onDireklerYuklendi={setDirekListesi}
             />
             {seciliDosya.dxf && seciliDirek && (
               <DirekMalzemePopup
                 direk={seciliDirek}
                 projeId={projeId}
                 adimKodu={seciliDosya.adimKodu}
-                tumDirekler={direklerRef.current || []}
+                tumDirekler={direkListesi}
                 onKapat={() => setSeciliDirek(null)}
                 direkNotlari={direkNotlari}
                 onMalzemeGuncelle={(not) => setDirekNotlari(prev => ({
