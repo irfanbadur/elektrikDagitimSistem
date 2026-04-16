@@ -205,7 +205,12 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   const mevcutNot = direkNotlari?.[direkKey]
   const malzemeler = mevcutNot?.malzemeler || []
 
-  const [arama, setArama] = useState(direk.etiket || '')
+  // Düzenlenebilir direk bilgileri
+  const [direkNumara, setDirekNumara] = useState(direk.numara || '')
+  const [direkTip, setDirekTip] = useState(direk.tip || '')
+  const [direkTur, setDirekTur] = useState(direk.sembolAdi || '')
+
+  const [arama, setArama] = useState('')
   const [sonuclar, setSonuclar] = useState([])
   const [araniyor, setAraniyor] = useState(false)
   const timer = useRef(null)
@@ -224,7 +229,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
     }, 300)
   }
 
-  useEffect(() => { if (direk.etiket) ara(direk.etiket); setTimeout(() => inputRef.current?.focus(), 100) }, [])
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 100) }, [])
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 
   // Malzeme listesini güncelle → anında DXF sprite'a yansır
@@ -275,10 +280,8 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
     } catch (err) { alert(err.message) }
   }
 
-  // İletken listesi (DXF'ten otomatik + manuel eklenen)
-  const [iletkenListesi, setIletkenListesi] = useState(() =>
-    (direk.iletkenler || []).map(il => ({ adi: il.text, mesafe: 0 }))
-  )
+  // İletken listesi (manuel girişli)
+  const [iletkenListesi, setIletkenListesi] = useState([])
   const [iletkenArama, setIletkenArama] = useState('')
 
   const handleIletkenEkle = (text) => {
@@ -300,11 +303,11 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
     try {
       const komsu = direk.komsular?.[0]
       await api.post(`/hak-edis-metraj/${projeId}`, {
-        nokta1: direk.numara || direk.etiket || '',
+        nokta1: direkNumara || direk.etiket || '',
         nokta2: komsu?.numara || '',
         nokta_durum: 'Yeni',
-        direk_tur: direk.sembolAdi || '',
-        direk_tip: direk.tip || '',
+        direk_tur: direkTur || '',
+        direk_tip: direkTip || '',
         ara_mesafe: komsu?.mesafe || 0,
         ag_iletken: iletkenListesi.filter(il => /AG|ROSE|PANSY|ASTER/i.test(il.adi)).map(il => il.adi).join(', ') || null,
         og_iletken: iletkenListesi.filter(il => /OG|SWALLOW|RAVEN|PIGEON|HAWK/i.test(il.adi)).map(il => il.adi).join(', ') || null,
@@ -323,18 +326,23 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   return (
     <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 520, maxHeight: 520, overflow: 'auto' }}
       onMouseDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
-      {/* Başlık — Direk bilgileri */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/30">
-        <div className="flex items-center gap-2">
-          {direk.numara && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-bold text-primary">{direk.numara}</span>}
-          <span className="text-xs font-bold">{direk.sembolAdi}</span>
-          {direk.tip && <span className="text-xs text-emerald-600 font-medium">{direk.tip}</span>}
-          {!direk.numara && !direk.tip && direk.etiket && <span className="text-xs text-muted-foreground">{direk.etiket}</span>}
+      {/* Başlık — Düzenlenebilir direk bilgileri */}
+      <div className="border-b border-border px-3 py-2 bg-muted/30">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase">Direk Bilgileri</span>
+          <button onClick={onKapat} className="rounded p-0.5 hover:bg-muted"><X className="h-3.5 w-3.5" /></button>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <input value={direkNumara} onChange={e => setDirekNumara(e.target.value)} placeholder="No"
+            className="w-14 rounded border border-input bg-white px-1.5 py-0.5 text-xs font-bold text-primary focus:border-primary focus:outline-none" />
+          <input value={direkTur} onChange={e => setDirekTur(e.target.value)} placeholder="Tur"
+            className="w-16 rounded border border-input bg-white px-1.5 py-0.5 text-xs focus:border-primary focus:outline-none" />
+          <input value={direkTip} onChange={e => setDirekTip(e.target.value)} placeholder="Tip (G-10I)"
+            className="w-20 rounded border border-input bg-white px-1.5 py-0.5 text-xs text-emerald-600 font-medium focus:border-primary focus:outline-none" />
           {direk.komsular?.length > 0 && (
-            <span className="text-[10px] text-muted-foreground">→ {direk.komsular[0].numara} ({direk.komsular[0].mesafe}m)</span>
+            <span className="text-[10px] text-muted-foreground ml-auto">→ {direk.komsular[0].numara} ({direk.komsular[0].mesafe}m)</span>
           )}
         </div>
-        <button onClick={onKapat} className="rounded p-0.5 hover:bg-muted"><X className="h-3.5 w-3.5" /></button>
       </div>
 
       {/* İki sütunlu içerik */}
