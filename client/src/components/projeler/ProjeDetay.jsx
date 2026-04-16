@@ -1,4 +1,4 @@
-import { useState, Component } from 'react'
+import { useState, useRef, Component } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -76,6 +76,7 @@ export default function ProjeDetay() {
   const [aktifTab, setAktifTab] = useState('detay')
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [durumMenuAcik, setDurumMenuAcik] = useState(false)
+  const previewRef = useRef(null)
 
   const handleSil = () => {
     projeSil.mutate(id, {
@@ -299,12 +300,13 @@ export default function ProjeDetay() {
         </div>
       </div>
 
-      {/* Responsive: genis ekranda yan yana, dar ekranda alt alta */}
+      {/* Yasam Dongusu — her zaman tam genislik */}
+      <ProjeDonguBar projeId={id} previewPortalRef={previewRef} />
+
+      {/* Viewer + Sekmeler: genis ekranda yan yana %50/%50, dar ekranda alt alta */}
       <div className="flex flex-col xl:flex-row xl:gap-4 xl:items-start">
-        {/* DXF Viewer — genis ekranda %50 */}
-        <div className="xl:w-1/2 xl:min-w-0">
-          <ProjeDonguBar projeId={id} />
-        </div>
+        {/* DXF Viewer onizleme — ProjeDonguBar portal ile buraya render eder */}
+        <div ref={previewRef} className="xl:w-1/2 xl:min-w-0" />
 
         {/* Sekmeler + Icerik — genis ekranda %50 */}
         <div className="xl:w-1/2 xl:min-w-0 xl:max-h-[calc(100vh-120px)] xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card">

@@ -1622,7 +1622,7 @@ function AdimKarti({ adim, projeId, onDosyaSec }) {
 }
 
 // ─── Ana Komponent ───────────────────────────
-export default function ProjeDonguBar({ projeId }) {
+export default function ProjeDonguBar({ projeId, previewPortalRef }) {
   const { data: ilerleme } = useProjeFazIlerleme(projeId)
   const scrollRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -1700,7 +1700,74 @@ export default function ProjeDonguBar({ projeId }) {
     fazMap.get(key).adimlar.push(adim)
   }
 
-  return (
+  // Preview paneli içeriği — portal veya inline render için
+  const previewIcerik = seciliDosya ? (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-2 bg-muted/30">
+        <div className="flex items-center gap-2">
+          {dosyaIkonu(seciliDosya.adi, 'h-4 w-4')}
+          <span className="text-xs font-semibold">{seciliDosya.adi}</span>
+          <span className="text-[10px] text-muted-foreground">— {seciliDosya.adimAdi}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <a href={`/api/dosya/${seciliDosya.id}/dosya`} download={seciliDosya.adi} onClick={e => e.stopPropagation()}
+            className="rounded px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/10">
+            İndir
+          </a>
+          <button onClick={() => setSeciliDosya(null)} className="rounded p-1 hover:bg-muted">
+            <X className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+      <div className="bg-gray-50 p-4" style={{ minHeight: 200 }}>
+        {seciliDosya.gorsel ? (
+          <PanZoomResim src={`/api/dosya/${seciliDosya.id}/dosya`} alt={seciliDosya.adi} />
+        ) : seciliDosya.dxf ? (
+          <div className="relative">
+            <DxfOnizleme
+              src={`/api/dosya/${seciliDosya.id}/dosya`}
+              dosyaId={seciliDosya.id}
+              projeId={projeId}
+              overlayUrl={seciliDosya.overlayId ? `/api/dosya/${seciliDosya.overlayId}/dosya` : null}
+              onDirekTikla={seciliDosya.dxf ? (d) => { if (!seciliDirek) setSeciliDirek(d) } : undefined}
+              direkNotlari={seciliDosya.dxf ? direkNotlari : undefined}
+              onNotSil={seciliDosya.dxf ? (key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y }) : undefined}
+            />
+            {seciliDosya.dxf && seciliDirek && (
+              <DirekMalzemePopup
+                direk={seciliDirek}
+                projeId={projeId}
+                onKapat={() => setSeciliDirek(null)}
+                direkNotlari={direkNotlari}
+                onMalzemeGuncelle={(not) => setDirekNotlari(prev => ({
+                  ...prev,
+                  [not.key]: {
+                    x: not.x,
+                    y: not.y,
+                    yukseklik: not.yukseklik,
+                    katman: prev[not.key]?.katman || 'kesif',
+                    malzemeler: not.malzemeler,
+                  }
+                }))}
+              />
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+            {dosyaIkonu(seciliDosya.adi, 'h-12 w-12')}
+            <span className="text-sm font-medium">{seciliDosya.adi}</span>
+            <span className="text-xs">Bu dosya türü için ön izleme mevcut değil</span>
+            <a href={`/api/dosya/${seciliDosya.id}/dosya`} download={seciliDosya.adi}
+              className="mt-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90">
+              Dosyayı İndir
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null
+
+  return (<>
     <div className="rounded-xl border border-border bg-card shadow-sm">
       {/* Baslik */}
       <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
@@ -1815,73 +1882,12 @@ export default function ProjeDonguBar({ projeId }) {
         </div>
       )}
 
-      {/* ─── Dosya Ön İzleme Paneli ─── */}
-      {seciliDosya && (
-        <div className="border-t border-border">
-          <div className="flex items-center justify-between px-5 py-2 bg-muted/30">
-            <div className="flex items-center gap-2">
-              {dosyaIkonu(seciliDosya.adi, 'h-4 w-4')}
-              <span className="text-xs font-semibold">{seciliDosya.adi}</span>
-              <span className="text-[10px] text-muted-foreground">— {seciliDosya.adimAdi}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <a href={`/api/dosya/${seciliDosya.id}/dosya`} download={seciliDosya.adi} onClick={e => e.stopPropagation()}
-                className="rounded px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/10">
-                İndir
-              </a>
-              <button onClick={() => setSeciliDosya(null)} className="rounded p-1 hover:bg-muted">
-                <X className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-            </div>
-          </div>
-          <div className="bg-gray-50 p-4" style={{ minHeight: 200 }}>
-            {seciliDosya.gorsel ? (
-              <PanZoomResim src={`/api/dosya/${seciliDosya.id}/dosya`} alt={seciliDosya.adi} />
-            ) : seciliDosya.dxf ? (
-              <div className="relative">
-                <DxfOnizleme
-                  src={`/api/dosya/${seciliDosya.id}/dosya`}
-                  dosyaId={seciliDosya.id}
-                  projeId={projeId}
-                  overlayUrl={seciliDosya.overlayId ? `/api/dosya/${seciliDosya.overlayId}/dosya` : null}
-                  onDirekTikla={seciliDosya.dxf ? (d) => { if (!seciliDirek) setSeciliDirek(d) } : undefined}
-                  direkNotlari={seciliDosya.dxf ? direkNotlari : undefined}
-                  onNotSil={seciliDosya.dxf ? (key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y }) : undefined}
-                />
-                {/* Direk popup — tüm DXF dosyalarında */}
-                {seciliDosya.dxf && seciliDirek && (
-                  <DirekMalzemePopup
-                    direk={seciliDirek}
-                    projeId={projeId}
-                    onKapat={() => setSeciliDirek(null)}
-                    direkNotlari={direkNotlari}
-                    onMalzemeGuncelle={(not) => setDirekNotlari(prev => ({
-                      ...prev,
-                      [not.key]: {
-                        x: not.x,
-                        y: not.y,
-                        yukseklik: not.yukseklik,
-                        katman: prev[not.key]?.katman || 'kesif',
-                        malzemeler: not.malzemeler,
-                      }
-                    }))}
-                  />
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                {dosyaIkonu(seciliDosya.adi, 'h-12 w-12')}
-                <span className="text-sm font-medium">{seciliDosya.adi}</span>
-                <span className="text-xs">Bu dosya türü için ön izleme mevcut değil</span>
-                <a href={`/api/dosya/${seciliDosya.id}/dosya`} download={seciliDosya.adi}
-                  className="mt-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90">
-                  Dosyayı İndir
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* ─── Dosya Ön İzleme: inline (portal yoksa) ─── */}
+      {seciliDosya && !previewPortalRef?.current && previewIcerik}
     </div>
+
+    {/* ─── Dosya Ön İzleme: portal ile dış konuma (varsa) ─── */}
+    {seciliDosya && previewPortalRef?.current && createPortal(previewIcerik, previewPortalRef.current)}
+  </>
   )
 }
