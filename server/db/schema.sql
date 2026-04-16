@@ -1510,3 +1510,41 @@ CREATE TABLE IF NOT EXISTS proje_kroki_kesif (
 );
 
 CREATE INDEX IF NOT EXISTS idx_proje_kroki_kesif_proje ON proje_kroki_kesif(proje_id);
+
+-- ============================================
+-- HAK EDİŞ METRAJ (Şebeke Metrajı — direk→direk span)
+-- ============================================
+CREATE TABLE IF NOT EXISTS hak_edis_metraj (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    sira INTEGER DEFAULT 0,
+    -- GİRİŞ
+    nokta1 TEXT,                   -- 1.Nokta (direk no: A01, B02...)
+    nokta2 TEXT,                   -- 2.Nokta
+    nokta_durum TEXT,              -- Nokta Durum (Yeni, Mevcut, Demontaj)
+    -- DİREK
+    direk_tur TEXT,                -- Tür (Ağaç, Beton, Demir...)
+    direk_tip TEXT,                -- Tip (G-10I, G-K1...)
+    -- TRAVERSLER (JSON: [{tip, adet, boy}])
+    traversler TEXT,
+    -- İLETKEN
+    ara_mesafe REAL DEFAULT 0,     -- Ara Mesafe (metre)
+    ag_iletken_durum TEXT,         -- AG İletken Durum (Yeni, Mevcut, Demontaj)
+    og_iletken_durum TEXT,         -- OG İletken Durum
+    ag_iletken TEXT,               -- AG İletken tipi
+    og_iletken TEXT,               -- OG İletken tipi
+    -- İLETKEN HESABI (JSON: {rose:0, pansy:0, aster:0, swallow:0, ...})
+    yeni_iletken TEXT,             -- Yeni iletken metre hesabı
+    dmm_iletken TEXT,              -- Demontaj iletken metre hesabı
+    -- KAYNAK
+    kaynak TEXT DEFAULT 'kroki',   -- kroki, manuel
+    kaynak_direk_x REAL,           -- DXF koordinat (hangi direkten geldi)
+    kaynak_direk_y REAL,
+    --
+    notlar TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_hak_edis_metraj_proje ON hak_edis_metraj(proje_id);
