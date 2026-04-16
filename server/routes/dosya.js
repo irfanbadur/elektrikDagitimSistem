@@ -598,20 +598,24 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
     // Direk tipi pattern: G-10I, G-K1, G-12I(P) vb.
     const TIP_RE = /^G-/i;
 
-    // Direk + yakınındaki etiketleri eşleştir (numara + tip ayrı ayrı)
+    // Direk + yakınındaki etiketleri eşleştir — EN YAKIN olanı seç
     const sonuc = direkler.map(d => {
-      let numara = null, tip = null, enYakinEtiket = null, enYakinMesafe = Infinity;
+      let numara = null, numaraMesafe = Infinity;
+      let tip = null, tipMesafe = Infinity;
+      let enYakinEtiket = null, enYakinMesafe = Infinity;
       for (const et of etiketler) {
         const dx = (et.x||0) - (d.x||0), dy = (et.y||0) - (d.y||0);
         const mesafe = Math.sqrt(dx*dx + dy*dy);
         if (mesafe > 25) continue; // Max 25 birim yakınlık
-        // Direk numarası (A01, B02...)
-        if (!numara && NUMARA_RE.test(et.text)) {
+        // Direk numarası (A01, B02...) — en yakın olanı seç
+        if (NUMARA_RE.test(et.text) && mesafe < numaraMesafe) {
           numara = et.text;
+          numaraMesafe = mesafe;
         }
-        // Direk tipi (G-10I, G-K1...)
-        if (!tip && TIP_RE.test(et.text)) {
+        // Direk tipi (G-10I, G-K1...) — en yakın olanı seç
+        if (TIP_RE.test(et.text) && mesafe < tipMesafe) {
           tip = et.text;
+          tipMesafe = mesafe;
         }
         // En yakın genel etiket
         if (mesafe < enYakinMesafe) {
