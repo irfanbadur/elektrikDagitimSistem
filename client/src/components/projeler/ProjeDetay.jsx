@@ -304,12 +304,12 @@ export default function ProjeDetay() {
       <ProjeDonguBar projeId={id} previewPortalRef={previewRef} />
 
       {/* Viewer + Sekmeler: genis ekranda yan yana %50/%50, dar ekranda alt alta %100 */}
-      <div className="flex flex-col xl:flex-row xl:gap-4 xl:h-[calc(100vh-280px)]">
+      <div className="flex flex-col xl:flex-row xl:gap-4 xl:h-[calc(100vh-280px)] pb-6">
         {/* DXF Viewer onizleme — ProjeDonguBar portal ile buraya render eder */}
-        <div ref={previewRef} className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-y-auto" />
+        <div ref={previewRef} className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-y-auto mb-4 xl:mb-0" />
 
         {/* Sekmeler + Icerik */}
-        <div className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card">
+        <div className="w-full xl:w-1/2 xl:min-w-0 xl:h-full xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card mb-4 xl:mb-0">
           {/* Tabs */}
           <div className="border-b border-border overflow-x-auto xl:sticky xl:top-0 xl:z-10 xl:bg-card">
             <div className="flex gap-1 min-w-max xl:flex-wrap xl:min-w-0 xl:gap-0">
