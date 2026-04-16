@@ -980,7 +980,7 @@ router.get('/proje/:projeId/dxf-listesi', (req, res) => {
   }
 });
 
-// POST /api/dosya/proje/:projeId/hak-edis-krokisi-olustur — Mevcut durum DXF'ini hak_edis_krokisi adımına kopyala
+// POST /api/dosya/proje/:projeId/hak-edis-krokisi-olustur — Yeni durum DXF'ini hak_edis_krokisi adımına kopyala
 router.post('/proje/:projeId/hak-edis-krokisi-olustur', (req, res) => {
   try {
     const fs = require('fs');
