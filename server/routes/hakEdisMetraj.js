@@ -176,4 +176,155 @@ router.delete('/:projeId', (req, res) => {
   } catch (err) { hata(res, err.message, 500); }
 });
 
+// ═══════════════════════════════════════════════
+// EXCEL ŞABLON & AKTARIM
+// ═══════════════════════════════════════════════
+
+// POST /:projeId/sablon-kopyala — PYP Hakkediş şablonunu kurum_sablon adımına kopyala
+router.post('/:projeId/sablon-kopyala', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const db = getDb();
+    const projeId = parseInt(req.params.projeId);
+    const dosyaService = require('../services/dosyaService');
+
+    // kurum_sablon adımını bul
+    const hedefAdim = db.prepare(
+      "SELECT id FROM proje_adimlari WHERE proje_id = ? AND adim_kodu = 'kurum_sablon' LIMIT 1"
+    ).get(projeId);
+    if (!hedefAdim) return hata(res, 'Kurum Şablon adımı bulunamadı', 404);
+
+    // Zaten Excel var mı?
+    const mevcut = db.prepare(
+      "SELECT id FROM dosyalar WHERE proje_adim_id = ? AND durum = 'aktif' AND LOWER(dosya_adi) LIKE '%.xlsm' LIMIT 1"
+    ).get(hedefAdim.id);
+    if (mevcut) return basarili(res, { dosya_id: mevcut.id, adim_id: hedefAdim.id, yeni: false });
+
+    // Şablon dosyasını bul
+    const sablonYol = path.join(__dirname, '../../doc/hakediş/+PYP Hakkediş Formatı_2026_v15.13.04.2026.xlsm');
+    if (!fs.existsSync(sablonYol)) return hata(res, 'Hakkediş şablon dosyası bulunamadı', 404);
+
+    // Proje bilgisi
+    const proje = db.prepare('SELECT proje_no, proje_tipi FROM projeler WHERE id = ?').get(projeId);
+    const projeKlasor = proje ? `${proje.proje_tipi}/${proje.proje_no}` : `proje_${projeId}`;
+    const yeniAdi = `${proje?.proje_no || 'proje'}_Hakedis.xlsm`;
+
+    // Kopyala
+    const uploadsRoot = dosyaService.dosyaYoluCozumle ? null : null;
+    const goreceliYol = `projeler/${projeKlasor}/kurum_sablon/${yeniAdi}`;
+    const hedefYol = dosyaService.dosyaYoluCozumle(goreceliYol);
+
+    fs.mkdirSync(path.dirname(hedefYol), { recursive: true });
+    fs.copyFileSync(sablonYol, hedefYol);
+
+    const boyut = fs.statSync(hedefYol).size;
+    const result = db.prepare(`
+      INSERT INTO dosyalar (dosya_adi, orijinal_adi, dosya_yolu, dosya_boyutu, mime_tipi, kategori,
+        alan, alt_alan, proje_id, proje_adim_id, durum, olusturma_tarihi)
+      VALUES (?, ?, ?, ?, 'application/vnd.ms-excel.sheet.macroEnabled.12', 'tablo', 'proje', ?, ?, ?, 'aktif', datetime('now'))
+    `).run(yeniAdi, yeniAdi, goreceliYol, boyut,
+      `${proje?.proje_tipi || ''}/${proje?.proje_no || ''}/kurum_sablon`, projeId, hedefAdim.id);
+
+    basarili(res, { dosya_id: result.lastInsertRowid, adim_id: hedefAdim.id, yeni: true });
+  } catch (err) {
+    console.error('Şablon kopyalama hatası:', err);
+    hata(res, err.message, 500);
+  }
+});
+
+// POST /:projeId/excel-aktar — Metraj verisini kurum_sablon Excel'inin Şebeke Metrajı sayfasına yaz
+router.post('/:projeId/excel-aktar', (req, res) => {
+  try {
+    const fs = require('fs');
+    const XLSX = require('xlsx');
+    const db = getDb();
+    const dosyaService = require('../services/dosyaService');
+    const projeId = parseInt(req.params.projeId);
+
+    // kurum_sablon adımındaki Excel'i bul
+    const hedefAdim = db.prepare(
+      "SELECT id FROM proje_adimlari WHERE proje_id = ? AND adim_kodu = 'kurum_sablon' LIMIT 1"
+    ).get(projeId);
+    if (!hedefAdim) return hata(res, 'Kurum Şablon adımı bulunamadı', 404);
+
+    const dosya = db.prepare(
+      "SELECT id, dosya_yolu FROM dosyalar WHERE proje_adim_id = ? AND durum = 'aktif' AND LOWER(dosya_adi) LIKE '%.xlsm' ORDER BY olusturma_tarihi DESC LIMIT 1"
+    ).get(hedefAdim.id);
+    if (!dosya) return hata(res, 'Hakkediş Excel dosyası bulunamadı. Önce şablonu kopyalayın.', 404);
+
+    const excelYol = dosyaService.dosyaYoluCozumle(dosya.dosya_yolu);
+
+    // Metraj verilerini al
+    const satirlar = db.prepare(
+      'SELECT * FROM hak_edis_metraj WHERE proje_id = ? ORDER BY sira, id'
+    ).all(projeId);
+
+    if (!satirlar.length) return hata(res, 'Aktarılacak metraj verisi yok', 400);
+
+    // Excel'i oku
+    const wb = XLSX.readFile(excelYol, { type: 'file' });
+    const ws = wb.Sheets['Şebeke Metrajı'];
+    if (!ws) return hata(res, 'Şebeke Metrajı sayfası bulunamadı', 404);
+
+    // Veri başlangıç satırı (satır 5 = index 4, 0-bazlı)
+    const BASLANGIC_SATIR = 4;
+
+    // Sütun haritası — Excel sütun indexleri (0-bazlı)
+    const COL = {
+      nokta1: 1,         // B: 1.Nokta
+      nokta2: 2,         // C: 2.Nokta
+      nokta_durum: 3,    // D: Nokta Durum
+      direk_tur: 4,      // E: Tür
+      direk_tip: 5,      // F: Tip
+      ara_mesafe: 15,     // P: Ara Mesafe
+      ag_iletken_durum: 16, // Q: AG İletken Durum
+      og_iletken_durum: 17, // R: OG İletken Durum
+      ag_iletken: 18,    // S: AG İletken
+      og_iletken: 19,    // T: OG İletken
+    };
+
+    // Satırları yaz
+    for (let i = 0; i < satirlar.length; i++) {
+      const s = satirlar[i];
+      const r = BASLANGIC_SATIR + i;
+
+      const setCel = (c, v) => {
+        if (v == null || v === '') return;
+        const addr = XLSX.utils.encode_cell({ r, c });
+        ws[addr] = { t: typeof v === 'number' ? 'n' : 's', v };
+      };
+
+      setCel(COL.nokta1, s.nokta1);
+      setCel(COL.nokta2, s.nokta2);
+      setCel(COL.nokta_durum, s.nokta_durum);
+      setCel(COL.direk_tur, s.direk_tur);
+      setCel(COL.direk_tip, s.direk_tip);
+      setCel(COL.ara_mesafe, s.ara_mesafe || 0);
+      setCel(COL.ag_iletken_durum, s.ag_iletken_durum);
+      setCel(COL.og_iletken_durum, s.og_iletken_durum);
+      setCel(COL.ag_iletken, s.ag_iletken);
+      setCel(COL.og_iletken, s.og_iletken);
+    }
+
+    // Sheet range güncelle
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const yeniSonSatir = BASLANGIC_SATIR + satirlar.length - 1;
+    if (yeniSonSatir > range.e.r) range.e.r = yeniSonSatir;
+    ws['!ref'] = XLSX.utils.encode_range(range);
+
+    // Kaydet
+    XLSX.writeFile(wb, excelYol, { type: 'file', bookType: 'xlsm' });
+
+    // Dosya boyutunu güncelle
+    const yeniBoyut = fs.statSync(excelYol).size;
+    db.prepare('UPDATE dosyalar SET dosya_boyutu = ?, guncelleme_tarihi = datetime(\'now\') WHERE id = ?').run(yeniBoyut, dosya.id);
+
+    basarili(res, { dosya_id: dosya.id, aktarilan_satir: satirlar.length });
+  } catch (err) {
+    console.error('Excel aktarım hatası:', err);
+    hata(res, err.message, 500);
+  }
+});
+
 module.exports = router;

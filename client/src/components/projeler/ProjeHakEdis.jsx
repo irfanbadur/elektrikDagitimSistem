@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Plus, Trash2, BarChart3, Ruler, MapPin } from 'lucide-react'
+import { Plus, Trash2, BarChart3, Ruler, MapPin, FileSpreadsheet, Upload, Loader2, ExternalLink } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useHakEdisMetraj, useHakEdisMetrajOzet, useHakEdisMetrajEkle, useHakEdisMetrajGuncelle, useHakEdisMetrajSil } from '@/hooks/useHakEdisMetraj'
+import api from '@/api/client'
 import { cn } from '@/lib/utils'
 
 const DURUM_SECENEKLERI = ['Yeni', 'Mevcut', 'Demontaj']
@@ -61,11 +63,45 @@ export default function ProjeHakEdis({ projeId }) {
   const ekle = useHakEdisMetrajEkle(projeId)
   const guncelle = useHakEdisMetrajGuncelle(projeId)
   const sil = useHakEdisMetrajSil(projeId)
+  const qc = useQueryClient()
   const [yeniSatir, setYeniSatir] = useState(false)
+  const [excelYukleniyor, setExcelYukleniyor] = useState(false)
+  const [excelDosyaId, setExcelDosyaId] = useState(null)
 
   const handleYeniSatir = async () => {
     await ekle.mutateAsync({ nokta_durum: 'Yeni', kaynak: 'manuel' })
     setYeniSatir(false)
+  }
+
+  // Excel şablonunu Kurum Şablon adımına kopyala
+  const handleSablonKopyala = async () => {
+    setExcelYukleniyor(true)
+    try {
+      const res = await api.post(`/hak-edis-metraj/${projeId}/sablon-kopyala`)
+      const data = res.data || res
+      setExcelDosyaId(data.dosya_id)
+      qc.invalidateQueries({ queryKey: ['adim-dosyalar'] })
+      qc.invalidateQueries({ queryKey: ['proje-dxf-listesi'] })
+      alert(data.yeni ? 'Hakkediş şablonu kopyalandı.' : 'Şablon zaten mevcut.')
+    } catch (err) { alert('Şablon kopyalama hatası: ' + (err.message || '')) }
+    finally { setExcelYukleniyor(false) }
+  }
+
+  // Metraj verisini Excel'e aktar
+  const handleExcelAktar = async () => {
+    setExcelYukleniyor(true)
+    try {
+      // Önce şablon yoksa kopyala
+      const sRes = await api.post(`/hak-edis-metraj/${projeId}/sablon-kopyala`)
+      const sData = sRes.data || sRes
+      setExcelDosyaId(sData.dosya_id)
+      // Sonra metrajı yaz
+      const aRes = await api.post(`/hak-edis-metraj/${projeId}/excel-aktar`)
+      const aData = aRes.data || aRes
+      qc.invalidateQueries({ queryKey: ['adim-dosyalar'] })
+      alert(`${aData.aktarilan_satir} satır Excel'e aktarıldı.`)
+    } catch (err) { alert('Excel aktarım hatası: ' + (err.message || '')) }
+    finally { setExcelYukleniyor(false) }
   }
 
   const handleGuncelle = (id, alan, deger) => {
@@ -80,12 +116,40 @@ export default function ProjeHakEdis({ projeId }) {
           <h3 className="text-lg font-semibold">Sebeke Metraji</h3>
           <p className="text-sm text-muted-foreground">Hak edis icin direk-direk aciklik verileri</p>
         </div>
-        <button
-          onClick={handleYeniSatir}
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" /> Satir Ekle
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Excel Şablon Kopyala */}
+          <button
+            onClick={handleSablonKopyala}
+            disabled={excelYukleniyor}
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+          >
+            {excelYukleniyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+            Sablon Kopyala
+          </button>
+          {/* Metraj → Excel Aktar */}
+          <button
+            onClick={handleExcelAktar}
+            disabled={excelYukleniyor || !satirlar?.length}
+            className="flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+          >
+            {excelYukleniyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Excel'e Aktar
+          </button>
+          {/* Excel İndir */}
+          {excelDosyaId && (
+            <a href={`/api/dosya/${excelDosyaId}/indir`} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-sm text-primary hover:bg-primary/5">
+              <ExternalLink className="h-4 w-4" /> Indir
+            </a>
+          )}
+          {/* Satır Ekle */}
+          <button
+            onClick={handleYeniSatir}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" /> Satir Ekle
+          </button>
+        </div>
       </div>
 
       {/* Ozet */}
