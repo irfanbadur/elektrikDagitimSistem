@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import useDropdownNav from '@/hooks/useDropdownNav'
 import { createPortal } from 'react-dom'
 import { PhotoProvider, PhotoView } from 'react-photo-view'
@@ -200,57 +200,67 @@ function _notCizgisiGuncelle(three, sprite) {
   line.computeLineDistances()
 }
 
-function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle, adimKodu }) {
+// ── Tür seçenekleri ──
+const TUR_SECENEKLERI = ['Agac', 'Beton', 'Galvaniz', 'Demir']
+
+function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle, adimKodu, tumDirekler }) {
   const direkKey = [direk.numara, direk.tip].filter(Boolean).join(' ') || direk.etiket || 'Direk'
   const mevcutNot = direkNotlari?.[direkKey]
   const malzemeler = mevcutNot?.malzemeler || []
 
-  // Düzenlenebilir direk bilgileri
+  // ── Yakın elemanları tespit et ──
+  const yakinElemanlar = useMemo(() => {
+    if (!tumDirekler?.length) return { armatur: false, koruma: false, isletme: false }
+    const result = { armatur: false, koruma: false, isletme: false }
+    for (const d of tumDirekler) {
+      if (d === direk) continue
+      const dx = (d.x || 0) - (direk.x || 0), dy = (d.y || 0) - (direk.y || 0)
+      const mesafe = Math.sqrt(dx * dx + dy * dy)
+      if (mesafe > 15) continue
+      if (d.sembol === 'C') result.armatur = true
+      if (d.sembol === '4') result.koruma = true
+      if (d.sembol === '5') result.isletme = true
+    }
+    return result
+  }, [direk, tumDirekler])
+
+  // ── Tip'ten Tür çıkar ve (P) kontrol ──
+  const rawTip = direk.tip || ''
+  const hasPotans = /\(P\)/i.test(rawTip)
+  const cleanTip = rawTip.replace(/^G-/i, '').replace(/\(P\)/gi, '').trim()
+
+  const turFromTip = () => {
+    if (/^G-/i.test(rawTip)) return 'Galvaniz'
+    if (direk.sembol === 'A') return 'Agac'
+    if (direk.sembol === '2') return 'Beton'
+    return ''
+  }
+
   const [direkNumara, setDirekNumara] = useState(direk.numara || '')
-  const [direkTip, setDirekTip] = useState(direk.tip || '')
-  const [direkTur, setDirekTur] = useState(direk.sembolAdi || '')
+  const [direkTip, setDirekTip] = useState(cleanTip)
+  const [direkTur, setDirekTur] = useState(turFromTip())
 
-  // Direk arama (katalogdan)
-  const [direkArama, setDirekArama] = useState('')
-  const [direkSonuclar, setDirekSonuclar] = useState([])
-  const [direkAraniyor, setDirekAraniyor] = useState(false)
-  const [direkSeciliIdx, setDirekSeciliIdx] = useState(-1)
-  const direkTimerRef = useRef(null)
+  // ── Otomatik malzemeler (DXF'ten tespit — sprite text'e EKLENMEYecek) ──
+  const [otomatikler] = useState(() => {
+    const oto = []
+    if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1, birim: 'Ad', otomatik: true })
+    if (yakinElemanlar.armatur) oto.push({ adi: 'ARMATUR LED KOR.SINIF 2 S15/XX/X', miktar: 1, birim: 'Ad', otomatik: true })
+    if (yakinElemanlar.koruma) {
+      oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', otomatik: true })
+      oto.push({ adi: '95 mm2 Galvanizli Celik Iletken ve gomulmesi', miktar: 5, birim: 'm', otomatik: true })
+    }
+    if (yakinElemanlar.isletme) {
+      oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', otomatik: true })
+      oto.push({ adi: '95 mm2 NAYY kablo ve gomulmesi', miktar: 30, birim: 'm', otomatik: true })
+    }
+    return oto
+  })
 
-  const direkAra = (text) => {
-    if (direkTimerRef.current) clearTimeout(direkTimerRef.current)
-    if (!text || text.length < 2) { setDirekSonuclar([]); return }
-    setDirekAraniyor(true)
-    direkTimerRef.current = setTimeout(async () => {
-      try {
-        const r = await api.get('/malzeme-katalog', { params: { arama: text } })
-        const sonuc = Array.isArray(r) ? r : (r?.data || [])
-        setDirekSonuclar(sonuc.slice(0, 15))
-      } catch { setDirekSonuclar([]) }
-      setDirekAraniyor(false)
-    }, 300)
-  }
-
-  useEffect(() => () => { if (direkTimerRef.current) clearTimeout(direkTimerRef.current) }, [])
-  useEffect(() => { setDirekSeciliIdx(-1) }, [direkSonuclar])
-
-  const handleDirekSec = (item) => {
-    handleMalzemeEkle(item)
-    setDirekArama('')
-    setDirekSonuclar([])
-  }
-
-  const handleDirekKeyDown = (e) => {
-    if (!direkSonuclar.length) return
-    if (e.key === 'ArrowDown') { e.preventDefault(); setDirekSeciliIdx(prev => Math.min(prev + 1, direkSonuclar.length - 1)) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setDirekSeciliIdx(prev => Math.max(prev - 1, 0)) }
-    else if (e.key === 'Enter' && direkSeciliIdx >= 0) { e.preventDefault(); handleDirekSec(direkSonuclar[direkSeciliIdx]) }
-    else if (e.key === 'Escape') { setDirekSonuclar([]); setDirekArama('') }
-  }
-
+  // ── Katalog arama (tek çubuk) ──
   const [arama, setArama] = useState('')
   const [sonuclar, setSonuclar] = useState([])
   const [araniyor, setAraniyor] = useState(false)
+  const [secIdx, setSecIdx] = useState(-1)
   const timer = useRef(null)
   const inputRef = useRef(null)
 
@@ -261,7 +271,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
     timer.current = setTimeout(async () => {
       try {
         const r = await api.get('/malzeme-katalog', { params: { arama: text } })
-        setSonuclar(Array.isArray(r) ? r : (r?.data || []))
+        setSonuclar((Array.isArray(r) ? r : (r?.data || [])).slice(0, 15))
       } catch { setSonuclar([]) }
       setAraniyor(false)
     }, 300)
@@ -269,210 +279,189 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
 
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 100) }, [])
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
+  useEffect(() => { setSecIdx(-1) }, [sonuclar])
 
-  // Malzeme listesini güncelle → anında DXF sprite'a yansır
   const guncelleNotlar = (yeniMalzemeler) => {
-    onMalzemeGuncelle?.({
-      key: direkKey,
-      x: mevcutNot?.x || direk.x,
-      y: mevcutNot?.y || direk.y,
-      yukseklik: direk.yukseklik || 2,
-      malzemeler: yeniMalzemeler,
-    })
+    onMalzemeGuncelle?.({ key: direkKey, x: mevcutNot?.x || direk.x, y: mevcutNot?.y || direk.y, yukseklik: direk.yukseklik || 2, malzemeler: yeniMalzemeler })
   }
 
   const handleMalzemeEkle = useCallback((item) => {
     if (!item) return
-    const yeni = { adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '', miktar: 1, malzeme_kodu: item.malzeme_kodu || '', birim: item.olcu || 'Ad' }
-    guncelleNotlar([...malzemeler, yeni])
+    guncelleNotlar([...malzemeler, { adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '', miktar: 1, malzeme_kodu: item.malzeme_kodu || '', birim: item.olcu || 'Ad' }])
   }, [malzemeler])
 
-  const gosterilen = sonuclar.slice(0, 10)
-  const { seciliIdx, setSeciliIdx, handleKeyDown } = useDropdownNav(gosterilen, handleMalzemeEkle, onKapat)
-  useEffect(() => { setSeciliIdx(-1) }, [sonuclar, setSeciliIdx])
-
-  const handleMiktarDegistir = (idx, miktar) => {
-    const yeni = malzemeler.map((m, i) => i === idx ? { ...m, miktar: Number(miktar) || 1 } : m)
-    guncelleNotlar(yeni)
+  const handleSec = (item) => { handleMalzemeEkle(item); setArama(''); setSonuclar([]) }
+  const handleKeyDown = (e) => {
+    if (!sonuclar.length) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setSecIdx(p => Math.min(p + 1, sonuclar.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setSecIdx(p => Math.max(p - 1, 0)) }
+    else if (e.key === 'Enter' && secIdx >= 0) { e.preventDefault(); handleSec(sonuclar[secIdx]) }
+    else if (e.key === 'Escape') { setSonuclar([]); setArama('') }
   }
 
-  const handleSil = (idx) => {
-    const yeni = malzemeler.filter((_, i) => i !== idx)
-    guncelleNotlar(yeni)
-  }
+  const handleMiktarDegistir = (idx, miktar) => guncelleNotlar(malzemeler.map((m, i) => i === idx ? { ...m, miktar: Number(miktar) || 1 } : m))
+  const handleSil = (idx) => guncelleNotlar(malzemeler.filter((_, i) => i !== idx))
+
+  // İletken
+  const [iletkenListesi, setIletkenListesi] = useState([])
+  const [iletkenArama, setIletkenArama] = useState('')
+  const handleIletkenEkle = (t) => { if (t.trim()) { setIletkenListesi(p => [...p, { adi: t.trim(), mesafe: 0 }]); setIletkenArama('') } }
+
+  // Keşife / Metraj'a aktar
+  const tumMalzemeler = [...otomatikler, ...malzemeler]
 
   const handleKesifEkle = async () => {
-    if (!malzemeler.length) return
+    if (!tumMalzemeler.length) return
     try {
       await api.post(`/proje-kesif/${projeId}/toplu`, {
-        kalemler: malzemeler.map(k => ({
-          malzeme_kodu: k.malzeme_kodu || null,
-          malzeme_adi: k.adi,
-          birim: k.birim || 'Ad',
-          miktar: k.miktar || 1,
-          birim_fiyat: 0,
-          notlar: '',
-          okunan_deger: [direk.numara, direk.tip || direk.etiket, direk.sembolAdi].filter(Boolean).join(' — '),
-        }))
+        kalemler: tumMalzemeler.map(k => ({ malzeme_kodu: k.malzeme_kodu || null, malzeme_adi: k.adi, birim: k.birim || 'Ad', miktar: k.miktar || 1, birim_fiyat: 0, notlar: '', okunan_deger: [direkNumara, direkTip, direkTur].filter(Boolean).join(' — ') }))
       })
     } catch (err) { alert(err.message) }
   }
 
-  // İletken listesi (manuel girişli)
-  const [iletkenListesi, setIletkenListesi] = useState([])
-  const [iletkenArama, setIletkenArama] = useState('')
-
-  const handleIletkenEkle = (text) => {
-    if (!text.trim()) return
-    setIletkenListesi(prev => [...prev, { adi: text.trim(), mesafe: 0 }])
-    setIletkenArama('')
-  }
-
-  const handleIletkenMesafe = (idx, mesafe) => {
-    setIletkenListesi(prev => prev.map((il, i) => i === idx ? { ...il, mesafe: Number(mesafe) || 0 } : il))
-  }
-
-  const handleIletkenSil = (idx) => {
-    setIletkenListesi(prev => prev.filter((_, i) => i !== idx))
-  }
-
-  // Metraj'a aktar — direk + malzeme + iletken birlikte
   const handleMetrajAktar = async () => {
     try {
       const komsu = direk.komsular?.[0]
       await api.post(`/hak-edis-metraj/${projeId}`, {
-        nokta1: direkNumara || direk.etiket || '',
-        nokta2: komsu?.numara || '',
-        nokta_durum: 'Yeni',
-        direk_tur: direkTur || '',
-        direk_tip: direkTip || '',
+        nokta1: direkNumara || direk.etiket || '', nokta2: komsu?.numara || '', nokta_durum: 'Yeni',
+        direk_tur: direkTur || '', direk_tip: direkTip ? (direkTur === 'Galvaniz' ? 'G-' : '') + direkTip + (hasPotans ? '(P)' : '') : '',
         ara_mesafe: komsu?.mesafe || 0,
-        ag_iletken: iletkenListesi.filter(il => /AG|ROSE|PANSY|ASTER/i.test(il.adi)).map(il => il.adi).join(', ') || null,
+        ag_iletken: iletkenListesi.filter(il => /AG|ROSE|PANSY|ASTER|AER/i.test(il.adi)).map(il => il.adi).join(', ') || null,
         og_iletken: iletkenListesi.filter(il => /OG|SWALLOW|RAVEN|PIGEON|HAWK/i.test(il.adi)).map(il => il.adi).join(', ') || null,
-        kaynak: 'kroki',
-        kaynak_direk_x: direk.x,
-        kaynak_direk_y: direk.y,
-        notlar: [
-          ...malzemeler.map(m => `${m.miktar}x ${m.adi}`),
-          ...iletkenListesi.map(il => `İletken: ${il.adi}${il.mesafe ? ' (' + il.mesafe + 'm)' : ''}`),
-        ].join('\n'),
+        kaynak: 'kroki', kaynak_direk_x: direk.x, kaynak_direk_y: direk.y,
+        notlar: [...tumMalzemeler.map(m => `${m.miktar}x ${m.adi}`), ...iletkenListesi.map(il => `Iletken: ${il.adi}${il.mesafe ? ' (' + il.mesafe + 'm)' : ''}`)].join('\n'),
       })
-      alert('Metraj satırı eklendi: ' + (direk.numara || direk.etiket))
+      alert('Metraj eklendi: ' + (direkNumara || direk.etiket))
     } catch (err) { alert('Hata: ' + err.message) }
   }
 
   return (
-    <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 520, maxHeight: 520, overflow: 'auto' }}
+    <div className="absolute z-50 rounded-lg border border-border bg-white shadow-xl" style={{ top: 8, right: 8, width: 560, maxHeight: 560, overflow: 'auto' }}
       onMouseDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
-      {/* Başlık — Direk bilgileri + katalog arama */}
+
+      {/* ── Başlık: No + Tür (select) + Tip (input) ── */}
       <div className="border-b border-border px-3 py-2 bg-muted/30">
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase">Direk</span>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
             <input value={direkNumara} onChange={e => setDirekNumara(e.target.value)} placeholder="No"
-              className="w-14 rounded border border-input bg-white px-1.5 py-0.5 text-xs font-bold text-primary focus:border-primary focus:outline-none" />
-            <input value={direkTur} onChange={e => setDirekTur(e.target.value)} placeholder="Tur"
-              className="w-20 rounded border border-input bg-white px-1.5 py-0.5 text-xs focus:border-primary focus:outline-none" />
-            <input value={direkTip} onChange={e => setDirekTip(e.target.value)} placeholder="Tip (G-10I)"
-              className="w-24 rounded border border-input bg-white px-1.5 py-0.5 text-xs text-emerald-600 font-medium focus:border-primary focus:outline-none" />
-            {direk.komsular?.length > 0 && (
-              <span className="text-[10px] text-muted-foreground">→ {direk.komsular[0].numara} ({direk.komsular[0].mesafe}m)</span>
-            )}
+              className="w-14 rounded border border-input bg-white px-1.5 py-1 text-xs font-bold text-primary focus:border-primary focus:outline-none" />
+            <select value={direkTur} onChange={e => setDirekTur(e.target.value)}
+              className="rounded border border-input bg-white px-1.5 py-1 text-xs focus:border-primary focus:outline-none">
+              <option value="">Tur sec...</option>
+              {TUR_SECENEKLERI.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <input value={direkTip} onChange={e => setDirekTip(e.target.value)} placeholder="Tip (10I, 12I, K1...)"
+              className="flex-1 min-w-0 rounded border border-input bg-white px-1.5 py-1 text-xs text-emerald-600 font-medium focus:border-primary focus:outline-none" />
+            {hasPotans && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">P</span>}
+            {direk.komsular?.length > 0 && <span className="text-[10px] text-muted-foreground shrink-0">→{direk.komsular[0].numara} ({direk.komsular[0].mesafe}m)</span>}
           </div>
-          <button onClick={onKapat} className="rounded p-0.5 hover:bg-muted"><X className="h-3.5 w-3.5" /></button>
+          <button onClick={onKapat} className="rounded p-1 hover:bg-muted ml-1"><X className="h-3.5 w-3.5" /></button>
         </div>
-        {/* Direk katalog arama */}
+
+        {/* Otomatik tespit bilgileri */}
+        {(hasPotans || yakinElemanlar.armatur || yakinElemanlar.koruma || yakinElemanlar.isletme) && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {hasPotans && <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] text-amber-700">Potans</span>}
+            {yakinElemanlar.armatur && <span className="rounded bg-purple-50 border border-purple-200 px-1.5 py-0.5 text-[9px] text-purple-700">Armatur</span>}
+            {yakinElemanlar.koruma && <span className="rounded bg-orange-50 border border-orange-200 px-1.5 py-0.5 text-[9px] text-orange-700">Koruma Toprak.</span>}
+            {yakinElemanlar.isletme && <span className="rounded bg-cyan-50 border border-cyan-200 px-1.5 py-0.5 text-[9px] text-cyan-700">Isletme Toprak.</span>}
+          </div>
+        )}
+
+        {/* Katalog arama çubuğu */}
         <div className="relative">
-          <input value={direkArama} onChange={e => { setDirekArama(e.target.value); direkAra(e.target.value) }}
-            onKeyDown={handleDirekKeyDown}
-            placeholder="Direk malzemesi ara (katalog)..."
+          <input ref={inputRef} value={arama} onChange={e => { setArama(e.target.value); ara(e.target.value) }}
+            onKeyDown={handleKeyDown}
+            placeholder="Malzeme ara (katalog)..."
             className="w-full rounded border border-input bg-white px-2 py-1.5 text-xs focus:border-primary focus:outline-none" />
-          {(direkAraniyor || direkSonuclar.length > 0) && (
-            <div className="absolute left-0 top-full z-50 mt-1 w-full max-h-36 overflow-y-auto rounded-lg border border-border bg-white shadow-xl">
-              {direkAraniyor ? (
-                <div className="px-3 py-2 text-[10px] text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...</div>
-              ) : direkSonuclar.map((item, i) => (
-                <button key={item.id} onClick={() => handleDirekSec(item)}
-                  className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-[10px] border-b border-border/30", i === direkSeciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
-                  <span className="font-mono text-blue-600 w-20 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
-                  <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
-                  <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
-                </button>
-              ))}
+          {(araniyor || sonuclar.length > 0) && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-lg border border-border bg-white shadow-xl">
+              {araniyor ? <div className="px-3 py-2 text-[10px] text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...</div> : (
+                sonuclar.map((item, i) => (
+                  <button key={item.id} onClick={() => handleSec(item)}
+                    className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-[10px] border-b border-border/30', i === secIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
+                    <span className="font-mono text-blue-600 w-20 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
+                    <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
+                    <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
+                  </button>
+                ))
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* İki sütunlu içerik */}
-      <div className="flex divide-x divide-border" style={{ minHeight: 200 }}>
-        {/* SOL — Direk Malzemeleri */}
+      {/* ── İki sütun: Malzemeler + İletken ── */}
+      <div className="flex divide-x divide-border" style={{ minHeight: 180 }}>
+        {/* SOL — Malzeme listesi */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="px-2 py-1.5 border-b border-border bg-red-50/50">
-            <span className="text-[10px] font-bold text-red-700 uppercase">Direk Malzemeleri ({malzemeler.length})</span>
+          <div className="px-2 py-1 border-b border-border bg-red-50/50">
+            <span className="text-[10px] font-bold text-red-700 uppercase">Malzemeler ({tumMalzemeler.length})</span>
           </div>
-          {/* Malzeme listesi — arama üst çubuktan yapılır */}
           <div className="flex-1 p-1.5 overflow-y-auto">
-            {malzemeler.length === 0 ? (
+            {/* Otomatik eklenenler */}
+            {otomatikler.map((m, i) => (
+              <div key={'oto-' + i} className="flex items-center gap-1 py-0.5 border-b border-border/20 bg-amber-50/50">
+                <span className="text-[9px] text-amber-500 shrink-0">OTO</span>
+                <span className="flex-1 text-[10px] truncate" title={m.adi}>{m.adi}</span>
+                <span className="text-[10px] font-medium w-6 text-right">{m.miktar}</span>
+                <span className="text-[9px] text-muted-foreground w-5">{m.birim}</span>
+              </div>
+            ))}
+            {/* Manuel eklenenler */}
+            {malzemeler.length === 0 && otomatikler.length === 0 && (
               <p className="text-[10px] text-muted-foreground/60 py-4 text-center">Malzeme arayip ekleyin</p>
-            ) : (
-              malzemeler.map((m, i) => (
-                <div key={i} className="flex items-center gap-1 py-0.5 border-b border-border/20">
-                  <span className="flex-1 text-[10px] truncate" title={m.adi}>{m.adi}</span>
-                  <input type="number" value={m.miktar} onChange={e => handleMiktarDegistir(i, e.target.value)} min="1"
-                    className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
-                  <span className="text-[9px] text-muted-foreground w-4">{m.birim || 'Ad'}</span>
-                  <button onClick={() => handleSil(i)} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-2.5 w-2.5" /></button>
-                </div>
-              ))
             )}
+            {malzemeler.map((m, i) => (
+              <div key={i} className="flex items-center gap-1 py-0.5 border-b border-border/20">
+                <span className="flex-1 text-[10px] truncate" title={m.adi}>{m.adi}</span>
+                <input type="number" value={m.miktar} onChange={e => handleMiktarDegistir(i, e.target.value)} min="1"
+                  className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
+                <span className="text-[9px] text-muted-foreground w-5">{m.birim || 'Ad'}</span>
+                <button onClick={() => handleSil(i)} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-2.5 w-2.5" /></button>
+              </div>
+            ))}
           </div>
         </div>
 
         {/* SAĞ — İletken */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="px-2 py-1.5 border-b border-border bg-blue-50/50">
-            <span className="text-[10px] font-bold text-blue-700 uppercase">Iletken</span>
+          <div className="px-2 py-1 border-b border-border bg-blue-50/50">
+            <span className="text-[10px] font-bold text-blue-700 uppercase">Iletken ({iletkenListesi.length})</span>
           </div>
-          {/* İletken arama/ekleme */}
           <div className="p-1.5 border-b border-border">
             <div className="flex gap-1">
               <input value={iletkenArama} onChange={e => setIletkenArama(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { handleIletkenEkle(iletkenArama); } }}
+                onKeyDown={e => { if (e.key === 'Enter') handleIletkenEkle(iletkenArama) }}
                 placeholder="Iletken tipi gir..."
                 className="flex-1 rounded border border-input bg-background px-2 py-1 text-[11px] focus:border-blue-400 focus:outline-none" />
               <button onClick={() => handleIletkenEkle(iletkenArama)} className="rounded bg-blue-500 px-2 text-white text-[10px] hover:bg-blue-600">+</button>
             </div>
           </div>
-          {/* İletken listesi */}
           <div className="flex-1 p-1.5 overflow-y-auto">
             {iletkenListesi.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground/60 py-4 text-center">
-                {direk.iletkenler?.length ? 'DXF\'ten tespit edilemedi' : 'Iletken tipi girin'}
-              </p>
-            ) : (
-              iletkenListesi.map((il, i) => (
-                <div key={i} className="flex items-center gap-1 py-0.5 border-b border-border/20">
-                  <span className="flex-1 text-[10px] truncate font-medium text-blue-700" title={il.adi}>{il.adi}</span>
-                  <input type="number" value={il.mesafe} onChange={e => handleIletkenMesafe(i, e.target.value)} placeholder="m"
-                    className="w-12 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
-                  <span className="text-[9px] text-muted-foreground">m</span>
-                  <button onClick={() => handleIletkenSil(i)} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-2.5 w-2.5" /></button>
-                </div>
-              ))
-            )}
+              <p className="text-[10px] text-muted-foreground/60 py-4 text-center">Iletken tipi girin</p>
+            ) : iletkenListesi.map((il, i) => (
+              <div key={i} className="flex items-center gap-1 py-0.5 border-b border-border/20">
+                <span className="flex-1 text-[10px] truncate font-medium text-blue-700">{il.adi}</span>
+                <input type="number" value={il.mesafe} onChange={e => setIletkenListesi(p => p.map((x, j) => j === i ? { ...x, mesafe: Number(e.target.value) || 0 } : x))} placeholder="m"
+                  className="w-12 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
+                <span className="text-[9px] text-muted-foreground">m</span>
+                <button onClick={() => setIletkenListesi(p => p.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-2.5 w-2.5" /></button>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
       {/* Alt butonlar */}
       <div className="border-t border-border p-2 flex gap-2">
-        <button onClick={handleKesifEkle} disabled={!malzemeler.length}
+        <button onClick={handleKesifEkle} disabled={!tumMalzemeler.length}
           className="flex-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40">
-          Kesife Ekle ({malzemeler.length})
+          Kesife Ekle ({tumMalzemeler.length})
         </button>
         {adimKodu === 'hak_edis_krokisi' && (
-          <button onClick={handleMetrajAktar} disabled={!malzemeler.length && !iletkenListesi.length}
+          <button onClick={handleMetrajAktar} disabled={!tumMalzemeler.length && !iletkenListesi.length}
             className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40">
             Metraj'a Aktar
           </button>
@@ -1914,6 +1903,7 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
                 direk={seciliDirek}
                 projeId={projeId}
                 adimKodu={seciliDosya.adimKodu}
+                tumDirekler={direklerRef.current || []}
                 onKapat={() => setSeciliDirek(null)}
                 direkNotlari={direkNotlari}
                 onMalzemeGuncelle={(not) => setDirekNotlari(prev => ({
