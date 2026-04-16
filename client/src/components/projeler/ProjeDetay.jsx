@@ -301,13 +301,13 @@ export default function ProjeDetay() {
 
       {/* Responsive: genis ekranda yan yana, dar ekranda alt alta */}
       <div className="flex flex-col xl:flex-row xl:gap-4 xl:items-start">
-        {/* DXF Viewer — genis ekranda olabildigince buyuk */}
-        <div className="xl:flex-1 xl:min-w-0">
+        {/* DXF Viewer — genis ekranda %50 */}
+        <div className="xl:w-1/2 xl:min-w-0">
           <ProjeDonguBar projeId={id} />
         </div>
 
-        {/* Sekmeler + Icerik — genis ekranda sabit genislik sidebar */}
-        <div className="xl:w-[420px] xl:flex-shrink-0 xl:max-h-[calc(100vh-120px)] xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card">
+        {/* Sekmeler + Icerik — genis ekranda %50 */}
+        <div className="xl:w-1/2 xl:min-w-0 xl:max-h-[calc(100vh-120px)] xl:overflow-y-auto xl:rounded-lg xl:border xl:border-border xl:bg-card">
           {/* Tabs */}
           <div className="border-b border-border overflow-x-auto xl:sticky xl:top-0 xl:z-10 xl:bg-card">
             <div className="flex gap-1 min-w-max xl:flex-wrap xl:min-w-0 xl:gap-0">
