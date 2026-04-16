@@ -214,6 +214,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   const [direkArama, setDirekArama] = useState('')
   const [direkSonuclar, setDirekSonuclar] = useState([])
   const [direkAraniyor, setDirekAraniyor] = useState(false)
+  const [direkSeciliIdx, setDirekSeciliIdx] = useState(-1)
   const direkTimerRef = useRef(null)
 
   const direkAra = (text) => {
@@ -231,6 +232,21 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   }
 
   useEffect(() => () => { if (direkTimerRef.current) clearTimeout(direkTimerRef.current) }, [])
+  useEffect(() => { setDirekSeciliIdx(-1) }, [direkSonuclar])
+
+  const handleDirekSec = (item) => {
+    handleMalzemeEkle(item)
+    setDirekArama('')
+    setDirekSonuclar([])
+  }
+
+  const handleDirekKeyDown = (e) => {
+    if (!direkSonuclar.length) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setDirekSeciliIdx(prev => Math.min(prev + 1, direkSonuclar.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setDirekSeciliIdx(prev => Math.max(prev - 1, 0)) }
+    else if (e.key === 'Enter' && direkSeciliIdx >= 0) { e.preventDefault(); handleDirekSec(direkSonuclar[direkSeciliIdx]) }
+    else if (e.key === 'Escape') { setDirekSonuclar([]); setDirekArama('') }
+  }
 
   const [arama, setArama] = useState('')
   const [sonuclar, setSonuclar] = useState([])
@@ -368,6 +384,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
         {/* Direk katalog arama */}
         <div className="relative">
           <input value={direkArama} onChange={e => { setDirekArama(e.target.value); direkAra(e.target.value) }}
+            onKeyDown={handleDirekKeyDown}
             placeholder="Direk malzemesi ara (katalog)..."
             className="w-full rounded border border-input bg-white px-2 py-1.5 text-xs focus:border-primary focus:outline-none" />
           {(direkAraniyor || direkSonuclar.length > 0) && (
@@ -375,12 +392,8 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
               {direkAraniyor ? (
                 <div className="px-3 py-2 text-[10px] text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...</div>
               ) : direkSonuclar.map((item, i) => (
-                <button key={item.id} onClick={() => {
-                  handleMalzemeEkle(item)
-                  setDirekArama('')
-                  setDirekSonuclar([])
-                }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[10px] border-b border-border/30 hover:bg-primary/5">
+                <button key={item.id} onClick={() => handleDirekSec(item)}
+                  className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-[10px] border-b border-border/30", i === direkSeciliIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
                   <span className="font-mono text-blue-600 w-20 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
                   <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
                   <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
