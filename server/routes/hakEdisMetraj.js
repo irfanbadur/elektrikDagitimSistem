@@ -7,7 +7,8 @@ router.get('/:projeId', (req, res) => {
   try {
     const db = getDb();
     const satirlar = db.prepare(
-      'SELECT * FROM hak_edis_metraj WHERE proje_id = ? ORDER BY sira, id'
+      `SELECT * FROM hak_edis_metraj WHERE proje_id = ?
+       ORDER BY SUBSTR(nokta1, 1, 1), CAST(SUBSTR(nokta1, 2) AS INTEGER), id`
     ).all(parseInt(req.params.projeId));
     basarili(res, satirlar);
   } catch (err) { hata(res, err.message, 500); }
