@@ -412,8 +412,12 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
       // Hak Ediş sekmesini yenile ve geçiş yap
       metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj', projeId] })
       metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj-ozet', projeId] })
-      // DXF dosyasına da kaydet (text entity olarak)
-      onDxfKaydet?.()
+      // DXF dosyasına da kaydet — güncel birleşik notları geç
+      const guncelNotlar = { ...direkNotlari, [direkKey]: {
+        x: mevcutNot?.x || direk.x, y: mevcutNot?.y || direk.y,
+        yukseklik: 3.5, katman: 'metraj', malzemeler: birlesik,
+      }}
+      onDxfKaydet?.(guncelNotlar)
       onSekmeGit?.('hak_edis')
     } catch (err) { alert('Hata: ' + err.message) }
   }
@@ -2047,11 +2051,12 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit })
                 adimKodu={seciliDosya.adimKodu}
                 tumDirekler={direkListesi}
                 onSekmeGit={onSekmeGit}
-                onDxfKaydet={async () => {
+                onDxfKaydet={async (guncelNotlar) => {
                   // Tüm direkNotlari'nı DXF'e TEXT entity olarak kaydet
-                  if (!seciliDosya?.id || !Object.keys(direkNotlari).length) return
+                  const notlarObj = guncelNotlar || direkNotlari
+                  if (!seciliDosya?.id || !Object.keys(notlarObj).length) return
                   try {
-                    const notlar = Object.entries(direkNotlari).map(([, not]) => ({
+                    const notlar = Object.entries(notlarObj).map(([, not]) => ({
                       x: not.x, y: not.y, yukseklik: not.yukseklik || 3.5,
                       satirlar: (not.malzemeler || []).map(m => `${m.miktar}x ${m.adi}`),
                     }))
