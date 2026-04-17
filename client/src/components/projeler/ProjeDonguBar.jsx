@@ -459,6 +459,27 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
           <div className="px-2 py-1 border-b border-border bg-red-50/50">
             <span className="text-[10px] font-bold text-red-700 uppercase">Malzemeler ({tumMalzemeler.length})</span>
           </div>
+          {/* Malzeme arama çubuğu */}
+          <div className="p-1.5 border-b border-border relative">
+            <input ref={inputRef} value={arama} onChange={e => { setArama(e.target.value); ara(e.target.value) }}
+              onKeyDown={handleKeyDown}
+              placeholder="Malzeme ara..."
+              className="w-full rounded border border-input bg-background px-2 py-1 text-[11px] focus:border-primary focus:outline-none" />
+            {(araniyor || sonuclar.length > 0) && (
+              <div className="absolute left-1.5 right-1.5 top-full z-50 mt-0.5 max-h-36 overflow-y-auto rounded-lg border border-border bg-white shadow-xl">
+                {araniyor ? <div className="px-3 py-2 text-[10px] text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...</div> : (
+                  sonuclar.map((item, i) => (
+                    <button key={item.id} onClick={() => handleSec(item)}
+                      className={cn('flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] border-b border-border/30', i === secIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
+                      <span className="font-mono text-blue-600 w-16 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
+                      <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
+                      <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex-1 p-1.5 overflow-y-auto">
             {/* Otomatik eklenenler */}
             {otomatikler.map((m, i) => (
