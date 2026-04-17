@@ -370,17 +370,23 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
     try {
       const komsu = direk.komsular?.[0]
       // Sprite text satırları (sadece spriteText: true olanlar)
-      const spriteSatirlari = [...otomatikler, ...malzemeler].filter(m => m.spriteText).map(m => `${m.miktar}x ${m.adi}`)
-      // Sprite text'i metraj katmanında göster → guncelleNotlar ile DXF'e ekle
-      const spriteMetraj = spriteSatirlari.length ? spriteSatirlari : undefined
-      if (spriteMetraj) {
+      const yeniSpriteMalz = [...otomatikler, ...malzemeler].filter(m => m.spriteText).map(m => ({ adi: m.adi, miktar: m.miktar }))
+      // Mevcut sprite malzemeleriyle birleştir (aynı isimli olanları güncelle, yenileri ekle)
+      const mevcutMalz = mevcutNot?.malzemeler || []
+      const birlesik = [...mevcutMalz]
+      for (const ym of yeniSpriteMalz) {
+        const idx = birlesik.findIndex(m => m.adi === ym.adi)
+        if (idx >= 0) birlesik[idx] = { ...birlesik[idx], miktar: ym.miktar }
+        else birlesik.push(ym)
+      }
+      if (birlesik.length) {
         onMalzemeGuncelle?.({
           key: direkKey,
           x: mevcutNot?.x || direk.x,
           y: mevcutNot?.y || direk.y,
           yukseklik: 3.5,
           katman: 'metraj',
-          malzemeler: [...otomatikler, ...malzemeler].filter(m => m.spriteText).map(m => ({ adi: m.adi, miktar: m.miktar })),
+          malzemeler: birlesik,
         })
       }
       // Sprite verisi — konum + yükseklik + punto + renk + satırlar + katman
@@ -391,7 +397,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
         punto: 3.5,
         renk: '#4ade80',
         katman: 'metraj',
-        satirlar: spriteSatirlari,
+        satirlar: birlesik.map(m => `${m.miktar}x ${m.adi}`),
       }
       await api.post(`/hak-edis-metraj/${projeId}`, {
         nokta1: direkNumara || direk.etiket || '', nokta2: komsu?.numara || '', nokta_durum: 'Yeni',
