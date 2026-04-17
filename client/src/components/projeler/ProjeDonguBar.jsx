@@ -286,7 +286,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   }
 
   // ── Otomatik malzemeler (DXF'ten tespit — sprite text'e EKLENMEYecek) ──
-  const [otomatikler] = useState(() => {
+  const [otomatikler, setOtomatikler] = useState(() => {
     const oto = []
     if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1, birim: 'Ad', otomatik: true })
     if (yakinElemanlar.armatur) oto.push({ adi: 'ARMATUR LED KOR.SINIF 2 S15/XX/X', miktar: 1, birim: 'Ad', otomatik: true })
@@ -465,8 +465,10 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
               <div key={'oto-' + i} className="flex items-center gap-1 py-0.5 border-b border-border/20 bg-amber-50/50">
                 <span className="text-[9px] text-amber-500 shrink-0">OTO</span>
                 <span className="flex-1 text-[10px] truncate" title={m.adi}>{m.adi}</span>
-                <span className="text-[10px] font-medium w-6 text-right">{m.miktar}</span>
+                <input type="number" value={m.miktar} onChange={e => setOtomatikler(p => p.map((x, j) => j === i ? { ...x, miktar: Number(e.target.value) || 1 } : x))} min="1"
+                  className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
                 <span className="text-[9px] text-muted-foreground w-5">{m.birim}</span>
+                <button onClick={() => setOtomatikler(p => p.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-2.5 w-2.5" /></button>
               </div>
             ))}
             {/* Manuel eklenenler */}
