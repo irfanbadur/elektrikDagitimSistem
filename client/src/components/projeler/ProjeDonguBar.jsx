@@ -262,16 +262,28 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   const [direkTip, setDirekTip] = useState(cleanTip)
   const [direkTur, setDirekTur] = useState(TIP_TUR_MAP[cleanTip] || turFromTip())
   const [tipOneriAcik, setTipOneriAcik] = useState(false)
+  const [tipSecIdx, setTipSecIdx] = useState(-1)
 
-  // Tip değiştiğinde Tür otomatik eşleştir + öneri listesi göster
   const handleTipDegistir = (val) => {
     setDirekTip(val)
-    // Eşleşen tür varsa otomatik set et
     const eslesen = TIP_TUR_MAP[val] || TIP_TUR_MAP[val.toUpperCase()]
     if (eslesen) setDirekTur(eslesen)
     setTipOneriAcik(val.length > 0)
+    setTipSecIdx(-1)
   }
   const tipOnerileri = direkTip ? BILINEN_TIPLER.filter(t => t.toLowerCase().includes(direkTip.toLowerCase())).slice(0, 8) : []
+
+  const handleTipKeyDown = (e) => {
+    if (!tipOnerileri.length || !tipOneriAcik) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setTipSecIdx(p => Math.min(p + 1, tipOnerileri.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setTipSecIdx(p => Math.max(p - 1, 0)) }
+    else if (e.key === 'Enter' && tipSecIdx >= 0) {
+      e.preventDefault()
+      const t = tipOnerileri[tipSecIdx]
+      setDirekTip(t); setDirekTur(TIP_TUR_MAP[t] || direkTur); setTipOneriAcik(false)
+    }
+    else if (e.key === 'Escape') setTipOneriAcik(false)
+  }
 
   // ── Otomatik malzemeler (DXF'ten tespit — sprite text'e EKLENMEYecek) ──
   const [otomatikler] = useState(() => {
@@ -381,13 +393,14 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
             <div className="relative flex-1 min-w-0">
               <input value={direkTip} onChange={e => handleTipDegistir(e.target.value)}
                 onFocus={() => setTipOneriAcik(true)} onBlur={() => setTimeout(() => setTipOneriAcik(false), 200)}
+                onKeyDown={handleTipKeyDown}
                 placeholder="Tip (10I, 12I, K1...)"
                 className="w-full rounded border border-input bg-white px-1.5 py-1 text-xs text-emerald-600 font-medium focus:border-primary focus:outline-none" />
               {tipOneriAcik && tipOnerileri.length > 0 && (
                 <div className="absolute left-0 top-full z-50 mt-1 w-48 max-h-32 overflow-y-auto rounded border border-border bg-white shadow-lg">
-                  {tipOnerileri.map(t => (
+                  {tipOnerileri.map((t, i) => (
                     <button key={t} onMouseDown={e => { e.preventDefault(); setDirekTip(t); setDirekTur(TIP_TUR_MAP[t] || direkTur); setTipOneriAcik(false) }}
-                      className="flex w-full items-center justify-between px-2 py-1 text-[10px] hover:bg-primary/5 border-b border-border/20">
+                      className={cn("flex w-full items-center justify-between px-2 py-1 text-[10px] border-b border-border/20", i === tipSecIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
                       <span className="font-medium text-emerald-600">{t}</span>
                       <span className="text-muted-foreground truncate ml-2">{TIP_TUR_MAP[t]}</span>
                     </button>
