@@ -1006,19 +1006,35 @@ router.post('/:id/dxf-sprite-kaydet', (req, res) => {
       return Buffer.from(out);
     };
 
-    const content = raw.toString('latin1');
-    const lines = content.split(/\r?\n/);
+    const lines = raw.toString('latin1').split(/\r?\n/);
 
-    // ENTITIES bölümünde ENDSEC'in byte pozisyonunu bul
-    // "0\nENDSEC" veya "0\r\nENDSEC" pattern'ını sondan ara
-    let inEntities = false;
-    let endsecBytePos = -1;
-    let byteOffset = 0;
-    for (let i = 0; i < lines.length - 1; i++) {
-      const lineLen = Buffer.byteLength(lines[i], 'latin1') + NL.length;
-      if (i % 2 === 0) { // code line
-        const code = lines[i].trim();
-        const val = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+    // Önce eski METRAJ_SPRITE TEXT entity'lerini kaldır
+    const cleanLines = [];
+    let skipEntity = false;
+    for (let i = 0; i < lines.length; i += 2) {
+      if (i + 1 >= lines.length) { cleanLines.push(lines[i]); break; }
+      const code = lines[i].trim(), val = lines[i + 1].trim();
+      if (code === '0') {
+        if (skipEntity) skipEntity = false; // önceki entity bitti
+        if (val === 'TEXT') {
+          // İleriye bak — METRAJ_SPRITE layer'ında mı?
+          for (let j = i + 2; j < Math.min(i + 40, lines.length - 1); j += 2) {
+            if (lines[j].trim() === '0') break;
+            if (lines[j].trim() === '8' && lines[j + 1]?.trim() === 'METRAJ_SPRITE') { skipEntity = true; break; }
+          }
+        }
+      }
+      if (!skipEntity) { cleanLines.push(lines[i], lines[i + 1]); }
+    }
+    const cleanContent = cleanLines.join(NL);
+
+    // Temizlenmiş dosyada ENDSEC byte pozisyonu bul
+    let inEntities = false, endsecBytePos = -1, byteOffset = 0;
+    const cLines = cleanContent.split(/\r?\n/);
+    for (let i = 0; i < cLines.length - 1; i++) {
+      const lineLen = Buffer.byteLength(cLines[i], 'latin1') + NL.length;
+      if (i % 2 === 0) {
+        const code = cLines[i].trim(), val = (i + 1 < cLines.length) ? cLines[i + 1].trim() : '';
         if (code === '2' && val === 'ENTITIES') inEntities = true;
         if (inEntities && code === '0' && val === 'ENDSEC') { endsecBytePos = byteOffset; break; }
       }
@@ -1027,21 +1043,21 @@ router.post('/:id/dxf-sprite-kaydet', (req, res) => {
     if (endsecBytePos < 0) return res.status(400).json({ success: false, error: 'DXF ENTITIES ENDSEC bulunamadı' });
 
     // Handle seed
+    // Temizlenmiş satırlardan handle seed ve owner handle al
     let handleSeed = 0x900;
-    for (let i = 0; i < lines.length - 1; i += 2) {
-      if (lines[i].trim() === '5' || lines[i].trim() === '$HANDSEED') {
-        const val = parseInt(lines[i + 1]?.trim(), 16);
+    for (let i = 0; i < cLines.length - 1; i += 2) {
+      if (cLines[i].trim() === '5' || cLines[i].trim() === '$HANDSEED') {
+        const val = parseInt(cLines[i + 1]?.trim(), 16);
         if (val > handleSeed) handleSeed = val;
       }
     }
     handleSeed += 10;
 
-    // Model Space owner handle
     let ownerHandle = '1B';
-    for (let i = 0; i < lines.length - 3; i += 2) {
-      if (lines[i].trim() === '2' && lines[i + 1]?.trim() === '*Model_Space') {
+    for (let i = 0; i < cLines.length - 3; i += 2) {
+      if (cLines[i].trim() === '2' && cLines[i + 1]?.trim() === '*Model_Space') {
         for (let j = i - 2; j >= Math.max(0, i - 10); j -= 2) {
-          if (lines[j].trim() === '5') { ownerHandle = lines[j + 1].trim(); break; }
+          if (cLines[j].trim() === '5') { ownerHandle = cLines[j + 1].trim(); break; }
         }
         break;
       }
@@ -1092,8 +1108,9 @@ router.post('/:id/dxf-sprite-kaydet', (req, res) => {
     const textBlokBuf = Buffer.concat(textBufParts);
 
     // Orijinal dosyayı byte pozisyonunda böl ve TEXT blok ekle
-    const beforeEndsec = raw.subarray(0, endsecBytePos);
-    const afterEndsec = raw.subarray(endsecBytePos);
+    const cleanBuf = Buffer.from(cleanContent, 'latin1');
+    const beforeEndsec = cleanBuf.subarray(0, endsecBytePos);
+    const afterEndsec = cleanBuf.subarray(endsecBytePos);
     const outBuf = Buffer.concat([beforeEndsec, textBlokBuf, afterEndsec]);
 
     // Orijinal dosyanın üzerine yaz

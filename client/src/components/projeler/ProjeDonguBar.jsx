@@ -412,12 +412,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
       // Hak Ediş sekmesini yenile ve geçiş yap
       metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj', projeId] })
       metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj-ozet', projeId] })
-      // DXF dosyasına da kaydet — güncel birleşik notları geç
-      const guncelNotlar = { ...direkNotlari, [direkKey]: {
-        x: mevcutNot?.x || direk.x, y: mevcutNot?.y || direk.y,
-        yukseklik: 3.5, katman: 'metraj', malzemeler: birlesik,
-      }}
-      onDxfKaydet?.(guncelNotlar)
+      // DXF'e yazma otomatik yapılmaz — "Metraj'a Kaydet" butonuyla ayrıca yapılır
       onSekmeGit?.('hak_edis')
     } catch (err) { alert('Hata: ' + err.message) }
   }
