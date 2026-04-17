@@ -619,7 +619,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
         return {
           x: sx,
           y: sy,
-          yukseklik: not.yukseklik || 2,
+          yukseklik: not.yukseklik || 3.5,
           satirlar: not.malzemeler.map(m => `${m.miktar}x ${m.adi}`),
         }
       })
@@ -628,8 +628,9 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
       // Yaşam döngüsü ve dosya listelerini yenile
       qc.invalidateQueries({ queryKey: ['faz-ilerleme'] })
       qc.invalidateQueries({ queryKey: ['adim-dosyalar'] })
-      onNotSil?.('__ALL__') // Tüm sprite'ları temizle
-      alert('Metraj.dxf Hakediş > Metraj adımına kaydedildi.')
+      // Keşif modunda sprite'ları temizle (DXF'e yazıldı), hak ediş krokisinde koru
+      if (!overlayUrl) onNotSil?.('__ALL__')
+      alert('Metraj.dxf kaydedildi.')
     } catch (err) { alert(err.message || 'Metraj kaydetme hatası') }
     finally { setKaydediliyor(false) }
   }
