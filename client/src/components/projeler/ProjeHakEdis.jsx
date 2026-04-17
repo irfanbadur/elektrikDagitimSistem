@@ -27,12 +27,73 @@ const TIP_TUR_MAP = {
 }
 const BILINEN_TIPLER = Object.keys(TIP_TUR_MAP)
 
+// ── Tek malzeme satırı: ad tıkla→arama, miktar düzenle, sil ──
+function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onMiktarDegistir, onSil }) {
+  const [duzenle, setDuzenle] = useState(false)
+  const [aramaVal, setAramaVal] = useState('')
+  const [sonuclar, setSonuclar] = useState([])
+  const [araniyor, setAraniyor] = useState(false)
+  const timerRef = useRef(null)
+
+  const araFunc = (text) => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (!text || text.length < 2) { setSonuclar([]); return }
+    setAraniyor(true)
+    timerRef.current = setTimeout(async () => {
+      try {
+        const r = await api.get('/malzeme-katalog', { params: { arama: text } })
+        setSonuclar((Array.isArray(r) ? r : (r?.data || [])).slice(0, 8))
+      } catch { setSonuclar([]) }
+      setAraniyor(false)
+    }, 300)
+  }
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
+
+  if (duzenle) {
+    return (
+      <div className="relative border-b border-border/10 py-0.5">
+        <div className="flex items-center gap-1">
+          <input value={aramaVal} onChange={e => { setAramaVal(e.target.value); araFunc(e.target.value) }}
+            onBlur={() => setTimeout(() => { setDuzenle(false); setSonuclar([]) }, 200)}
+            autoFocus placeholder="Malzeme ara..."
+            className="flex-1 rounded border border-primary bg-white px-1 py-0.5 text-[10px] focus:outline-none" />
+          <button onClick={() => { setDuzenle(false); setSonuclar([]) }} className="text-muted-foreground text-[10px] px-1">✕</button>
+        </div>
+        {(araniyor || sonuclar.length > 0) && (
+          <div className="absolute left-0 top-full z-50 mt-0.5 w-full max-h-32 overflow-y-auto rounded border border-border bg-white shadow-lg">
+            {araniyor ? <div className="px-2 py-1 text-[10px] text-muted-foreground">Araniyor...</div> : (
+              sonuclar.map(item => (
+                <button key={item.id} onMouseDown={e => { e.preventDefault(); onAdiDegistir(item.malzeme_cinsi || item.malzeme_tanimi_sap || ''); setDuzenle(false); setSonuclar([]) }}
+                  className="flex w-full items-center gap-1 px-2 py-1 text-[10px] text-left border-b border-border/20 hover:bg-primary/5">
+                  <span className="font-mono text-blue-600 w-14 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
+                  <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10">
+      <span className="flex-1 truncate cursor-pointer hover:text-primary hover:underline" title={`${malzeme.adi} — tıkla değiştir`}
+        onClick={() => { setDuzenle(true); setAramaVal(malzeme.adi) }}>{malzeme.adi}</span>
+      <input type="number" value={malzeme.miktar} min={1}
+        onChange={e => onMiktarDegistir(Number(e.target.value) || 1)}
+        className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
+      <button onClick={onSil} className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
+    </div>
+  )
+}
+
 // ── Otomatik malzeme kuralları ──
 function hesaplaOtoMalzemeler(tip, yakinlar) {
   const oto = []
   const hasPotans = /\(P\)/i.test(tip || '')
   if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1, birim: 'Ad' })
-  if (yakinlar?.armatur) oto.push({ adi: 'ARMATUR LED KOR.SINIF 2 S15/XX/X', miktar: 1, birim: 'Ad' })
+  if (yakinlar?.armatur) oto.push({ adi: 'ARM. LED KOR. SINIF 1 S15/8/1', miktar: 1, birim: 'Ad' })
   if (yakinlar?.koruma) {
     oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad' })
     oto.push({ adi: '95 mm2 Galvanizli Celik Iletken ve gomulmesi', miktar: 5, birim: 'm' })
@@ -214,14 +275,11 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
               <div className="text-[9px] font-bold text-red-600 uppercase mb-1">Malzemeler ({malzemeSatirlari.length})</div>
               {malzemeSatirlari.length === 0 ? <p className="text-[10px] text-muted-foreground/50 italic">Malzeme yok</p> : (
                 malzemeSatirlari.map((m, i) => (
-                  <div key={i} className="flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10">
-                    <span className="flex-1 truncate" title={m.adi}>{m.adi}</span>
-                    <input type="number" value={m.miktar} min={1}
-                      onChange={e => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, miktar: Number(e.target.value) || 1 }; notlariKaydet(yeni, iletkenSatirlari) }}
-                      className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
-                    <button onClick={() => notlariKaydet(malzemeSatirlari.filter((_, j) => j !== i), iletkenSatirlari)}
-                      className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
-                  </div>
+                  <MalzemeSatirDuzenle key={i} malzeme={m}
+                    onAdiDegistir={(yeniAdi) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, adi: yeniAdi }; notlariKaydet(yeni, iletkenSatirlari) }}
+                    onMiktarDegistir={(yeniMiktar) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, miktar: yeniMiktar }; notlariKaydet(yeni, iletkenSatirlari) }}
+                    onSil={() => notlariKaydet(malzemeSatirlari.filter((_, j) => j !== i), iletkenSatirlari)}
+                  />
                 ))
               )}
             </div>

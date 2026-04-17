@@ -293,7 +293,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   const [otomatikler, setOtomatikler] = useState(() => {
     const oto = []
     if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1, birim: 'Ad', otomatik: true, spriteText: false })
-    if (yakinElemanlar.armatur) oto.push({ adi: 'ARMATUR LED KOR.SINIF 2 S15/XX/X', miktar: 1, birim: 'Ad', otomatik: true, spriteText: false })
+    if (yakinElemanlar.armatur) oto.push({ adi: 'ARM. LED KOR. SINIF 1 S15/8/1', miktar: 1, birim: 'Ad', otomatik: true, spriteText: false })
     if (yakinElemanlar.koruma) {
       oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', otomatik: true, spriteText: false })
       oto.push({ adi: '95 mm2 Galvanizli Celik Iletken ve gomulmesi', miktar: 5, birim: 'm', otomatik: true, spriteText: false })
