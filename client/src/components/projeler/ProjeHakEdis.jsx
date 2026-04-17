@@ -65,6 +65,7 @@ export default function ProjeHakEdis({ projeId }) {
   const sil = useHakEdisMetrajSil(projeId)
   const qc = useQueryClient()
   const [yeniSatir, setYeniSatir] = useState(false)
+  const [seciliIdler, setSeciliIdler] = useState(new Set())
   const [excelYukleniyor, setExcelYukleniyor] = useState(false)
   const [excelDosyaId, setExcelDosyaId] = useState(null)
 
@@ -149,6 +150,15 @@ export default function ProjeHakEdis({ projeId }) {
           >
             <Plus className="h-4 w-4" /> Satir Ekle
           </button>
+          {seciliIdler.size > 0 && (
+            <button onClick={async () => {
+              if (!window.confirm(`${seciliIdler.size} satir silinecek. Emin misiniz?`)) return
+              for (const id of seciliIdler) { await sil.mutateAsync(id) }
+              setSeciliIdler(new Set())
+            }} className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100">
+              <Trash2 className="h-4 w-4" /> Secilenleri Sil ({seciliIdler.size})
+            </button>
+          )}
         </div>
       </div>
 
@@ -181,6 +191,12 @@ export default function ProjeHakEdis({ projeId }) {
             <thead>
               {/* Ust header — gruplar */}
               <tr className="border-b border-input bg-muted/70">
+                <th className="w-8 px-1" rowSpan={2}>
+                  <input type="checkbox"
+                    checked={satirlar?.length > 0 && seciliIdler.size === satirlar.length}
+                    onChange={e => setSeciliIdler(e.target.checked ? new Set(satirlar.map(s => s.id)) : new Set())}
+                    className="h-3.5 w-3.5 accent-primary cursor-pointer" />
+                </th>
                 <th colSpan={4} className="border-r border-input px-2 py-1.5 text-center text-[10px] font-bold text-muted-foreground uppercase">Giris</th>
                 <th colSpan={2} className="border-r border-input px-2 py-1.5 text-center text-[10px] font-bold text-muted-foreground uppercase">Direk</th>
                 <th colSpan={4} className="border-r border-input px-2 py-1.5 text-center text-[10px] font-bold text-muted-foreground uppercase">Iletken</th>
@@ -220,7 +236,12 @@ export default function ProjeHakEdis({ projeId }) {
                 </tr>
               ) : (
                 satirlar.map((s) => (
-                  <tr key={s.id} className="border-b border-input/50 hover:bg-muted/30 transition-colors">
+                  <tr key={s.id} className={cn("border-b border-input/50 hover:bg-muted/30 transition-colors", seciliIdler.has(s.id) && "bg-red-50/50")}>
+                    <td className="px-1 py-1.5 text-center">
+                      <input type="checkbox" checked={seciliIdler.has(s.id)}
+                        onChange={e => setSeciliIdler(prev => { const n = new Set(prev); e.target.checked ? n.add(s.id) : n.delete(s.id); return n })}
+                        className="h-3.5 w-3.5 accent-primary cursor-pointer" />
+                    </td>
                     <td className="px-2 py-1.5 text-muted-foreground tabular-nums">{s.sira}</td>
                     <td className="px-2 py-1.5">
                       <DuzenlenebilirHucre deger={s.nokta1} onKaydet={v => handleGuncelle(s.id, 'nokta1', v)} className="font-mono text-blue-600" />
