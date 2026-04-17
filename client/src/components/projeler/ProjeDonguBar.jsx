@@ -135,15 +135,15 @@ function PanZoomResim({ src, alt }) {
 // Direk malzeme popup — DXF'te direğe tıklanınca açılır
 // ─── Varsayılan katman tanımları ───────
 const VARSAYILAN_KATMANLAR = [
-  { id: 'demontaj', ad: 'Demontaj', renk: '#ff6b6b', punto: 2, gorunur: true },
-  { id: 'kesif',    ad: 'Keşif',    renk: '#00e5ff', punto: 2, gorunur: true },
-  { id: 'metraj',   ad: 'Metraj',   renk: '#4ade80', punto: 2, gorunur: true },
+  { id: 'demontaj', ad: 'Demontaj', renk: '#ff6b6b', punto: 3.5, gorunur: true },
+  { id: 'kesif',    ad: 'Keşif',    renk: '#00e5ff', punto: 3.5, gorunur: true },
+  { id: 'metraj',   ad: 'Metraj',   renk: '#4ade80', punto: 3.5, gorunur: true },
 ]
 
 // ─── DXF native text sprite oluşturma ───────
 function _notSpriteOlustur(three, baslik, malzemeler, direkX, direkY, origin, textYukseklik, renk) {
   const satirlar = malzemeler.map(m => `${m.miktar}x ${m.adi}`)
-  const textH = textYukseklik || 2
+  const textH = textYukseklik || 3.5
   const textColor = renk || '#00e5ff'
 
   const PX_PER_UNIT = 40
@@ -225,7 +225,7 @@ const TIP_TUR_MAP = {
 }
 const BILINEN_TIPLER = Object.keys(TIP_TUR_MAP)
 
-function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle, adimKodu, tumDirekler, onSekmeGit }) {
+function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle, adimKodu, tumDirekler, onSekmeGit, onDxfKaydet }) {
   const metrajQc = useQueryClient()
   const direkKey = [direk.numara, direk.tip].filter(Boolean).join(' ') || direk.etiket || 'Direk'
   const mevcutNot = direkNotlari?.[direkKey]
@@ -382,11 +382,13 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
           malzemeler: [...otomatikler, ...malzemeler].filter(m => m.spriteText).map(m => ({ adi: m.adi, miktar: m.miktar })),
         })
       }
-      // Sprite verisi — konum + yükseklik + satırlar + katman
+      // Sprite verisi — konum + yükseklik + punto + renk + satırlar + katman
       const spriteVeri = {
         x: mevcutNot?.x || direk.x,
         y: mevcutNot?.y || direk.y,
-        yukseklik: direk.yukseklik || 2,
+        yukseklik: 3.5,
+        punto: 3.5,
+        renk: '#4ade80',
         katman: 'metraj',
         satirlar: spriteSatirlari,
       }
@@ -403,6 +405,8 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
       // Hak Ediş sekmesini yenile ve geçiş yap
       metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj', projeId] })
       metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj-ozet', projeId] })
+      // DXF dosyasına da kaydet (text entity olarak)
+      onDxfKaydet?.()
       onSekmeGit?.('hak_edis')
     } catch (err) { alert('Hata: ' + err.message) }
   }
@@ -1869,8 +1873,11 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit })
           if (!sv.satirlar?.length) continue
           const key = s.nokta1 || `direk_${s.id}`
           notlar[key] = {
-            x: sv.x, y: sv.y, yukseklik: sv.yukseklik || 2,
+            x: sv.x, y: sv.y,
+            yukseklik: sv.yukseklik || sv.punto || 3.5,
             katman: sv.katman || 'metraj',
+            punto: sv.punto || 3.5,
+            renk: sv.renk || '#4ade80',
             malzemeler: sv.satirlar.map(satir => {
               const m = satir.match(/^(\d+)x\s*(.+)$/)
               return m ? { adi: m[2], miktar: Number(m[1]) } : { adi: satir, miktar: 1 }
@@ -2030,6 +2037,17 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit })
                 adimKodu={seciliDosya.adimKodu}
                 tumDirekler={direkListesi}
                 onSekmeGit={onSekmeGit}
+                onDxfKaydet={async () => {
+                  // Tüm direkNotlari'nı DXF'e TEXT entity olarak kaydet
+                  if (!seciliDosya?.id || !Object.keys(direkNotlari).length) return
+                  try {
+                    const notlar = Object.entries(direkNotlari).map(([, not]) => ({
+                      x: not.x, y: not.y, yukseklik: not.yukseklik || 3.5,
+                      satirlar: (not.malzemeler || []).map(m => `${m.miktar}x ${m.adi}`),
+                    }))
+                    await api.post(`/dosya/${seciliDosya.id}/dxf-metraj-kaydet`, { proje_id: projeId, notlar })
+                  } catch (err) { console.warn('DXF kaydetme hatasi:', err.message) }
+                }}
                 onKapat={() => setSeciliDirek(null)}
                 direkNotlari={direkNotlari}
                 onMalzemeGuncelle={(not) => setDirekNotlari(prev => ({
