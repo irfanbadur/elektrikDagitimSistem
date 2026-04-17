@@ -288,15 +288,15 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   // ── Otomatik malzemeler (DXF'ten tespit — sprite text'e EKLENMEYecek) ──
   const [otomatikler, setOtomatikler] = useState(() => {
     const oto = []
-    if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1, birim: 'Ad', otomatik: true })
-    if (yakinElemanlar.armatur) oto.push({ adi: 'ARMATUR LED KOR.SINIF 2 S15/XX/X', miktar: 1, birim: 'Ad', otomatik: true })
+    if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1, birim: 'Ad', otomatik: true, spriteText: false })
+    if (yakinElemanlar.armatur) oto.push({ adi: 'ARMATUR LED KOR.SINIF 2 S15/XX/X', miktar: 1, birim: 'Ad', otomatik: true, spriteText: false })
     if (yakinElemanlar.koruma) {
-      oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', otomatik: true })
-      oto.push({ adi: '95 mm2 Galvanizli Celik Iletken ve gomulmesi', miktar: 5, birim: 'm', otomatik: true })
+      oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', otomatik: true, spriteText: false })
+      oto.push({ adi: '95 mm2 Galvanizli Celik Iletken ve gomulmesi', miktar: 5, birim: 'm', otomatik: true, spriteText: false })
     }
     if (yakinElemanlar.isletme) {
-      oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', otomatik: true })
-      oto.push({ adi: '95 mm2 NAYY kablo ve gomulmesi', miktar: 30, birim: 'm', otomatik: true })
+      oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', otomatik: true, spriteText: false })
+      oto.push({ adi: '95 mm2 NAYY kablo ve gomulmesi', miktar: 30, birim: 'm', otomatik: true, spriteText: false })
     }
     return oto
   })
@@ -332,7 +332,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
 
   const handleMalzemeEkle = useCallback((item) => {
     if (!item) return
-    guncelleNotlar([...malzemeler, { adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '', miktar: 1, malzeme_kodu: item.malzeme_kodu || '', birim: item.olcu || 'Ad' }])
+    guncelleNotlar([...malzemeler, { adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '', miktar: 1, malzeme_kodu: item.malzeme_kodu || '', birim: item.olcu || 'Ad', spriteText: true }])
   }, [malzemeler])
 
   const handleSec = (item) => { handleMalzemeEkle(item); setArama(''); setSonuclar([]) }
@@ -468,6 +468,8 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
                 <input type="number" value={m.miktar} onChange={e => setOtomatikler(p => p.map((x, j) => j === i ? { ...x, miktar: Number(e.target.value) || 1 } : x))} min="1"
                   className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
                 <span className="text-[9px] text-muted-foreground w-5">{m.birim}</span>
+                <input type="checkbox" checked={!!m.spriteText} onChange={e => setOtomatikler(p => p.map((x, j) => j === i ? { ...x, spriteText: e.target.checked } : x))}
+                  title="Sprite text'e ekle" className="h-3 w-3 accent-primary cursor-pointer" />
                 <button onClick={() => setOtomatikler(p => p.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-2.5 w-2.5" /></button>
               </div>
             ))}
@@ -481,6 +483,8 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
                 <input type="number" value={m.miktar} onChange={e => handleMiktarDegistir(i, e.target.value)} min="1"
                   className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
                 <span className="text-[9px] text-muted-foreground w-5">{m.birim || 'Ad'}</span>
+                <input type="checkbox" checked={m.spriteText !== false} onChange={e => guncelleNotlar(malzemeler.map((x, j) => j === i ? { ...x, spriteText: e.target.checked } : x))}
+                  title="Sprite text'e ekle" className="h-3 w-3 accent-primary cursor-pointer" />
                 <button onClick={() => handleSil(i)} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-2.5 w-2.5" /></button>
               </div>
             ))}
