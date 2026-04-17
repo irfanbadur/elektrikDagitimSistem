@@ -225,7 +225,8 @@ const TIP_TUR_MAP = {
 }
 const BILINEN_TIPLER = Object.keys(TIP_TUR_MAP)
 
-function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle, adimKodu, tumDirekler }) {
+function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle, adimKodu, tumDirekler, onSekmeGit }) {
+  const metrajQc = useQueryClient()
   const direkKey = [direk.numara, direk.tip].filter(Boolean).join(' ') || direk.etiket || 'Direk'
   const mevcutNot = direkNotlari?.[direkKey]
   const malzemeler = mevcutNot?.malzemeler || []
@@ -376,7 +377,10 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
         kaynak: 'kroki', kaynak_direk_x: direk.x, kaynak_direk_y: direk.y,
         notlar: [...tumMalzemeler.map(m => `${m.miktar}x ${m.adi}`), ...iletkenListesi.map(il => `Iletken: ${il.adi}${il.mesafe ? ' (' + il.mesafe + 'm)' : ''}`)].join('\n'),
       })
-      alert('Metraj eklendi: ' + (direkNumara || direk.etiket))
+      // Hak Ediş sekmesini yenile ve geçiş yap
+      metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj', projeId] })
+      metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj-ozet', projeId] })
+      onSekmeGit?.('hak_edis')
     } catch (err) { alert('Hata: ' + err.message) }
   }
 
@@ -1818,7 +1822,7 @@ function AdimKarti({ adim, projeId, onDosyaSec }) {
 }
 
 // ─── Ana Komponent ───────────────────────────
-export default function ProjeDonguBar({ projeId, previewPortalRef }) {
+export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit }) {
   const { data: ilerleme } = useProjeFazIlerleme(projeId)
   const scrollRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -1974,6 +1978,7 @@ export default function ProjeDonguBar({ projeId, previewPortalRef }) {
                 projeId={projeId}
                 adimKodu={seciliDosya.adimKodu}
                 tumDirekler={direkListesi}
+                onSekmeGit={onSekmeGit}
                 onKapat={() => setSeciliDirek(null)}
                 direkNotlari={direkNotlari}
                 onMalzemeGuncelle={(not) => setDirekNotlari(prev => ({

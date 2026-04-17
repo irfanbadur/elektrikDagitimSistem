@@ -302,7 +302,7 @@ export default function ProjeDetay() {
 
       {/* Yasam Dongusu — her zaman tam genislik */}
       <div className="flex-shrink-0">
-        <ProjeDonguBar projeId={id} previewPortalRef={previewRef} />
+        <ProjeDonguBar projeId={id} previewPortalRef={previewRef} onSekmeGit={setAktifTab} />
       </div>
 
       {/* Viewer + Sekmeler: genis ekranda yan yana %50/%50, dar ekranda alt alta %100 */}
