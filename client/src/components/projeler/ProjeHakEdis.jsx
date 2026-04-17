@@ -138,33 +138,57 @@ function hesaplaOtoMalzemeler(tip, yakinlar) {
 
 // ── Direk accordion satırı ──
 function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSecim, projeId, onSpriteGuncelle }) {
-  // Notlar format: "miktar|kisaisim|tamadi|gorunur" veya eski "Nx tamadi"
-  const notSatirlari = (s.notlar || '').split('\n').filter(Boolean)
-  const malzemeSatirlari = notSatirlari.filter(n => !n.startsWith('Iletken:')).map(satir => {
-    const pParts = satir.split('|')
-    if (pParts.length >= 4) { const adi = pParts[2]; return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1] || adi, adi, gorunur: pParts[3] !== '0' } }
-    if (pParts.length >= 3) { const adi = pParts[2]; return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1] || adi, adi, gorunur: true } }
-    if (pParts.length === 2) { const adi = pParts[1]; return { miktar: Number(pParts[0]) || 1, kisaIsim: adi, adi, gorunur: true } }
-    const m = satir.match(/^(\d+)x\s*(.+)$/)
-    if (m) return { miktar: Number(m[1]), kisaIsim: m[2], adi: m[2], gorunur: true }
-    return { miktar: 1, kisaIsim: satir, adi: satir, gorunur: true }
-  })
-  // İletken format: "Iletken: tip|mesafe" veya eski "Iletken: tip"
-  const iletkenSatirlari = notSatirlari.filter(n => n.startsWith('Iletken:')).map(n => {
-    const raw = n.replace('Iletken: ', '')
-    const parts = raw.split('|')
-    return { tip: parts[0] || raw, mesafe: parts[1] ? Number(parts[1]) : 0 }
-  })
+  // Notlar'dan malzeme ve iletken parse et — local state ile takip
+  const parseNotlar = (notlarStr) => {
+    const satirlar = (notlarStr || '').split('\n').filter(Boolean)
+    const malz = satirlar.filter(n => !n.startsWith('Iletken:')).map(satir => {
+      const p = satir.split('|')
+      if (p.length >= 4) { const adi = p[2]; return { miktar: Number(p[0]) || 1, kisaIsim: p[1] || adi, adi, gorunur: p[3] !== '0' } }
+      if (p.length >= 3) { const adi = p[2]; return { miktar: Number(p[0]) || 1, kisaIsim: p[1] || adi, adi, gorunur: true } }
+      if (p.length === 2) { const adi = p[1]; return { miktar: Number(p[0]) || 1, kisaIsim: adi, adi, gorunur: true } }
+      const m = satir.match(/^(\d+)x\s*(.+)$/); if (m) return { miktar: Number(m[1]), kisaIsim: m[2], adi: m[2], gorunur: true }
+      return { miktar: 1, kisaIsim: satir, adi: satir, gorunur: true }
+    })
+    const iltk = satirlar.filter(n => n.startsWith('Iletken:')).map(n => {
+      const raw = n.replace('Iletken: ', ''), parts = raw.split('|')
+      return { tip: parts[0] || raw, mesafe: parts[1] ? Number(parts[1]) : 0 }
+    })
+    return { malz, iltk }
+  }
 
-  // Notları yeniden oluşturup kaydet
+  const [localMalz, setLocalMalz] = useState(() => parseNotlar(s.notlar).malz)
+  const [localIltk, setLocalIltk] = useState(() => parseNotlar(s.notlar).iltk)
+  // DB'den gelen notlar değişince local state güncelle (başka oturumdan değişiklik)
+  const sonNotlarRef = useRef(s.notlar)
+  useEffect(() => {
+    if (s.notlar !== sonNotlarRef.current) {
+      sonNotlarRef.current = s.notlar
+      const { malz, iltk } = parseNotlar(s.notlar)
+      setLocalMalz(malz); setLocalIltk(iltk)
+    }
+  }, [s.notlar])
+
+  const malzemeSatirlari = localMalz
+  const iletkenSatirlari = localIltk
+
+  // Notları kaydet — local state anında güncellenir, DB debounce ile
+  const kaydetTimerRef = useRef(null)
   const notlariKaydet = (malzList, iltkList) => {
+    // Local state anında güncelle (UI hızlı)
+    setLocalMalz(malzList)
+    setLocalIltk(iltkList)
+    // Sprite anında güncelle
+    onSpriteGuncelle?.(s.nokta1, malzList.filter(m => m.gorunur !== false).map(m => `${m.miktar}x ${m.kisaIsim || m.adi}`))
+    // DB kaydetmeyi debounce et
     const yeniNotlar = [
       ...malzList.map(m => `${m.miktar}|${m.kisaIsim || ''}|${m.adi}|${m.gorunur === false ? '0' : '1'}`),
       ...iltkList.map(il => `Iletken: ${il.tip}|${il.mesafe || 0}`),
     ].join('\n')
-    onGuncelle('notlar', yeniNotlar)
-    onSpriteGuncelle?.(s.nokta1, malzList.filter(m => m.gorunur !== false).map(m => `${m.miktar}x ${m.kisaIsim || m.adi}`))
+    sonNotlarRef.current = yeniNotlar
+    if (kaydetTimerRef.current) clearTimeout(kaydetTimerRef.current)
+    kaydetTimerRef.current = setTimeout(() => onGuncelle('notlar', yeniNotlar), 600)
   }
+  useEffect(() => () => { if (kaydetTimerRef.current) clearTimeout(kaydetTimerRef.current) }, [])
 
   // Tip arama + otomatik tamamlama
   const [tipVal, setTipVal] = useState(s.direk_tip?.replace(/^G-/i, '').replace(/\(P\)/gi, '') || '')
