@@ -559,15 +559,23 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
       </div>
 
       {/* Alt butonlar */}
-      <div className="border-t border-border p-2 flex gap-2">
-        <button onClick={handleKesifEkle} disabled={!tumMalzemeler.length}
-          className="flex-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40">
-          Kesife Ekle ({tumMalzemeler.length})
-        </button>
+      <div className="border-t border-border p-2 flex flex-col gap-1.5">
+        <div className="flex gap-2">
+          <button onClick={handleKesifEkle} disabled={!tumMalzemeler.length}
+            className="flex-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40">
+            Kesife Ekle ({tumMalzemeler.length})
+          </button>
+          {adimKodu === 'hak_edis_krokisi' && (
+            <button onClick={handleMetrajAktar} disabled={!tumMalzemeler.length && !iletkenListesi.length}
+              className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40">
+              Metraj'a Aktar
+            </button>
+          )}
+        </div>
         {adimKodu === 'hak_edis_krokisi' && (
-          <button onClick={handleMetrajAktar} disabled={!tumMalzemeler.length && !iletkenListesi.length}
-            className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40">
-            Metraj'a Aktar
+          <button onClick={() => onDxfKaydet?.()}
+            className="w-full rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700">
+            <Save className="inline h-3.5 w-3.5 mr-1" />DXF'e Kaydet
           </button>
         )}
       </div>
@@ -1204,17 +1212,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
               <Crosshair className="h-3.5 w-3.5" /> Demontaj Seç
             </button>
           )}
-          {direkNotlari && Object.keys(direkNotlari).length > 0 && (
-            <button
-              onClick={handleMetrajKaydet}
-              disabled={kaydediliyor}
-              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
-              title="Malzeme notlarıyla birlikte DXF'i Hakediş > Metraj adımına kaydet"
-            >
-              {kaydediliyor ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Metraj'a Kaydet
-            </button>
-          )}
+          {/* Metraj'a Kaydet butonu sahne üzerinden kaldırıldı — popup'ta */}
         </div>
         {/* Katman Paneli */}
         {katmanPanelAcik && (
