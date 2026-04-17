@@ -1006,42 +1006,25 @@ router.post('/:id/dxf-sprite-kaydet', (req, res) => {
       return Buffer.from(out);
     };
 
-    const lines = raw.toString('latin1').split(/\r?\n/);
+    const content = raw.toString('latin1');
+    const lines = content.split(/\r?\n/);
 
-    // Önce eski METRAJ_SPRITE layer'ındaki TEXT'leri sil (yeniden yazacağız)
-    let inEntities = false, skipEntity = false;
-    const cleanedLines = [];
-    for (let i = 0; i < lines.length; i += 2) {
-      const code = lines[i]?.trim();
-      const val = lines[i + 1]?.trim();
-      if (code === '2' && val === 'ENTITIES') inEntities = true;
-      if (code === '0' && val === 'ENDSEC' && inEntities) inEntities = false;
-      if (inEntities && code === '0' && val === 'TEXT') {
-        // İleriye bak, METRAJ_SPRITE layer'ında mı
-        let isSprite = false;
-        for (let j = i + 2; j < Math.min(i + 30, lines.length - 1); j += 2) {
-          if (lines[j]?.trim() === '0') break;
-          if (lines[j]?.trim() === '8' && lines[j + 1]?.trim() === 'METRAJ_SPRITE') { isSprite = true; break; }
-        }
-        if (isSprite) { skipEntity = true; }
+    // ENTITIES bölümünde ENDSEC'in byte pozisyonunu bul
+    // "0\nENDSEC" veya "0\r\nENDSEC" pattern'ını sondan ara
+    let inEntities = false;
+    let endsecBytePos = -1;
+    let byteOffset = 0;
+    for (let i = 0; i < lines.length - 1; i++) {
+      const lineLen = Buffer.byteLength(lines[i], 'latin1') + NL.length;
+      if (i % 2 === 0) { // code line
+        const code = lines[i].trim();
+        const val = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        if (code === '2' && val === 'ENTITIES') inEntities = true;
+        if (inEntities && code === '0' && val === 'ENDSEC') { endsecBytePos = byteOffset; break; }
       }
-      if (code === '0' && skipEntity && val !== undefined) {
-        if (cleanedLines.length > 0 || !skipEntity) { /* skip */ }
-        skipEntity = (val === 'TEXT' || val === undefined) ? true : false;
-        if (!skipEntity) { cleanedLines.push(lines[i]); if (i + 1 < lines.length) cleanedLines.push(lines[i + 1]); continue; }
-      }
-      if (!skipEntity) { cleanedLines.push(lines[i]); if (i + 1 < lines.length) cleanedLines.push(lines[i + 1]); }
+      byteOffset += lineLen;
     }
-
-    // Basitleştirilmiş yaklaşım: orijinal dosyayı koru, ENTITIES ENDSEC'ten önce TEXT ekle
-    let entitiesEndsecLine = -1;
-    for (let i = 0; i < lines.length - 1; i += 2) {
-      const code = lines[i]?.trim();
-      const val = lines[i + 1]?.trim();
-      if (code === '2' && val === 'ENTITIES') inEntities = true;
-      if (code === '0' && val === 'ENDSEC' && inEntities) { entitiesEndsecLine = i; break; }
-    }
-    if (entitiesEndsecLine < 0) return res.status(400).json({ success: false, error: 'DXF ENTITIES ENDSEC bulunamadı' });
+    if (endsecBytePos < 0) return res.status(400).json({ success: false, error: 'DXF ENTITIES ENDSEC bulunamadı' });
 
     // Handle seed
     let handleSeed = 0x900;
@@ -1108,17 +1091,10 @@ router.post('/:id/dxf-sprite-kaydet', (req, res) => {
     }
     const textBlokBuf = Buffer.concat(textBufParts);
 
-    // Orijinal dosyayı yeniden oluştur — ENDSEC'ten önce TEXT blok ekle
-    const outParts = [];
-    for (let i = 0; i < lines.length; i++) {
-      if (i === entitiesEndsecLine) {
-        // TEXT blok ekle
-        outParts.push(textBlokBuf);
-      }
-      outParts.push(Buffer.from(lines[i], 'latin1'));
-      if (i < lines.length - 1) outParts.push(Buffer.from(NL, 'latin1'));
-    }
-    const outBuf = Buffer.concat(outParts);
+    // Orijinal dosyayı byte pozisyonunda böl ve TEXT blok ekle
+    const beforeEndsec = raw.subarray(0, endsecBytePos);
+    const afterEndsec = raw.subarray(endsecBytePos);
+    const outBuf = Buffer.concat([beforeEndsec, textBlokBuf, afterEndsec]);
 
     // Orijinal dosyanın üzerine yaz
     fs.writeFileSync(tamYol, outBuf);
