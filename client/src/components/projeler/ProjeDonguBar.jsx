@@ -175,7 +175,9 @@ function _notSpriteOlustur(three, baslik, malzemeler, direkX, direkY, origin, te
   sprite.scale.set(scaleX, scaleY, 1)
 
   const ox = origin?.x || 0, oy = origin?.y || 0
-  sprite.position.set(direkX - ox + scaleX * 0.6 + textH, direkY - oy + scaleY * 0.3 + textH, 0.1)
+  // Anchor sol-üst: sprite center'ı (0.5, 0.5) → sol-üst (0, 1) kaydır
+  sprite.center = new three.Vector2(0, 1)
+  sprite.position.set(direkX - ox + textH, direkY - oy + textH, 0.1)
 
   sprite.userData = { direkKey: baslik, direkX: direkX - ox, direkY: direkY - oy, maxMesafe: Math.max(scaleX, scaleY) * 3 }
 

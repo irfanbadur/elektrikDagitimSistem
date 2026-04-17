@@ -1074,6 +1074,7 @@ router.post('/:id/dxf-sprite-kaydet', (req, res) => {
       const h = yukseklik || 3.5;
       satirlar.forEach((satir, i) => {
         const handle = (handleSeed++).toString(16).toUpperCase();
+        // Satır pozisyonu — sol-alt referans, sprite ile uyumlu
         const py = (y - i * h * 1.3).toFixed(6);
         const xStr = x.toFixed(6);
         addLine('0'); addLine('TEXT');
@@ -1088,18 +1089,12 @@ router.post('/:id/dxf-sprite-kaydet', (req, res) => {
         addLine('48'); addLine('1.0');
         addLine('60'); addLine('0');
         addLine('100'); addLine('AcDbText');
-        addLine('1'); textBufParts.push(encodeStr(satir), nl);
         addLine('10'); addLine(xStr);
         addLine('20'); addLine(py);
         addLine('30'); addLine('0.0');
         addLine('40'); addLine(h.toFixed(6));
-        addLine('41'); addLine('1.0');
-        addLine('50'); addLine('0.0');
-        addLine('51'); addLine('0.0');
+        addLine('1'); textBufParts.push(encodeStr(satir), nl);
         addLine('7'); addLine('Standard');
-        addLine('11'); addLine(xStr);
-        addLine('21'); addLine(py);
-        addLine('31'); addLine('0.0');
         addLine('72'); addLine('0');
         addLine('100'); addLine('AcDbText');
         addLine('73'); addLine('0');
