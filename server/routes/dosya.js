@@ -644,12 +644,50 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
       };
     });
 
-    // Komşu direk mesafeleri hesapla (aynı numara serisindeki en yakın 2 komşu)
+    // İletken ve mesafe text'lerini topla (etiketlerden)
+    const iletkenTextleri = etiketler.filter(et => ILETKEN_RE.test(et.text));
+    const mesafeTextleri = etiketler.filter(et => /^\d+\.?\d*$/.test(et.text) && parseFloat(et.text) >= 5 && parseFloat(et.text) < 500);
+
+    // Komşu direk bilgileri + aralarındaki hat ve mesafe
     for (const d of sonuc) {
       if (!d.numara) continue;
       const komsular = sonuc
-        .filter(k => k !== d && k.numara && k.numara[0] === d.numara[0]) // aynı seri (A, B, C...)
-        .map(k => ({ numara: k.numara, mesafe: Math.round(Math.sqrt((k.x - d.x) ** 2 + (k.y - d.y) ** 2) * 10) / 10 }))
+        .filter(k => k !== d && k.numara && k.numara !== d.numara && k.numara[0] === d.numara[0])
+        .map(k => {
+          const kMesafe = Math.round(Math.sqrt((k.x - d.x) ** 2 + (k.y - d.y) ** 2) * 10) / 10;
+          // İki direk arası orta noktaya en yakın iletken text'ini bul
+          const ortaX = (d.x + k.x) / 2, ortaY = (d.y + k.y) / 2;
+          const maxAra = kMesafe * 0.7; // ara mesafenin %70'i içinde arama
+
+          // İletken text'i bul
+          let enYakinIletken = null, enYakinIletkenMesafe = Infinity;
+          for (const it of iletkenTextleri) {
+            const dx = (it.x||0) - ortaX, dy = (it.y||0) - ortaY;
+            const m = Math.sqrt(dx*dx + dy*dy);
+            if (m < maxAra && m < enYakinIletkenMesafe) { enYakinIletken = it; enYakinIletkenMesafe = m; }
+          }
+
+          // Mesafe text'i bul (sayısal değer)
+          let enYakinMesafeText = null, enYakinMesafeTextM = Infinity;
+          for (const mt of mesafeTextleri) {
+            const dx = (mt.x||0) - ortaX, dy = (mt.y||0) - ortaY;
+            const m = Math.sqrt(dx*dx + dy*dy);
+            if (m < maxAra && m < enYakinMesafeTextM) { enYakinMesafeText = mt; enYakinMesafeTextM = m; }
+          }
+
+          // Hat durumu: (parantez) = mevcut, [köşeli] = DMM, parantezsiz = yeni
+          let hatDurum = 'Yeni';
+          const iletkenText = enYakinIletken?.text || '';
+          if (/^\(/.test(iletkenText)) hatDurum = 'Mevcut';
+          else if (/^\[/.test(iletkenText)) hatDurum = 'DMM';
+
+          return {
+            numara: k.numara,
+            mesafe: enYakinMesafeText ? parseFloat(enYakinMesafeText.text) : kMesafe,
+            iletken: iletkenText || null,
+            hatDurum,
+          };
+        })
         .sort((a, b) => a.mesafe - b.mesafe)
         .slice(0, 3);
       d.komsular = komsular;

@@ -371,14 +371,27 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
       const otoMalz = hesaplaOtoMalzemeler(rawTip, seciliDirekBilgi.yakinlar)
       const otoNotlar = otoMalz.map(m => `${m.miktar}||${m.adi}|${m.gorunur === false ? '0' : '1'}`).join('\n')
 
+      // İletken bilgisi komşudan al
+      const iletkenText = komsu?.iletken || ''
+      // Parantez/köşeli temizle → saf iletken adı
+      const temizIletken = iletkenText.replace(/[()[\]]/g, '').trim()
+      // AG/OG ayrımı — Excel S/T sütunları formatı
+      const agIletken = /AER|ROSE|PANSY|ASTER/i.test(temizIletken) ? temizIletken.replace(/_/g, ' ') : null
+      const ogIletken = /SW|SWALLOW|RAVEN|PIGEON|HAWK/i.test(temizIletken) ? temizIletken.replace(/_/g, ' ') : null
+      // İletken notu
+      const iletkenNot = iletkenText ? `Iletken: ${temizIletken.replace(/_/g, ' ')}` : ''
+
       ekle.mutateAsync({
         nokta1: numara,
         nokta2: komsu?.numara || '',
-        nokta_durum: 'Yeni',
+        nokta_durum: komsu?.hatDurum || 'Yeni',
         direk_tur: turFromTip,
         direk_tip: cleanTip || rawTip,
         ara_mesafe: komsu?.mesafe || 0,
-        notlar: otoNotlar,
+        ag_iletken: agIletken,
+        og_iletken: ogIletken,
+        ag_iletken_durum: komsu?.hatDurum || 'Yeni',
+        notlar: [otoNotlar, iletkenNot].filter(Boolean).join('\n'),
         kaynak: 'kroki',
       }).then(res => {
         const yeniId = (res?.data || res)?.id
