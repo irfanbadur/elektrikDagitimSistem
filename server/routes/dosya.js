@@ -983,6 +983,158 @@ router.post('/:id/dxf-metraj-kaydet', (req, res) => {
   }
 });
 
+// POST /:id/dxf-sprite-kaydet — DXF dosyasına TEXT entity ekle (orijinal dosyanın üzerine yazar)
+router.post('/:id/dxf-sprite-kaydet', (req, res) => {
+  try {
+    const fs = require('fs');
+    const dosya = dosyaService.dosyaGetir(parseInt(req.params.id));
+    if (!dosya) return res.status(404).json({ success: false, error: 'Dosya bulunamadı' });
+
+    const { notlar } = req.body;
+    if (!notlar?.length) return res.status(400).json({ success: false, error: 'notlar gerekli' });
+
+    const tamYol = dosyaService.dosyaYoluCozumle(dosya.dosya_yolu);
+    const raw = fs.readFileSync(tamYol);
+    const NL = raw.includes(Buffer.from('\r\n')) ? '\r\n' : '\n';
+    const isAnsi = raw.toString('ascii', 0, Math.min(raw.length, 2000)).includes('ANSI_1254');
+
+    const WIN1254 = {'\u011E':0xD0,'\u011F':0xF0,'\u0130':0xDD,'\u0131':0xFD,'\u015E':0xDE,'\u015F':0xFE,'\u00C7':0xC7,'\u00E7':0xE7,'\u00D6':0xD6,'\u00F6':0xF6,'\u00DC':0xDC,'\u00FC':0xFC};
+    const encodeStr = (str) => {
+      if (!isAnsi) return Buffer.from(str, 'utf-8');
+      const out = [];
+      for (const ch of str) { const m = WIN1254[ch]; if (m !== undefined) out.push(m); else { const c = ch.charCodeAt(0); out.push(c <= 0xFF ? c : 0x3F); } }
+      return Buffer.from(out);
+    };
+
+    const lines = raw.toString('latin1').split(/\r?\n/);
+
+    // Önce eski METRAJ_SPRITE layer'ındaki TEXT'leri sil (yeniden yazacağız)
+    let inEntities = false, skipEntity = false;
+    const cleanedLines = [];
+    for (let i = 0; i < lines.length; i += 2) {
+      const code = lines[i]?.trim();
+      const val = lines[i + 1]?.trim();
+      if (code === '2' && val === 'ENTITIES') inEntities = true;
+      if (code === '0' && val === 'ENDSEC' && inEntities) inEntities = false;
+      if (inEntities && code === '0' && val === 'TEXT') {
+        // İleriye bak, METRAJ_SPRITE layer'ında mı
+        let isSprite = false;
+        for (let j = i + 2; j < Math.min(i + 30, lines.length - 1); j += 2) {
+          if (lines[j]?.trim() === '0') break;
+          if (lines[j]?.trim() === '8' && lines[j + 1]?.trim() === 'METRAJ_SPRITE') { isSprite = true; break; }
+        }
+        if (isSprite) { skipEntity = true; }
+      }
+      if (code === '0' && skipEntity && val !== undefined) {
+        if (cleanedLines.length > 0 || !skipEntity) { /* skip */ }
+        skipEntity = (val === 'TEXT' || val === undefined) ? true : false;
+        if (!skipEntity) { cleanedLines.push(lines[i]); if (i + 1 < lines.length) cleanedLines.push(lines[i + 1]); continue; }
+      }
+      if (!skipEntity) { cleanedLines.push(lines[i]); if (i + 1 < lines.length) cleanedLines.push(lines[i + 1]); }
+    }
+
+    // Basitleştirilmiş yaklaşım: orijinal dosyayı koru, ENTITIES ENDSEC'ten önce TEXT ekle
+    let entitiesEndsecLine = -1;
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      const code = lines[i]?.trim();
+      const val = lines[i + 1]?.trim();
+      if (code === '2' && val === 'ENTITIES') inEntities = true;
+      if (code === '0' && val === 'ENDSEC' && inEntities) { entitiesEndsecLine = i; break; }
+    }
+    if (entitiesEndsecLine < 0) return res.status(400).json({ success: false, error: 'DXF ENTITIES ENDSEC bulunamadı' });
+
+    // Handle seed
+    let handleSeed = 0x900;
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      if (lines[i].trim() === '5' || lines[i].trim() === '$HANDSEED') {
+        const val = parseInt(lines[i + 1]?.trim(), 16);
+        if (val > handleSeed) handleSeed = val;
+      }
+    }
+    handleSeed += 10;
+
+    // Model Space owner handle
+    let ownerHandle = '1B';
+    for (let i = 0; i < lines.length - 3; i += 2) {
+      if (lines[i].trim() === '2' && lines[i + 1]?.trim() === '*Model_Space') {
+        for (let j = i - 2; j >= Math.max(0, i - 10); j -= 2) {
+          if (lines[j].trim() === '5') { ownerHandle = lines[j + 1].trim(); break; }
+        }
+        break;
+      }
+    }
+
+    // TEXT entity'leri oluştur
+    const textBufParts = [];
+    const nl = Buffer.from(NL, 'latin1');
+    const addLine = (str) => { textBufParts.push(Buffer.from(str, 'latin1'), nl); };
+
+    for (const not of notlar) {
+      const { x, y, yukseklik, satirlar } = not;
+      if (!satirlar?.length || x == null || y == null) continue;
+      const h = yukseklik || 3.5;
+      satirlar.forEach((satir, i) => {
+        const handle = (handleSeed++).toString(16).toUpperCase();
+        const py = (y - i * h * 1.3).toFixed(6);
+        const xStr = x.toFixed(6);
+        addLine('0'); addLine('TEXT');
+        addLine('5'); addLine(handle);
+        addLine('330'); addLine(ownerHandle);
+        addLine('100'); addLine('AcDbEntity');
+        addLine('67'); addLine('0');
+        addLine('8'); addLine('METRAJ_SPRITE');
+        addLine('62'); addLine('3'); // yeşil
+        addLine('6'); addLine('ByLayer');
+        addLine('370'); addLine('-1');
+        addLine('48'); addLine('1.0');
+        addLine('60'); addLine('0');
+        addLine('100'); addLine('AcDbText');
+        addLine('1'); textBufParts.push(encodeStr(satir), nl);
+        addLine('10'); addLine(xStr);
+        addLine('20'); addLine(py);
+        addLine('30'); addLine('0.0');
+        addLine('40'); addLine(h.toFixed(6));
+        addLine('41'); addLine('1.0');
+        addLine('50'); addLine('0.0');
+        addLine('51'); addLine('0.0');
+        addLine('7'); addLine('Standard');
+        addLine('11'); addLine(xStr);
+        addLine('21'); addLine(py);
+        addLine('31'); addLine('0.0');
+        addLine('72'); addLine('0');
+        addLine('100'); addLine('AcDbText');
+        addLine('73'); addLine('0');
+      });
+    }
+    const textBlokBuf = Buffer.concat(textBufParts);
+
+    // Orijinal dosyayı yeniden oluştur — ENDSEC'ten önce TEXT blok ekle
+    const outParts = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (i === entitiesEndsecLine) {
+        // TEXT blok ekle
+        outParts.push(textBlokBuf);
+      }
+      outParts.push(Buffer.from(lines[i], 'latin1'));
+      if (i < lines.length - 1) outParts.push(Buffer.from(NL, 'latin1'));
+    }
+    const outBuf = Buffer.concat(outParts);
+
+    // Orijinal dosyanın üzerine yaz
+    fs.writeFileSync(tamYol, outBuf);
+
+    // Dosya boyutunu güncelle
+    const db = getDb();
+    db.prepare('UPDATE dosyalar SET dosya_boyutu = ?, guncelleme_tarihi = datetime(\'now\') WHERE id = ?')
+      .run(outBuf.length, parseInt(req.params.id));
+
+    res.json({ success: true, data: { dosya_id: parseInt(req.params.id), eklenen_text: notlar.length } });
+  } catch (err) {
+    console.error('DXF sprite kaydet hatası:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // DEMONTAJ KROKİSİ — Mevcut/Yeni Durum DXF overlay & fark analizi
 // ═══════════════════════════════════════════════════════════════

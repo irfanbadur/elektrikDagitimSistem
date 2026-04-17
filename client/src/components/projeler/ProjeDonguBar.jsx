@@ -2052,7 +2052,7 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit })
                 tumDirekler={direkListesi}
                 onSekmeGit={onSekmeGit}
                 onDxfKaydet={async (guncelNotlar) => {
-                  // Tüm direkNotlari'nı DXF'e TEXT entity olarak kaydet
+                  // Sprite text'leri orijinal DXF dosyasına kaydet
                   const notlarObj = guncelNotlar || direkNotlari
                   if (!seciliDosya?.id || !Object.keys(notlarObj).length) return
                   try {
@@ -2060,8 +2060,8 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit })
                       x: not.x, y: not.y, yukseklik: not.yukseklik || 3.5,
                       satirlar: (not.malzemeler || []).map(m => `${m.miktar}x ${m.adi}`),
                     }))
-                    await api.post(`/dosya/${seciliDosya.id}/dxf-metraj-kaydet`, { proje_id: projeId, notlar })
-                  } catch (err) { console.warn('DXF kaydetme hatasi:', err.message) }
+                    await api.post(`/dosya/${seciliDosya.id}/dxf-sprite-kaydet`, { notlar })
+                  } catch (err) { console.warn('DXF sprite kaydetme hatasi:', err.message) }
                 }}
                 onKapat={() => setSeciliDirek(null)}
                 direkNotlari={direkNotlari}
