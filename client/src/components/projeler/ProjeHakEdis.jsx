@@ -9,6 +9,15 @@ import { cn } from '@/lib/utils'
 const DURUM_SECENEKLERI = ['Yeni', 'Mevcut', 'Demontaj']
 const DURUM_RENK = { Yeni: 'text-emerald-600', Mevcut: 'text-blue-600', Demontaj: 'text-red-600' }
 
+// Excel S/T sütunlarındaki iletken tipleri
+const ILETKEN_TIPLERI = [
+  'ROSE', 'PANSY', 'ASTER', 'SWALLOW', 'RAVEN', 'PİGEON', 'HAWK', 'PARTRIDGE',
+  '1X16+25 AER', '1X25+35 AER', '1X50+70 AER', '1X70+95 AER',
+  '2X16+25 AER', '3X10+16 AER', '3X16+25 AER', '3X25+35 AER',
+  '3X35+50 AER', '3X50+70 AER', '3X70+95 AER',
+  '3X16/16+25 AER', '3X25/16+35 AER', '3X35/16+50 AER', '3X50/16+70 AER', '3X70/16+95 AER',
+]
+
 const TUR_SECENEKLERI = [
   'Agac Direk', 'AG Direk', 'Musterek Direk', 'Trafo Diregi',
   'Buyuk Aralikli Swallow Direk', 'Buyuk Aralikli Pigeon Direk', 'Buyuk Aralikli Raven Direk',
@@ -140,16 +149,20 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
     if (m) return { miktar: Number(m[1]), kisaIsim: m[2], adi: m[2], gorunur: true }
     return { miktar: 1, kisaIsim: satir, adi: satir, gorunur: true }
   })
-  const iletkenSatirlari = notSatirlari.filter(n => n.startsWith('Iletken:')).map(n => n.replace('Iletken: ', ''))
+  // İletken format: "Iletken: tip|mesafe" veya eski "Iletken: tip"
+  const iletkenSatirlari = notSatirlari.filter(n => n.startsWith('Iletken:')).map(n => {
+    const raw = n.replace('Iletken: ', '')
+    const parts = raw.split('|')
+    return { tip: parts[0] || raw, mesafe: parts[1] ? Number(parts[1]) : 0 }
+  })
 
-  // Notları yeniden oluşturup kaydet — format: "miktar|kisaisim|tamadi|gorunur"
+  // Notları yeniden oluşturup kaydet
   const notlariKaydet = (malzList, iltkList) => {
     const yeniNotlar = [
       ...malzList.map(m => `${m.miktar}|${m.kisaIsim || ''}|${m.adi}|${m.gorunur === false ? '0' : '1'}`),
-      ...iltkList.map(il => `Iletken: ${il}`),
+      ...iltkList.map(il => `Iletken: ${il.tip}|${il.mesafe || 0}`),
     ].join('\n')
     onGuncelle('notlar', yeniNotlar)
-    // Sprite text — sadece gorunur=true olanlar, kısa isim varsa onu kullan
     onSpriteGuncelle?.(s.nokta1, malzList.filter(m => m.gorunur !== false).map(m => `${m.miktar}x ${m.kisaIsim || m.adi}`))
   }
 
@@ -203,13 +216,29 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
     else if (e.key === 'Escape') { setSonuclar([]); setArama('') }
   }
 
-  // İletken ekleme
+  // İletken arama + ekleme
   const [iletkenVal, setIletkenVal] = useState('')
-  const handleIletkenEkle = () => {
-    if (!iletkenVal.trim()) return
-    notlariKaydet(malzemeSatirlari, [...iletkenSatirlari, iletkenVal.trim()])
-    setIletkenVal('')
+  const [iletkenOneriAcik, setIletkenOneriAcik] = useState(false)
+  const [iletkenSecIdx, setIletkenSecIdx] = useState(-1)
+  const iletkenOnerileri = iletkenVal.length >= 1
+    ? ILETKEN_TIPLERI.filter(t => t.toLowerCase().includes(iletkenVal.toLowerCase())).slice(0, 8)
+    : []
+
+  const handleIletkenEkle = (tip) => {
+    const t = (tip || iletkenVal).trim()
+    if (!t) return
+    notlariKaydet(malzemeSatirlari, [...iletkenSatirlari, { tip: t, mesafe: 0 }])
+    setIletkenVal(''); setIletkenOneriAcik(false)
   }
+  const handleIletkenKeyDown = (e) => {
+    if (iletkenOnerileri.length && iletkenOneriAcik) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setIletkenSecIdx(p => Math.min(p + 1, iletkenOnerileri.length - 1)) }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setIletkenSecIdx(p => Math.max(p - 1, 0)) }
+      else if (e.key === 'Enter' && iletkenSecIdx >= 0) { e.preventDefault(); handleIletkenEkle(iletkenOnerileri[iletkenSecIdx]) }
+      else if (e.key === 'Escape') setIletkenOneriAcik(false)
+    } else if (e.key === 'Enter') handleIletkenEkle()
+  }
+  useEffect(() => { setIletkenSecIdx(-1) }, [iletkenOnerileri.length])
 
   // İletken ekleme sonrası da notlariKaydet kullan
 
@@ -321,15 +350,32 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
             {/* İletkenler */}
             <div>
               <div className="text-[9px] font-bold text-blue-600 uppercase mb-1">Iletkenler ({iletkenSatirlari.length})</div>
-              <div className="flex gap-1 mb-1">
-                <input value={iletkenVal} onChange={e => setIletkenVal(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleIletkenEkle() }}
-                  placeholder="Iletken tipi gir..." className="flex-1 rounded border border-input bg-white px-2 py-0.5 text-[10px] focus:border-blue-400 focus:outline-none" />
-                <button onClick={handleIletkenEkle} className="rounded bg-blue-500 px-1.5 text-white text-[10px] hover:bg-blue-600">+</button>
+              <div className="relative mb-1">
+                <div className="flex gap-1">
+                  <input value={iletkenVal} onChange={e => { setIletkenVal(e.target.value); setIletkenOneriAcik(true) }}
+                    onFocus={() => setIletkenOneriAcik(true)} onBlur={() => setTimeout(() => setIletkenOneriAcik(false), 200)}
+                    onKeyDown={handleIletkenKeyDown}
+                    placeholder="Iletken tipi ara..." className="flex-1 rounded border border-input bg-white px-2 py-0.5 text-[10px] focus:border-blue-400 focus:outline-none" />
+                  <button onClick={() => handleIletkenEkle()} className="rounded bg-blue-500 px-1.5 text-white text-[10px] hover:bg-blue-600">+</button>
+                </div>
+                {iletkenOneriAcik && iletkenOnerileri.length > 0 && (
+                  <div className="absolute left-0 top-full z-50 mt-0.5 w-full max-h-28 overflow-y-auto rounded border border-border bg-white shadow-lg">
+                    {iletkenOnerileri.map((t, i) => (
+                      <button key={t} onMouseDown={e => { e.preventDefault(); handleIletkenEkle(t) }}
+                        className={cn("flex w-full px-2 py-1 text-[10px] text-left border-b border-border/20", i === iletkenSecIdx ? 'bg-blue-50 text-blue-700' : 'hover:bg-blue-50/50')}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               {iletkenSatirlari.map((il, i) => (
                 <div key={i} className="flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10">
-                  <span className="flex-1 truncate text-blue-700 font-medium">{il}</span>
+                  <span className="flex-1 truncate text-blue-700 font-medium">{il.tip}</span>
+                  <input type="number" value={il.mesafe || ''} placeholder="m"
+                    onChange={e => { const yeni = [...iletkenSatirlari]; yeni[i] = { ...il, mesafe: Number(e.target.value) || 0 }; notlariKaydet(malzemeSatirlari, yeni) }}
+                    className="w-14 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
+                  <span className="text-[9px] text-muted-foreground">m</span>
                   <button onClick={() => notlariKaydet(malzemeSatirlari, iletkenSatirlari.filter((_, j) => j !== i))}
                     className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
                 </div>
