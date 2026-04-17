@@ -1869,7 +1869,7 @@ function AdimKarti({ adim, projeId, onDosyaSec }) {
 }
 
 // ─── Ana Komponent ───────────────────────────
-export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit }) {
+export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, onDirekSec }) {
   const { data: ilerleme } = useProjeFazIlerleme(projeId)
   const scrollRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -2045,7 +2045,13 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit })
               dosyaId={seciliDosya.id}
               projeId={projeId}
               overlayUrl={seciliDosya.overlayId ? `/api/dosya/${seciliDosya.overlayId}/dosya` : null}
-              onDirekTikla={seciliDosya.dxf ? (d) => { if (!seciliDirek) setSeciliDirek(d) } : undefined}
+              onDirekTikla={seciliDosya.dxf ? (d) => {
+                if (seciliDosya.adimKodu === 'hak_edis_krokisi' && onDirekSec && d.numara) {
+                  onDirekSec(d.numara)
+                } else {
+                  if (!seciliDirek) setSeciliDirek(d)
+                }
+              } : undefined}
               direkNotlari={seciliDosya.dxf ? direkNotlari : undefined}
               onNotSil={seciliDosya.dxf ? (key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y }) : undefined}
               onDireklerYuklendi={setDirekListesi}

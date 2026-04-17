@@ -77,6 +77,7 @@ export default function ProjeDetay() {
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [durumMenuAcik, setDurumMenuAcik] = useState(false)
   const previewRef = useRef(null)
+  const [seciliDirekNo, setSeciliDirekNo] = useState(null) // direk tıklandığında numara
 
   const handleSil = () => {
     projeSil.mutate(id, {
@@ -302,7 +303,8 @@ export default function ProjeDetay() {
 
       {/* Yasam Dongusu — her zaman tam genislik */}
       <div className="flex-shrink-0">
-        <ProjeDonguBar projeId={id} previewPortalRef={previewRef} onSekmeGit={setAktifTab} />
+        <ProjeDonguBar projeId={id} previewPortalRef={previewRef} onSekmeGit={setAktifTab}
+          onDirekSec={(direkNo) => { setSeciliDirekNo(direkNo); setAktifTab('hak_edis') }} />
       </div>
 
       {/* Viewer + Sekmeler: genis ekranda yan yana %50/%50, dar ekranda alt alta %100 */}
@@ -500,7 +502,7 @@ export default function ProjeDetay() {
         )}
 
         {aktifTab === 'hak_edis' && (
-          <ProjeHakEdis projeId={id} />
+          <ProjeHakEdis projeId={id} seciliDirekNo={seciliDirekNo} onSeciliDirekTemizle={() => setSeciliDirekNo(null)} />
         )}
 
         {aktifTab === 'notlar' && (
