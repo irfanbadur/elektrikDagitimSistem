@@ -98,8 +98,8 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMik
         onChange={e => onGorunurDegistir(e.target.checked)}
         title="Sahnede göster" className="h-3 w-3 accent-primary cursor-pointer shrink-0" />
       <input value={malzeme.kisaIsim || ''} onChange={e => onKisaIsimDegistir(e.target.value)}
-        placeholder="kısa" title="Kısa isim (sprite text'te görünür)"
-        className="w-16 rounded border border-input bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-700 focus:outline-none focus:border-amber-400" />
+        placeholder="kısa isim" title="Kısa isim (sprite text'te görünür)"
+        className="w-28 rounded border border-input bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-700 focus:outline-none focus:border-amber-400" />
       <span className="flex-1 truncate cursor-pointer hover:text-primary hover:underline" title={`${malzeme.adi} — tıkla değiştir`}
         onClick={() => { setDuzenle(true); setAramaVal(malzeme.adi) }}>{malzeme.adi}</span>
       <input type="number" value={malzeme.miktar} min={1}
@@ -133,11 +133,12 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
   const notSatirlari = (s.notlar || '').split('\n').filter(Boolean)
   const malzemeSatirlari = notSatirlari.filter(n => !n.startsWith('Iletken:')).map(satir => {
     const pParts = satir.split('|')
-    if (pParts.length >= 4) return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1], adi: pParts[2], gorunur: pParts[3] !== '0' }
-    if (pParts.length >= 3) return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1], adi: pParts[2], gorunur: true }
-    if (pParts.length === 2) return { miktar: Number(pParts[0]) || 1, kisaIsim: '', adi: pParts[1], gorunur: true }
+    if (pParts.length >= 4) { const adi = pParts[2]; return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1] || adi, adi, gorunur: pParts[3] !== '0' } }
+    if (pParts.length >= 3) { const adi = pParts[2]; return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1] || adi, adi, gorunur: true } }
+    if (pParts.length === 2) { const adi = pParts[1]; return { miktar: Number(pParts[0]) || 1, kisaIsim: adi, adi, gorunur: true } }
     const m = satir.match(/^(\d+)x\s*(.+)$/)
-    return m ? { miktar: Number(m[1]), kisaIsim: '', adi: m[2], gorunur: true } : { miktar: 1, kisaIsim: '', adi: satir, gorunur: true }
+    if (m) return { miktar: Number(m[1]), kisaIsim: m[2], adi: m[2], gorunur: true }
+    return { miktar: 1, kisaIsim: satir, adi: satir, gorunur: true }
   })
   const iletkenSatirlari = notSatirlari.filter(n => n.startsWith('Iletken:')).map(n => n.replace('Iletken: ', ''))
 
@@ -188,7 +189,8 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
   useEffect(() => { setSecIdx(-1) }, [sonuclar])
 
   const handleMalzemeEkle = (item) => {
-    const yeniMalz = [...malzemeSatirlari, { miktar: 1, adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '' }]
+    const tamAdi = item.malzeme_cinsi || item.malzeme_tanimi_sap || ''
+    const yeniMalz = [...malzemeSatirlari, { miktar: 1, kisaIsim: tamAdi, adi: tamAdi, gorunur: true }]
     notlariKaydet(yeniMalz, iletkenSatirlari)
     setArama(''); setSonuclar([])
   }
