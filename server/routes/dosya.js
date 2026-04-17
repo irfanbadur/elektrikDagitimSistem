@@ -585,6 +585,27 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
     }
     if (inText && entity.text && entity.x !== undefined) elemanlar.push(entity);
 
+    // LINE entity'lerini parse et — hat çizgileri
+    const hatCizgileri = [];
+    let inLine = false, lineEnt = {};
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      const code = parseInt(lines[i].trim());
+      const val = lines[i+1].trim();
+      if (code === 0) {
+        if (inLine && lineEnt.x1 !== undefined && lineEnt.x2 !== undefined) hatCizgileri.push(lineEnt);
+        inLine = val === 'LINE';
+        lineEnt = inLine ? {} : {};
+        continue;
+      }
+      if (!inLine) continue;
+      if (code === 10) lineEnt.x1 = parseFloat(val);
+      if (code === 20) lineEnt.y1 = parseFloat(val);
+      if (code === 11) lineEnt.x2 = parseFloat(val);
+      if (code === 21) lineEnt.y2 = parseFloat(val);
+      if (code === 8) lineEnt.katman = val;
+    }
+    if (inLine && lineEnt.x1 !== undefined && lineEnt.x2 !== undefined) hatCizgileri.push(lineEnt);
+
     // Direk stilindeki elemanları ayır
     const SEMBOL_MAP = { 'E': 'Direk', 'C': 'Armatür', '4': 'Koruma Topraklama', '5': 'İşletme Topraklama', 'A': 'Ağaç Direk', '2': 'Beton Direk' };
     const direkler = elemanlar.filter(e => e.stil === 'Direk').map(e => ({
@@ -644,9 +665,10 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
       };
     });
 
-    // ── Hat bağlantı haritası: iletken/mesafe text → en yakın 2 ana direk ──
+    // ── LINE bazlı hat bağlantı tespiti ──
     const iletkenTextleri = etiketler.filter(et => ILETKEN_RE.test(et.text));
     const mesafeTextleri = etiketler.filter(et => /^\d+\.?\d*$/.test(et.text) && parseFloat(et.text) >= 5 && parseFloat(et.text) < 500);
+
     // Ana direkler (E, A, 2 sembolü, benzersiz numara)
     const anaDigitMap = new Map();
     for (const d of sonuc) {
@@ -654,60 +676,78 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
       if (!anaDigitMap.has(d.numara)) anaDigitMap.set(d.numara, d);
     }
     const anaDirekler = [...anaDigitMap.values()];
+    const ESIK = 8; // direk-line ucu eşleşme eşiği
 
-    // Her iletken text için en yakın 2 ana direği bul → bağlantı haritası
-    // hatlar: Map<"A06→A07", {iletken, hatDurum}>
+    // Her LINE'ın uçlarını en yakın direklere eşle
     const hatlar = new Map();
-    for (const it of iletkenTextleri) {
-      const mesafeler = anaDirekler.map(d => ({
-        d, m: Math.sqrt((d.x - (it.x||0)) ** 2 + (d.y - (it.y||0)) ** 2)
-      })).sort((a, b) => a.m - b.m);
-      if (mesafeler.length < 2) continue;
-      const d1 = mesafeler[0].d, d2 = mesafeler[1].d;
-      const key1 = `${d1.numara}→${d2.numara}`, key2 = `${d2.numara}→${d1.numara}`;
-      let hatDurum = 'Yeni';
-      if (/^\(/.test(it.text)) hatDurum = 'Mevcut';
-      else if (/^\[/.test(it.text)) hatDurum = 'DMM';
-      const veri = { iletken: it.text, hatDurum };
-      if (!hatlar.has(key1)) hatlar.set(key1, veri);
-      if (!hatlar.has(key2)) hatlar.set(key2, veri);
-    }
+    for (const ln of hatCizgileri) {
+      let d1 = null, d1m = Infinity, d2 = null, d2m = Infinity;
+      for (const d of anaDirekler) {
+        const m1 = Math.sqrt((d.x - ln.x1) ** 2 + (d.y - ln.y1) ** 2);
+        const m2 = Math.sqrt((d.x - ln.x2) ** 2 + (d.y - ln.y2) ** 2);
+        if (m1 < d1m) { d1 = d; d1m = m1; }
+        if (m2 < d2m) { d2 = d; d2m = m2; }
+      }
+      if (!d1 || !d2 || d1.numara === d2.numara) continue;
+      if (d1m > ESIK && d2m > ESIK) continue;
 
-    // Her mesafe text için en yakın 2 ana direği bul → mesafe haritası
-    const mesafeHaritasi = new Map();
-    for (const mt of mesafeTextleri) {
-      const mesafeler = anaDirekler.map(d => ({
-        d, m: Math.sqrt((d.x - (mt.x||0)) ** 2 + (d.y - (mt.y||0)) ** 2)
-      })).sort((a, b) => a.m - b.m);
-      if (mesafeler.length < 2) continue;
-      const d1 = mesafeler[0].d, d2 = mesafeler[1].d;
+      const lineMesafe = Math.round(Math.sqrt((ln.x2 - ln.x1) ** 2 + (ln.y2 - ln.y1) ** 2) * 10) / 10;
+      const ortaX = (ln.x1 + ln.x2) / 2, ortaY = (ln.y1 + ln.y2) / 2;
+
+      // LINE üzerindeki iletken text
+      let enYakinIt = null, enYakinItM = Infinity;
+      for (const it of iletkenTextleri) {
+        const m = Math.sqrt((it.x - ortaX) ** 2 + (it.y - ortaY) ** 2);
+        if (m < lineMesafe * 0.6 && m < enYakinItM) { enYakinIt = it; enYakinItM = m; }
+      }
+
+      // LINE üzerindeki mesafe text
+      let enYakinMt = null, enYakinMtM = Infinity;
+      for (const mt of mesafeTextleri) {
+        const m = Math.sqrt((mt.x - ortaX) ** 2 + (mt.y - ortaY) ** 2);
+        if (m < lineMesafe * 0.6 && m < enYakinMtM) { enYakinMt = mt; enYakinMtM = m; }
+      }
+
+      const iletkenText = enYakinIt?.text || '';
+      let hatDurum = 'Yeni';
+      if (/^\(/.test(iletkenText)) hatDurum = 'Mevcut';
+      else if (/^\[/.test(iletkenText)) hatDurum = 'DMM';
+
+      const mesafe = enYakinMt ? parseFloat(enYakinMt.text) : lineMesafe;
+      const skor = d1m + d2m;
       const key1 = `${d1.numara}→${d2.numara}`, key2 = `${d2.numara}→${d1.numara}`;
-      const val = parseFloat(mt.text);
-      if (!mesafeHaritasi.has(key1)) mesafeHaritasi.set(key1, val);
-      if (!mesafeHaritasi.has(key2)) mesafeHaritasi.set(key2, val);
+      const veri = { iletken: iletkenText || null, hatDurum, mesafe, _skor: skor };
+
+      if (!hatlar.has(key1) || skor < hatlar.get(key1)._skor) {
+        hatlar.set(key1, veri); hatlar.set(key2, veri);
+      }
     }
 
     // Komşu bilgilerini oluştur
     for (const d of sonuc) {
       if (!d.numara) continue;
+      const numVal = parseInt(d.numara.slice(1)) || 0;
       const komsular = anaDirekler
         .filter(k => k.numara !== d.numara && k.numara[0] === d.numara[0])
         .map(k => {
           const key = `${d.numara}→${k.numara}`;
           const hat = hatlar.get(key);
-          const gercekMesafe = mesafeHaritasi.get(key);
           const kusMesafe = Math.round(Math.sqrt((k.x - d.x) ** 2 + (k.y - d.y) ** 2) * 10) / 10;
+          const kNumVal = parseInt(k.numara.slice(1)) || 0;
           return {
             numara: k.numara,
-            mesafe: gercekMesafe || kusMesafe,
+            mesafe: hat?.mesafe || kusMesafe,
             iletken: hat?.iletken || null,
             hatDurum: hat?.hatDurum || 'Yeni',
+            yon: kNumVal < numVal ? 'gelen' : 'giden',
           };
         })
+        .filter(k => k.iletken || k.mesafe < 100)
         .sort((a, b) => a.mesafe - b.mesafe)
-        .slice(0, 3);
+        .slice(0, 4);
       d.komsular = komsular;
     }
+
 
     res.json({ success: true, data: { elemanlar: sonuc, toplamDirek: direkler.length, toplamEtiket: etiketler.length } });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
