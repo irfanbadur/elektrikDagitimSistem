@@ -1540,6 +1540,8 @@ CREATE TABLE IF NOT EXISTS hak_edis_metraj (
     kaynak TEXT DEFAULT 'kroki',   -- kroki, manuel
     kaynak_direk_x REAL,           -- DXF koordinat (hangi direkten geldi)
     kaynak_direk_y REAL,
+    -- SPRITE (DXF üzerindeki text bilgisi)
+    sprite_veri TEXT,              -- JSON: {x, y, yukseklik, satirlar[], katman}
     --
     notlar TEXT,
     olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,

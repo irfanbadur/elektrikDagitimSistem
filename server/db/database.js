@@ -544,6 +544,13 @@ function _initSingleDb() {
 
   // Proje durumlarını aktif adıma göre senkronize et
   fixProjeDurumlari(database);
+
+  // sprite_veri sütunu ekle (yoksa)
+  try {
+    database.prepare("SELECT sprite_veri FROM hak_edis_metraj LIMIT 1").get();
+  } catch {
+    try { database.prepare("ALTER TABLE hak_edis_metraj ADD COLUMN sprite_veri TEXT").run(); } catch {}
+  }
 }
 
 function fixFazSorumluRol(database) {

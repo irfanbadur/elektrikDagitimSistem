@@ -41,7 +41,7 @@ router.post('/:projeId', (req, res) => {
       ara_mesafe, ag_iletken_durum, og_iletken_durum,
       ag_iletken, og_iletken,
       yeni_iletken, dmm_iletken,
-      kaynak, kaynak_direk_x, kaynak_direk_y, notlar,
+      kaynak, kaynak_direk_x, kaynak_direk_y, notlar, sprite_veri,
     } = req.body;
 
     // Sıra numarası
@@ -54,8 +54,8 @@ router.post('/:projeId', (req, res) => {
         ara_mesafe, ag_iletken_durum, og_iletken_durum,
         ag_iletken, og_iletken,
         yeni_iletken, dmm_iletken,
-        kaynak, kaynak_direk_x, kaynak_direk_y, notlar
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        kaynak, kaynak_direk_x, kaynak_direk_y, notlar, sprite_veri
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       projeId, maxSira.m + 1,
       nokta1 || null, nokta2 || null, nokta_durum || null,
@@ -65,7 +65,8 @@ router.post('/:projeId', (req, res) => {
       ag_iletken || null, og_iletken || null,
       yeni_iletken ? (typeof yeni_iletken === 'string' ? yeni_iletken : JSON.stringify(yeni_iletken)) : null,
       dmm_iletken ? (typeof dmm_iletken === 'string' ? dmm_iletken : JSON.stringify(dmm_iletken)) : null,
-      kaynak || 'manuel', kaynak_direk_x || null, kaynak_direk_y || null, notlar || null
+      kaynak || 'manuel', kaynak_direk_x || null, kaynak_direk_y || null, notlar || null,
+      sprite_veri ? (typeof sprite_veri === 'string' ? sprite_veri : JSON.stringify(sprite_veri)) : null
     );
 
     const yeni = db.prepare('SELECT * FROM hak_edis_metraj WHERE id = ?').get(result.lastInsertRowid);

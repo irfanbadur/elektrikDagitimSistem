@@ -368,6 +368,28 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   const handleMetrajAktar = async () => {
     try {
       const komsu = direk.komsular?.[0]
+      // Sprite text satırları (sadece spriteText: true olanlar)
+      const spriteSatirlari = [...otomatikler, ...malzemeler].filter(m => m.spriteText).map(m => `${m.miktar}x ${m.adi}`)
+      // Sprite text'i metraj katmanında göster → guncelleNotlar ile DXF'e ekle
+      const spriteMetraj = spriteSatirlari.length ? spriteSatirlari : undefined
+      if (spriteMetraj) {
+        onMalzemeGuncelle?.({
+          key: direkKey,
+          x: mevcutNot?.x || direk.x,
+          y: mevcutNot?.y || direk.y,
+          yukseklik: direk.yukseklik || 2,
+          katman: 'metraj',
+          malzemeler: [...otomatikler, ...malzemeler].filter(m => m.spriteText).map(m => ({ adi: m.adi, miktar: m.miktar })),
+        })
+      }
+      // Sprite verisi — konum + yükseklik + satırlar + katman
+      const spriteVeri = {
+        x: mevcutNot?.x || direk.x,
+        y: mevcutNot?.y || direk.y,
+        yukseklik: direk.yukseklik || 2,
+        katman: 'metraj',
+        satirlar: spriteSatirlari,
+      }
       await api.post(`/hak-edis-metraj/${projeId}`, {
         nokta1: direkNumara || direk.etiket || '', nokta2: komsu?.numara || '', nokta_durum: 'Yeni',
         direk_tur: direkTur || '', direk_tip: direkTip ? (direkTur === 'Galvaniz' ? 'G-' : '') + direkTip + (hasPotans ? '(P)' : '') : '',
@@ -376,6 +398,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
         og_iletken: iletkenListesi.filter(il => /OG|SWALLOW|RAVEN|PIGEON|HAWK/i.test(il.adi)).map(il => il.adi).join(', ') || null,
         kaynak: 'kroki', kaynak_direk_x: direk.x, kaynak_direk_y: direk.y,
         notlar: [...tumMalzemeler.map(m => `${m.miktar}x ${m.adi}`), ...iletkenListesi.map(il => `Iletken: ${il.adi}${il.mesafe ? ' (' + il.mesafe + 'm)' : ''}`)].join('\n'),
+        sprite_veri: spriteVeri,
       })
       // Hak Ediş sekmesini yenile ve geçiş yap
       metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj', projeId] })
@@ -1829,8 +1852,36 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit })
   const [seciliDosya, setSeciliDosya] = useState(null) // { id, adi, adimAdi, overlayId? }
   const [seciliDirek, setSeciliDirek] = useState(null)
   const [direkNotlari, setDirekNotlari] = useState({})
-  const [direkListesi, setDirekListesi] = useState([]) // DxfOnizleme'den gelen tüm direkler
+  const [direkListesi, setDirekListesi] = useState([])
   useEffect(() => { setDirekNotlari({}); setSeciliDirek(null) }, [seciliDosya?.id])
+
+  // Kaydedilmiş sprite text'leri metraj verilerinden yükle
+  useEffect(() => {
+    if (!seciliDosya?.dxf || !projeId) return
+    const yukle = async () => {
+      try {
+        const res = await api.get(`/hak-edis-metraj/${projeId}`)
+        const satirlar = res.data || []
+        const notlar = {}
+        for (const s of satirlar) {
+          if (!s.sprite_veri) continue
+          const sv = typeof s.sprite_veri === 'string' ? JSON.parse(s.sprite_veri) : s.sprite_veri
+          if (!sv.satirlar?.length) continue
+          const key = s.nokta1 || `direk_${s.id}`
+          notlar[key] = {
+            x: sv.x, y: sv.y, yukseklik: sv.yukseklik || 2,
+            katman: sv.katman || 'metraj',
+            malzemeler: sv.satirlar.map(satir => {
+              const m = satir.match(/^(\d+)x\s*(.+)$/)
+              return m ? { adi: m[2], miktar: Number(m[1]) } : { adi: satir, miktar: 1 }
+            }),
+          }
+        }
+        if (Object.keys(notlar).length) setDirekNotlari(prev => ({ ...notlar, ...prev }))
+      } catch {}
+    }
+    yukle()
+  }, [seciliDosya?.id, projeId])
   const dragState = useRef({ startX: 0, scrollLeft: 0 })
 
   // Demontaj Krokisi — mevcut/yeni durum DXF dosya bilgilerini al
