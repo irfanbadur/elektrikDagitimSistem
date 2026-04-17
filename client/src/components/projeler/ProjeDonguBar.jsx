@@ -2047,7 +2047,15 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
               overlayUrl={seciliDosya.overlayId ? `/api/dosya/${seciliDosya.overlayId}/dosya` : null}
               onDirekTikla={seciliDosya.dxf ? (d) => {
                 if (seciliDosya.adimKodu === 'hak_edis_krokisi' && onDirekSec && d.numara) {
-                  onDirekSec(d.numara)
+                  // Yakın elemanları tespit et
+                  const yakinlar = { armatur: false, koruma: false, isletme: false }
+                  for (const el of direkListesi) {
+                    if (el.numara !== d.numara || el === d) continue
+                    if (el.sembol === 'C') yakinlar.armatur = true
+                    if (el.sembol === '4') yakinlar.koruma = true
+                    if (el.sembol === '5') yakinlar.isletme = true
+                  }
+                  onDirekSec({ numara: d.numara, tip: d.tip, sembol: d.sembol, sembolAdi: d.sembolAdi, komsular: d.komsular, yakinlar })
                 } else {
                   if (!seciliDirek) setSeciliDirek(d)
                 }

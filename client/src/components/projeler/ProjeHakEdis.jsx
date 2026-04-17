@@ -254,7 +254,7 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
   )
 }
 
-export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekNo, onSeciliDirekTemizle }) {
+export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBilgi, onSeciliDirekTemizle }) {
   const { data: satirlar, isLoading } = useHakEdisMetraj(projeId)
   const { data: ozet } = useHakEdisMetrajOzet(projeId)
   const ekle = useHakEdisMetrajEkle(projeId)
@@ -264,20 +264,41 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekNo,
   const [seciliIdler, setSeciliIdler] = useState(new Set())
   const [acikIdler, setAcikIdler] = useState(new Set())
 
-  // Direk tıklandığında: mevcut satır varsa aç, yoksa oluştur
+  // Direk tıklandığında: mevcut satır varsa aç, yoksa oluştur (oto-malzeme + tip eşleşme ile)
   useEffect(() => {
-    if (!seciliDirekNo || isLoading) return
-    const mevcut = satirlar?.find(s => s.nokta1 === seciliDirekNo)
+    if (!seciliDirekBilgi?.numara || isLoading) return
+    const numara = seciliDirekBilgi.numara
+    const mevcut = satirlar?.find(s => s.nokta1 === numara)
+
     if (mevcut) {
       setAcikIdler(prev => new Set([...prev, mevcut.id]))
     } else {
-      ekle.mutateAsync({ nokta1: seciliDirekNo, nokta_durum: 'Yeni', kaynak: 'kroki' }).then(res => {
+      // DXF'ten gelen bilgilerle yeni kayıt oluştur
+      const rawTip = seciliDirekBilgi.tip || ''
+      const cleanTip = rawTip.replace(/^G-/i, '').replace(/\(P\)/gi, '').trim()
+      const turFromTip = TIP_TUR_MAP[cleanTip] || (rawTip.startsWith('G-') ? 'AG Direk' : '')
+      const komsu = seciliDirekBilgi.komsular?.[0]
+
+      // Oto-malzemeler
+      const otoMalz = hesaplaOtoMalzemeler(rawTip, seciliDirekBilgi.yakinlar)
+      const otoNotlar = otoMalz.map(m => `${m.miktar}x ${m.adi}`).join('\n')
+
+      ekle.mutateAsync({
+        nokta1: numara,
+        nokta2: komsu?.numara || '',
+        nokta_durum: 'Yeni',
+        direk_tur: turFromTip,
+        direk_tip: cleanTip || rawTip,
+        ara_mesafe: komsu?.mesafe || 0,
+        notlar: otoNotlar,
+        kaynak: 'kroki',
+      }).then(res => {
         const yeniId = (res?.data || res)?.id
         if (yeniId) setAcikIdler(prev => new Set([...prev, yeniId]))
       })
     }
     onSeciliDirekTemizle?.()
-  }, [seciliDirekNo, satirlar, isLoading])
+  }, [seciliDirekBilgi, satirlar, isLoading])
   const [excelYukleniyor, setExcelYukleniyor] = useState(false)
   const [excelDosyaId, setExcelDosyaId] = useState(null)
 
