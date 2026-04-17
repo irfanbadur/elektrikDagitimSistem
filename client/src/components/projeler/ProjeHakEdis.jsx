@@ -28,7 +28,7 @@ const TIP_TUR_MAP = {
 const BILINEN_TIPLER = Object.keys(TIP_TUR_MAP)
 
 // ── Tek malzeme satırı: ad tıkla→arama, miktar düzenle, sil ──
-function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMiktarDegistir, onSil }) {
+function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMiktarDegistir, onGorunurDegistir, onSil }) {
   const [duzenle, setDuzenle] = useState(false)
   const [aramaVal, setAramaVal] = useState('')
   const [sonuclar, setSonuclar] = useState([])
@@ -93,7 +93,10 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMik
   }
 
   return (
-    <div className="flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10">
+    <div className={cn("flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10", malzeme.gorunur === false && "opacity-50")}>
+      <input type="checkbox" checked={malzeme.gorunur !== false}
+        onChange={e => onGorunurDegistir(e.target.checked)}
+        title="Sahnede göster" className="h-3 w-3 accent-primary cursor-pointer shrink-0" />
       <input value={malzeme.kisaIsim || ''} onChange={e => onKisaIsimDegistir(e.target.value)}
         placeholder="kısa" title="Kısa isim (sprite text'te görünür)"
         className="w-16 rounded border border-input bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-700 focus:outline-none focus:border-amber-400" />
@@ -111,43 +114,42 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMik
 function hesaplaOtoMalzemeler(tip, yakinlar) {
   const oto = []
   const hasPotans = /\(P\)/i.test(tip || '')
-  if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1, birim: 'Ad' })
-  if (yakinlar?.armatur) oto.push({ adi: 'ARM. LED KOR. SINIF 1 S15/8/1', miktar: 1, birim: 'Ad' })
+  if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1, birim: 'Ad', gorunur: false })
+  if (yakinlar?.armatur) oto.push({ adi: 'ARM. LED KOR. SINIF 1 S15/8/1', miktar: 1, birim: 'Ad', gorunur: false })
   if (yakinlar?.koruma) {
-    oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad' })
-    oto.push({ adi: '95 mm2 Galvanizli Celik Iletken ve gomulmesi', miktar: 5, birim: 'm' })
+    oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', gorunur: false })
+    oto.push({ adi: '95 mm2 Galvanizli Celik Iletken ve gomulmesi', miktar: 5, birim: 'm', gorunur: false })
   }
   if (yakinlar?.isletme) {
-    oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad' })
-    oto.push({ adi: '95 mm2 NAYY kablo ve gomulmesi', miktar: 30, birim: 'm' })
+    oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', gorunur: false })
+    oto.push({ adi: '95 mm2 NAYY kablo ve gomulmesi', miktar: 30, birim: 'm', gorunur: false })
   }
   return oto
 }
 
 // ── Direk accordion satırı ──
 function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSecim, projeId, onSpriteGuncelle }) {
-  // Notlar format: "miktar|kisaisim|tamadi" veya eski "Nx tamadi"
+  // Notlar format: "miktar|kisaisim|tamadi|gorunur" veya eski "Nx tamadi"
   const notSatirlari = (s.notlar || '').split('\n').filter(Boolean)
   const malzemeSatirlari = notSatirlari.filter(n => !n.startsWith('Iletken:')).map(satir => {
-    // Yeni format: "2|6,5U-100|Galvanizli Kaynaklı Direk 6,5U-100"
     const pParts = satir.split('|')
-    if (pParts.length >= 3) return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1], adi: pParts[2] }
-    if (pParts.length === 2) return { miktar: Number(pParts[0]) || 1, kisaIsim: '', adi: pParts[1] }
-    // Eski format: "2x Tam Adi"
+    if (pParts.length >= 4) return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1], adi: pParts[2], gorunur: pParts[3] !== '0' }
+    if (pParts.length >= 3) return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1], adi: pParts[2], gorunur: true }
+    if (pParts.length === 2) return { miktar: Number(pParts[0]) || 1, kisaIsim: '', adi: pParts[1], gorunur: true }
     const m = satir.match(/^(\d+)x\s*(.+)$/)
-    return m ? { miktar: Number(m[1]), kisaIsim: '', adi: m[2] } : { miktar: 1, kisaIsim: '', adi: satir }
+    return m ? { miktar: Number(m[1]), kisaIsim: '', adi: m[2], gorunur: true } : { miktar: 1, kisaIsim: '', adi: satir, gorunur: true }
   })
   const iletkenSatirlari = notSatirlari.filter(n => n.startsWith('Iletken:')).map(n => n.replace('Iletken: ', ''))
 
-  // Notları yeniden oluşturup kaydet — yeni format: "miktar|kisaisim|tamadi"
+  // Notları yeniden oluşturup kaydet — format: "miktar|kisaisim|tamadi|gorunur"
   const notlariKaydet = (malzList, iltkList) => {
     const yeniNotlar = [
-      ...malzList.map(m => `${m.miktar}|${m.kisaIsim || ''}|${m.adi}`),
+      ...malzList.map(m => `${m.miktar}|${m.kisaIsim || ''}|${m.adi}|${m.gorunur === false ? '0' : '1'}`),
       ...iltkList.map(il => `Iletken: ${il}`),
     ].join('\n')
     onGuncelle('notlar', yeniNotlar)
-    // Sprite text güncelle — kısa isim varsa onu, yoksa tam adı kullan
-    onSpriteGuncelle?.(s.nokta1, malzList.map(m => `${m.miktar}x ${m.kisaIsim || m.adi}`))
+    // Sprite text — sadece gorunur=true olanlar, kısa isim varsa onu kullan
+    onSpriteGuncelle?.(s.nokta1, malzList.filter(m => m.gorunur !== false).map(m => `${m.miktar}x ${m.kisaIsim || m.adi}`))
   }
 
   // Tip arama + otomatik tamamlama
@@ -308,6 +310,7 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
                     onAdiDegistir={(yeniAdi) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, adi: yeniAdi }; notlariKaydet(yeni, iletkenSatirlari) }}
                     onKisaIsimDegistir={(yeniKisa) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, kisaIsim: yeniKisa }; notlariKaydet(yeni, iletkenSatirlari) }}
                     onMiktarDegistir={(yeniMiktar) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, miktar: yeniMiktar }; notlariKaydet(yeni, iletkenSatirlari) }}
+                    onGorunurDegistir={(g) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, gorunur: g }; notlariKaydet(yeni, iletkenSatirlari) }}
                     onSil={() => notlariKaydet(malzemeSatirlari.filter((_, j) => j !== i), iletkenSatirlari)}
                   />
                 ))
@@ -364,7 +367,7 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
 
       // Oto-malzemeler
       const otoMalz = hesaplaOtoMalzemeler(rawTip, seciliDirekBilgi.yakinlar)
-      const otoNotlar = otoMalz.map(m => `${m.miktar}x ${m.adi}`).join('\n')
+      const otoNotlar = otoMalz.map(m => `${m.miktar}||${m.adi}|${m.gorunur === false ? '0' : '1'}`).join('\n')
 
       ekle.mutateAsync({
         nokta1: numara,
