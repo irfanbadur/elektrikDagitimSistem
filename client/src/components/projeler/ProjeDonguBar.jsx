@@ -227,7 +227,8 @@ const BILINEN_TIPLER = Object.keys(TIP_TUR_MAP)
 
 function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle, adimKodu, tumDirekler, onSekmeGit, onDxfKaydet }) {
   const metrajQc = useQueryClient()
-  const direkKey = [direk.numara, direk.tip].filter(Boolean).join(' ') || direk.etiket || 'Direk'
+  // Sprite key = direk numarası (oturumlar arası tutarlı)
+  const direkKey = direk.numara || direk.etiket || `direk_${Math.round(direk.x)}_${Math.round(direk.y)}`
   const mevcutNot = direkNotlari?.[direkKey]
   const malzemeler = mevcutNot?.malzemeler || []
 
@@ -377,7 +378,7 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
           key: direkKey,
           x: mevcutNot?.x || direk.x,
           y: mevcutNot?.y || direk.y,
-          yukseklik: direk.yukseklik || 2,
+          yukseklik: 3.5,
           katman: 'metraj',
           malzemeler: [...otomatikler, ...malzemeler].filter(m => m.spriteText).map(m => ({ adi: m.adi, miktar: m.miktar })),
         })
@@ -791,21 +792,23 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
             if (!direklerRef.current.length || !e.position) return
             const px = e.position.x + (viewer.origin?.x || 0)
             const py = e.position.y + (viewer.origin?.y || 0)
-            // En yakın direği bul
+            // En yakın elemanı bul
             let enYakin = null, enYakinMesafe = Infinity
             for (const d of direklerRef.current) {
               const dx = d.x - px, dy = d.y - py
               const mesafe = Math.sqrt(dx*dx + dy*dy)
               if (mesafe < enYakinMesafe) { enYakinMesafe = mesafe; enYakin = d }
             }
-            // 15 birim yakınlık eşiği
-            if (enYakin && enYakinMesafe < 15) {
-              const domEvt = e.domEvent || evt
-              onDirekTiklaRef.current?.({
-                ...enYakin,
-                mesafe: enYakinMesafe,
-              })
+            if (!enYakin || enYakinMesafe >= 15) return
+            // Tıklanan eleman ana direk değilse (C, 4, 5), aynı numaralı ana direği (E, A, 2) bul
+            let anadirek = enYakin
+            if (enYakin.numara && !['E', 'A', '2'].includes(enYakin.sembol)) {
+              const adaylar = direklerRef.current.filter(d =>
+                d.numara === enYakin.numara && ['E', 'A', '2'].includes(d.sembol)
+              )
+              if (adaylar.length > 0) anadirek = adaylar[0]
             }
+            onDirekTiklaRef.current?.({ ...anadirek, mesafe: enYakinMesafe })
           })
         }
       } catch (err) {
@@ -2056,8 +2059,8 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit })
                   [not.key]: {
                     x: not.x,
                     y: not.y,
-                    yukseklik: not.yukseklik,
-                    katman: prev[not.key]?.katman || 'kesif',
+                    yukseklik: not.yukseklik || 3.5,
+                    katman: not.katman || prev[not.key]?.katman || 'kesif',
                     malzemeler: not.malzemeler,
                   }
                 }))}
