@@ -77,7 +77,8 @@ export default function ProjeDetay() {
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [durumMenuAcik, setDurumMenuAcik] = useState(false)
   const previewRef = useRef(null)
-  const [seciliDirekBilgi, setSeciliDirekBilgi] = useState(null) // {numara, tip, sembol, yakinlar, komsular}
+  const [seciliDirekBilgi, setSeciliDirekBilgi] = useState(null)
+  const spriteGuncelleRef = useRef(null) // ProjeDonguBar'dan gelen sprite güncelleme fonksiyonu
 
   const handleSil = () => {
     projeSil.mutate(id, {
@@ -304,7 +305,8 @@ export default function ProjeDetay() {
       {/* Yasam Dongusu — her zaman tam genislik */}
       <div className="flex-shrink-0">
         <ProjeDonguBar projeId={id} previewPortalRef={previewRef} onSekmeGit={setAktifTab}
-          onDirekSec={(direkBilgi) => { setSeciliDirekBilgi(direkBilgi); setAktifTab('hak_edis') }} />
+          onDirekSec={(direkBilgi) => { setSeciliDirekBilgi(direkBilgi); setAktifTab('hak_edis') }}
+          onSpriteGuncelleRef={spriteGuncelleRef} />
       </div>
 
       {/* Viewer + Sekmeler: genis ekranda yan yana %50/%50, dar ekranda alt alta %100 */}
@@ -502,7 +504,10 @@ export default function ProjeDetay() {
         )}
 
         {aktifTab === 'hak_edis' && (
-          <ProjeHakEdis projeId={id} seciliDirekBilgi={seciliDirekBilgi} onSeciliDirekTemizle={() => setSeciliDirekBilgi(null)} />
+          <ProjeHakEdis projeId={id} seciliDirekBilgi={seciliDirekBilgi} onSeciliDirekTemizle={() => setSeciliDirekBilgi(null)}
+            onSpriteGuncelle={(nokta1, satirlar) => {
+              if (spriteGuncelleRef.current) spriteGuncelleRef.current(nokta1, satirlar)
+            }} />
         )}
 
         {aktifTab === 'notlar' && (

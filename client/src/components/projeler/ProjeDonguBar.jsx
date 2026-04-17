@@ -1869,7 +1869,7 @@ function AdimKarti({ adim, projeId, onDosyaSec }) {
 }
 
 // ─── Ana Komponent ───────────────────────────
-export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, onDirekSec }) {
+export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, onDirekSec, onSpriteGuncelleRef }) {
   const { data: ilerleme } = useProjeFazIlerleme(projeId)
   const scrollRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -1878,6 +1878,33 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
   const [direkNotlari, setDirekNotlari] = useState({})
   const [direkListesi, setDirekListesi] = useState([])
   useEffect(() => { setDirekNotlari({}); setSeciliDirek(null) }, [seciliDosya?.id])
+
+  // Sprite güncelleme fonksiyonunu dışarıya expose et
+  useEffect(() => {
+    if (onSpriteGuncelleRef) {
+      onSpriteGuncelleRef.current = (nokta1, satirlar) => {
+        if (!nokta1) return
+        setDirekNotlari(prev => {
+          const mevcut = prev[nokta1] || {}
+          const direkEl = direkListesi.find(d => d.numara === nokta1 && ['E', 'A', '2'].includes(d.sembol))
+          return {
+            ...prev,
+            [nokta1]: {
+              ...mevcut,
+              x: mevcut.x || direkEl?.x || 0,
+              y: mevcut.y || direkEl?.y || 0,
+              yukseklik: 3.5,
+              katman: 'metraj',
+              malzemeler: satirlar.map(s => {
+                const m = s.match(/^(\d+)x\s*(.+)$/)
+                return m ? { adi: m[2], miktar: Number(m[1]) } : { adi: s, miktar: 1 }
+              }),
+            }
+          }
+        })
+      }
+    }
+  }, [onSpriteGuncelleRef, direkListesi])
 
   // Kaydedilmiş sprite text'leri metraj verilerinden yükle
   useEffect(() => {

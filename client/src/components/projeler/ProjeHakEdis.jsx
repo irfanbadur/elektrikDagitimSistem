@@ -28,7 +28,7 @@ const TIP_TUR_MAP = {
 const BILINEN_TIPLER = Object.keys(TIP_TUR_MAP)
 
 // ── Tek malzeme satırı: ad tıkla→arama, miktar düzenle, sil ──
-function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onMiktarDegistir, onSil }) {
+function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMiktarDegistir, onSil }) {
   const [duzenle, setDuzenle] = useState(false)
   const [aramaVal, setAramaVal] = useState('')
   const [sonuclar, setSonuclar] = useState([])
@@ -94,6 +94,9 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onMiktarDegistir, onSil }
 
   return (
     <div className="flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10">
+      <input value={malzeme.kisaIsim || ''} onChange={e => onKisaIsimDegistir(e.target.value)}
+        placeholder="kısa" title="Kısa isim (sprite text'te görünür)"
+        className="w-16 rounded border border-input bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-700 focus:outline-none focus:border-amber-400" />
       <span className="flex-1 truncate cursor-pointer hover:text-primary hover:underline" title={`${malzeme.adi} — tıkla değiştir`}
         onClick={() => { setDuzenle(true); setAramaVal(malzeme.adi) }}>{malzeme.adi}</span>
       <input type="number" value={malzeme.miktar} min={1}
@@ -123,18 +126,28 @@ function hesaplaOtoMalzemeler(tip, yakinlar) {
 
 // ── Direk accordion satırı ──
 function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSecim, projeId, onSpriteGuncelle }) {
+  // Notlar format: "miktar|kisaisim|tamadi" veya eski "Nx tamadi"
   const notSatirlari = (s.notlar || '').split('\n').filter(Boolean)
   const malzemeSatirlari = notSatirlari.filter(n => !n.startsWith('Iletken:')).map(satir => {
+    // Yeni format: "2|6,5U-100|Galvanizli Kaynaklı Direk 6,5U-100"
+    const pParts = satir.split('|')
+    if (pParts.length >= 3) return { miktar: Number(pParts[0]) || 1, kisaIsim: pParts[1], adi: pParts[2] }
+    if (pParts.length === 2) return { miktar: Number(pParts[0]) || 1, kisaIsim: '', adi: pParts[1] }
+    // Eski format: "2x Tam Adi"
     const m = satir.match(/^(\d+)x\s*(.+)$/)
-    return m ? { miktar: Number(m[1]), adi: m[2] } : { miktar: 1, adi: satir }
+    return m ? { miktar: Number(m[1]), kisaIsim: '', adi: m[2] } : { miktar: 1, kisaIsim: '', adi: satir }
   })
   const iletkenSatirlari = notSatirlari.filter(n => n.startsWith('Iletken:')).map(n => n.replace('Iletken: ', ''))
 
-  // Notları yeniden oluşturup kaydet
+  // Notları yeniden oluşturup kaydet — yeni format: "miktar|kisaisim|tamadi"
   const notlariKaydet = (malzList, iltkList) => {
-    const yeniNotlar = [...malzList.map(m => `${m.miktar}x ${m.adi}`), ...iltkList.map(il => `Iletken: ${il}`)].join('\n')
+    const yeniNotlar = [
+      ...malzList.map(m => `${m.miktar}|${m.kisaIsim || ''}|${m.adi}`),
+      ...iltkList.map(il => `Iletken: ${il}`),
+    ].join('\n')
     onGuncelle('notlar', yeniNotlar)
-    onSpriteGuncelle?.(s.nokta1, malzList.map(m => `${m.miktar}x ${m.adi}`))
+    // Sprite text güncelle — kısa isim varsa onu, yoksa tam adı kullan
+    onSpriteGuncelle?.(s.nokta1, malzList.map(m => `${m.miktar}x ${m.kisaIsim || m.adi}`))
   }
 
   // Tip arama + otomatik tamamlama
@@ -293,6 +306,7 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
                 malzemeSatirlari.map((m, i) => (
                   <MalzemeSatirDuzenle key={i} malzeme={m}
                     onAdiDegistir={(yeniAdi) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, adi: yeniAdi }; notlariKaydet(yeni, iletkenSatirlari) }}
+                    onKisaIsimDegistir={(yeniKisa) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, kisaIsim: yeniKisa }; notlariKaydet(yeni, iletkenSatirlari) }}
                     onMiktarDegistir={(yeniMiktar) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, miktar: yeniMiktar }; notlariKaydet(yeni, iletkenSatirlari) }}
                     onSil={() => notlariKaydet(malzemeSatirlari.filter((_, j) => j !== i), iletkenSatirlari)}
                   />
