@@ -200,8 +200,30 @@ function _notCizgisiGuncelle(three, sprite) {
   line.computeLineDistances()
 }
 
-// ── Tür seçenekleri ──
-const TUR_SECENEKLERI = ['Agac', 'Beton', 'Galvaniz', 'Demir']
+// ── Tür seçenekleri (Excel F2 sayfası H sütunundan) ──
+const TUR_SECENEKLERI = [
+  'Agac Direk', 'AG Direk', 'Musterek Direk', 'Trafo Diregi',
+  'Buyuk Aralikli Swallow Direk', 'Buyuk Aralikli Pigeon Direk', 'Buyuk Aralikli Raven Direk',
+  'Civatali Trafo Diregi', 'Civatali Buyuk Aralikli Direk',
+  'Civatali 3/0 Tek Devre Direk', 'Civatali 3/0 Cift Devre Direk',
+  'Civatali 477 Cift Devre Direk', 'Civatali 477 Dort Devre Direk',
+  'Betonarme Direkler',
+]
+
+// ── Tip → Tür eşleşme tablosu (Excel F2 sayfası D→C) ──
+const TIP_TUR_MAP = {
+  '9-O': 'Agac Direk', '12-O': 'Agac Direk',
+  '8I': 'AG Direk', '10I': 'AG Direk', '10U': 'AG Direk', '12I': 'AG Direk', '12U': 'AG Direk',
+  'K1': 'AG Direk', 'K1+2': 'AG Direk', 'K2': 'AG Direk', 'K2+2': 'AG Direk', 'K3': 'AG Direk', 'K4': 'AG Direk', 'K5': 'AG Direk',
+  '10I"': 'Musterek Direk', '12I"': 'Musterek Direk', '10U\'\'': 'Musterek Direk', '12U\'\'': 'Musterek Direk',
+  'K1"': 'Musterek Direk', 'K2"': 'Musterek Direk', 'K3"': 'Musterek Direk', 'K4"': 'Musterek Direk', 'K5"': 'Musterek Direk',
+  'T15': 'Trafo Diregi', 'T25': 'Trafo Diregi', 'T35': 'Trafo Diregi', 'T50': 'Trafo Diregi',
+  'D10': 'Buyuk Aralikli Swallow Direk', 'D12': 'Buyuk Aralikli Swallow Direk', 'D14': 'Buyuk Aralikli Swallow Direk',
+  'D16': 'Buyuk Aralikli Swallow Direk', 'D18': 'Buyuk Aralikli Swallow Direk', 'D20': 'Buyuk Aralikli Swallow Direk',
+  'N10': 'Buyuk Aralikli Swallow Direk', 'N12': 'Buyuk Aralikli Swallow Direk', 'N14': 'Buyuk Aralikli Swallow Direk',
+  'N16': 'Buyuk Aralikli Swallow Direk', 'N18': 'Buyuk Aralikli Swallow Direk', 'N20': 'Buyuk Aralikli Swallow Direk',
+}
+const BILINEN_TIPLER = Object.keys(TIP_TUR_MAP)
 
 function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGuncelle, adimKodu, tumDirekler }) {
   const direkKey = [direk.numara, direk.tip].filter(Boolean).join(' ') || direk.etiket || 'Direk'
@@ -238,7 +260,18 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
 
   const [direkNumara, setDirekNumara] = useState(direk.numara || '')
   const [direkTip, setDirekTip] = useState(cleanTip)
-  const [direkTur, setDirekTur] = useState(turFromTip())
+  const [direkTur, setDirekTur] = useState(TIP_TUR_MAP[cleanTip] || turFromTip())
+  const [tipOneriAcik, setTipOneriAcik] = useState(false)
+
+  // Tip değiştiğinde Tür otomatik eşleştir + öneri listesi göster
+  const handleTipDegistir = (val) => {
+    setDirekTip(val)
+    // Eşleşen tür varsa otomatik set et
+    const eslesen = TIP_TUR_MAP[val] || TIP_TUR_MAP[val.toUpperCase()]
+    if (eslesen) setDirekTur(eslesen)
+    setTipOneriAcik(val.length > 0)
+  }
+  const tipOnerileri = direkTip ? BILINEN_TIPLER.filter(t => t.toLowerCase().includes(direkTip.toLowerCase())).slice(0, 8) : []
 
   // ── Otomatik malzemeler (DXF'ten tespit — sprite text'e EKLENMEYecek) ──
   const [otomatikler] = useState(() => {
@@ -345,13 +378,28 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
           <div className="flex items-center gap-1.5 flex-1 min-w-0">
             <input value={direkNumara} onChange={e => setDirekNumara(e.target.value)} placeholder="No"
               className="w-14 rounded border border-input bg-white px-1.5 py-1 text-xs font-bold text-primary focus:border-primary focus:outline-none" />
+            <div className="relative flex-1 min-w-0">
+              <input value={direkTip} onChange={e => handleTipDegistir(e.target.value)}
+                onFocus={() => setTipOneriAcik(true)} onBlur={() => setTimeout(() => setTipOneriAcik(false), 200)}
+                placeholder="Tip (10I, 12I, K1...)"
+                className="w-full rounded border border-input bg-white px-1.5 py-1 text-xs text-emerald-600 font-medium focus:border-primary focus:outline-none" />
+              {tipOneriAcik && tipOnerileri.length > 0 && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-48 max-h-32 overflow-y-auto rounded border border-border bg-white shadow-lg">
+                  {tipOnerileri.map(t => (
+                    <button key={t} onMouseDown={e => { e.preventDefault(); setDirekTip(t); setDirekTur(TIP_TUR_MAP[t] || direkTur); setTipOneriAcik(false) }}
+                      className="flex w-full items-center justify-between px-2 py-1 text-[10px] hover:bg-primary/5 border-b border-border/20">
+                      <span className="font-medium text-emerald-600">{t}</span>
+                      <span className="text-muted-foreground truncate ml-2">{TIP_TUR_MAP[t]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <select value={direkTur} onChange={e => setDirekTur(e.target.value)}
-              className="rounded border border-input bg-white px-1.5 py-1 text-xs focus:border-primary focus:outline-none">
+              className="rounded border border-input bg-white px-1.5 py-1 text-[10px] focus:border-primary focus:outline-none max-w-[140px]">
               <option value="">Tur sec...</option>
               {TUR_SECENEKLERI.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
-            <input value={direkTip} onChange={e => setDirekTip(e.target.value)} placeholder="Tip (10I, 12I, K1...)"
-              className="flex-1 min-w-0 rounded border border-input bg-white px-1.5 py-1 text-xs text-emerald-600 font-medium focus:border-primary focus:outline-none" />
             {hasPotans && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">P</span>}
             {direk.komsular?.length > 0 && <span className="text-[10px] text-muted-foreground shrink-0">→{direk.komsular[0].numara} ({direk.komsular[0].mesafe}m)</span>}
           </div>
