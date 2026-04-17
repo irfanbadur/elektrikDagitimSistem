@@ -33,6 +33,7 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onMiktarDegistir, onSil }
   const [aramaVal, setAramaVal] = useState('')
   const [sonuclar, setSonuclar] = useState([])
   const [araniyor, setAraniyor] = useState(false)
+  const [secIdx, setSecIdx] = useState(-1)
   const timerRef = useRef(null)
 
   const araFunc = (text) => {
@@ -48,12 +49,27 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onMiktarDegistir, onSil }
     }, 300)
   }
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
+  useEffect(() => { setSecIdx(-1) }, [sonuclar])
+
+  const secVeKapat = (item) => {
+    onAdiDegistir(item.malzeme_cinsi || item.malzeme_tanimi_sap || '')
+    setDuzenle(false); setSonuclar([])
+  }
+
+  const handleKeyDown = (e) => {
+    if (!sonuclar.length) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setSecIdx(p => Math.min(p + 1, sonuclar.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setSecIdx(p => Math.max(p - 1, 0)) }
+    else if (e.key === 'Enter' && secIdx >= 0) { e.preventDefault(); secVeKapat(sonuclar[secIdx]) }
+    else if (e.key === 'Escape') { setDuzenle(false); setSonuclar([]) }
+  }
 
   if (duzenle) {
     return (
       <div className="relative border-b border-border/10 py-0.5">
         <div className="flex items-center gap-1">
           <input value={aramaVal} onChange={e => { setAramaVal(e.target.value); araFunc(e.target.value) }}
+            onKeyDown={handleKeyDown}
             onBlur={() => setTimeout(() => { setDuzenle(false); setSonuclar([]) }, 200)}
             autoFocus placeholder="Malzeme ara..."
             className="flex-1 rounded border border-primary bg-white px-1 py-0.5 text-[10px] focus:outline-none" />
@@ -62,9 +78,9 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onMiktarDegistir, onSil }
         {(araniyor || sonuclar.length > 0) && (
           <div className="absolute left-0 top-full z-50 mt-0.5 w-full max-h-32 overflow-y-auto rounded border border-border bg-white shadow-lg">
             {araniyor ? <div className="px-2 py-1 text-[10px] text-muted-foreground">Araniyor...</div> : (
-              sonuclar.map(item => (
-                <button key={item.id} onMouseDown={e => { e.preventDefault(); onAdiDegistir(item.malzeme_cinsi || item.malzeme_tanimi_sap || ''); setDuzenle(false); setSonuclar([]) }}
-                  className="flex w-full items-center gap-1 px-2 py-1 text-[10px] text-left border-b border-border/20 hover:bg-primary/5">
+              sonuclar.map((item, i) => (
+                <button key={item.id} onMouseDown={e => { e.preventDefault(); secVeKapat(item) }}
+                  className={cn("flex w-full items-center gap-1 px-2 py-1 text-[10px] text-left border-b border-border/20", i === secIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
                   <span className="font-mono text-blue-600 w-14 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
                   <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap}</span>
                 </button>
