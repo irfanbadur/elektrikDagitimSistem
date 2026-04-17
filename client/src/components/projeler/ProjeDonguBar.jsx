@@ -429,27 +429,6 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
           </div>
         )}
 
-        {/* Katalog arama çubuğu */}
-        <div className="relative">
-          <input ref={inputRef} value={arama} onChange={e => { setArama(e.target.value); ara(e.target.value) }}
-            onKeyDown={handleKeyDown}
-            placeholder="Malzeme ara (katalog)..."
-            className="w-full rounded border border-input bg-white px-2 py-1.5 text-xs focus:border-primary focus:outline-none" />
-          {(araniyor || sonuclar.length > 0) && (
-            <div className="absolute left-0 top-full z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-lg border border-border bg-white shadow-xl">
-              {araniyor ? <div className="px-3 py-2 text-[10px] text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin mr-1" />Araniyor...</div> : (
-                sonuclar.map((item, i) => (
-                  <button key={item.id} onClick={() => handleSec(item)}
-                    className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-[10px] border-b border-border/30', i === secIdx ? 'bg-primary/10' : 'hover:bg-primary/5')}>
-                    <span className="font-mono text-blue-600 w-20 shrink-0 truncate">{item.malzeme_kodu || '-'}</span>
-                    <span className="flex-1 truncate">{item.malzeme_cinsi || item.malzeme_tanimi_sap || '-'}</span>
-                    <Plus className="h-3 w-3 text-emerald-500 shrink-0" />
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ── İki sütun: Malzemeler + İletken ── */}
