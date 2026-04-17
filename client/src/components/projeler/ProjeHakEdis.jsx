@@ -47,8 +47,18 @@ function hesaplaOtoMalzemeler(tip, yakinlar) {
 // ── Direk accordion satırı ──
 function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSecim, projeId, onSpriteGuncelle }) {
   const notSatirlari = (s.notlar || '').split('\n').filter(Boolean)
-  const malzemeSatirlari = notSatirlari.filter(n => !n.startsWith('Iletken:'))
+  const malzemeSatirlari = notSatirlari.filter(n => !n.startsWith('Iletken:')).map(satir => {
+    const m = satir.match(/^(\d+)x\s*(.+)$/)
+    return m ? { miktar: Number(m[1]), adi: m[2] } : { miktar: 1, adi: satir }
+  })
   const iletkenSatirlari = notSatirlari.filter(n => n.startsWith('Iletken:')).map(n => n.replace('Iletken: ', ''))
+
+  // Notları yeniden oluşturup kaydet
+  const notlariKaydet = (malzList, iltkList) => {
+    const yeniNotlar = [...malzList.map(m => `${m.miktar}x ${m.adi}`), ...iltkList.map(il => `Iletken: ${il}`)].join('\n')
+    onGuncelle('notlar', yeniNotlar)
+    onSpriteGuncelle?.(s.nokta1, malzList.map(m => `${m.miktar}x ${m.adi}`))
+  }
 
   // Tip arama + otomatik tamamlama
   const [tipVal, setTipVal] = useState(s.direk_tip?.replace(/^G-/i, '').replace(/\(P\)/gi, '') || '')
@@ -86,14 +96,9 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
   useEffect(() => { setSecIdx(-1) }, [sonuclar])
 
   const handleMalzemeEkle = (item) => {
-    const yeniSatir = `${1}x ${item.malzeme_cinsi || item.malzeme_tanimi_sap || ''}`
-    const mevcutNotlar = s.notlar || ''
-    const yeniNotlar = mevcutNotlar ? mevcutNotlar + '\n' + yeniSatir : yeniSatir
-    onGuncelle('notlar', yeniNotlar)
+    const yeniMalz = [...malzemeSatirlari, { miktar: 1, adi: item.malzeme_cinsi || item.malzeme_tanimi_sap || '' }]
+    notlariKaydet(yeniMalz, iletkenSatirlari)
     setArama(''); setSonuclar([])
-    // Sprite güncelle
-    const tumSatirlar = yeniNotlar.split('\n').filter(Boolean).filter(n => !n.startsWith('Iletken:'))
-    onSpriteGuncelle?.(s.nokta1, tumSatirlar)
   }
 
   const handleKeyDown = (e) => {
@@ -108,20 +113,11 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
   const [iletkenVal, setIletkenVal] = useState('')
   const handleIletkenEkle = () => {
     if (!iletkenVal.trim()) return
-    const yeniSatir = `Iletken: ${iletkenVal.trim()}`
-    const mevcutNotlar = s.notlar || ''
-    onGuncelle('notlar', mevcutNotlar ? mevcutNotlar + '\n' + yeniSatir : yeniSatir)
+    notlariKaydet(malzemeSatirlari, [...iletkenSatirlari, iletkenVal.trim()])
     setIletkenVal('')
   }
 
-  // Satır silme
-  const handleNotSatirSil = (idx) => {
-    const satirlar = (s.notlar || '').split('\n').filter(Boolean)
-    satirlar.splice(idx, 1)
-    onGuncelle('notlar', satirlar.join('\n'))
-    const malzSatirlari = satirlar.filter(n => !n.startsWith('Iletken:'))
-    onSpriteGuncelle?.(s.nokta1, malzSatirlari)
-  }
+  // İletken ekleme sonrası da notlariKaydet kullan
 
   return (
     <>
@@ -217,15 +213,16 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
             <div>
               <div className="text-[9px] font-bold text-red-600 uppercase mb-1">Malzemeler ({malzemeSatirlari.length})</div>
               {malzemeSatirlari.length === 0 ? <p className="text-[10px] text-muted-foreground/50 italic">Malzeme yok</p> : (
-                malzemeSatirlari.map((m, i) => {
-                  const globalIdx = (s.notlar || '').split('\n').filter(Boolean).indexOf(m)
-                  return (
-                    <div key={i} className="flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10">
-                      <span className="flex-1 truncate">{m}</span>
-                      <button onClick={() => handleNotSatirSil(globalIdx)} className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
-                    </div>
-                  )
-                })
+                malzemeSatirlari.map((m, i) => (
+                  <div key={i} className="flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10">
+                    <span className="flex-1 truncate" title={m.adi}>{m.adi}</span>
+                    <input type="number" value={m.miktar} min={1}
+                      onChange={e => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, miktar: Number(e.target.value) || 1 }; notlariKaydet(yeni, iletkenSatirlari) }}
+                      className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
+                    <button onClick={() => notlariKaydet(malzemeSatirlari.filter((_, j) => j !== i), iletkenSatirlari)}
+                      className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
+                  </div>
+                ))
               )}
             </div>
             {/* İletkenler */}
@@ -237,15 +234,13 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
                   placeholder="Iletken tipi gir..." className="flex-1 rounded border border-input bg-white px-2 py-0.5 text-[10px] focus:border-blue-400 focus:outline-none" />
                 <button onClick={handleIletkenEkle} className="rounded bg-blue-500 px-1.5 text-white text-[10px] hover:bg-blue-600">+</button>
               </div>
-              {iletkenSatirlari.map((il, i) => {
-                const globalIdx = (s.notlar || '').split('\n').filter(Boolean).indexOf(`Iletken: ${il}`)
-                return (
-                  <div key={i} className="flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10">
-                    <span className="flex-1 truncate text-blue-700 font-medium">{il}</span>
-                    <button onClick={() => handleNotSatirSil(globalIdx)} className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
-                  </div>
-                )
-              })}
+              {iletkenSatirlari.map((il, i) => (
+                <div key={i} className="flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10">
+                  <span className="flex-1 truncate text-blue-700 font-medium">{il}</span>
+                  <button onClick={() => notlariKaydet(malzemeSatirlari, iletkenSatirlari.filter((_, j) => j !== i))}
+                    className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
+                </div>
+              ))}
             </div>
           </div>
         </div>
