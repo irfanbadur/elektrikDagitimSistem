@@ -369,50 +369,48 @@ function DirekMalzemePopup({ direk, projeId, onKapat, direkNotlari, onMalzemeGun
   const handleMetrajAktar = async () => {
     try {
       const komsu = direk.komsular?.[0]
-      // Sprite text satırları (sadece spriteText: true olanlar)
-      const yeniSpriteMalz = [...otomatikler, ...malzemeler].filter(m => m.spriteText).map(m => ({ adi: m.adi, miktar: m.miktar }))
-      // Mevcut sprite malzemeleriyle birleştir (aynı isimli olanları güncelle, yenileri ekle)
-      const mevcutMalz = mevcutNot?.malzemeler || []
-      const birlesik = [...mevcutMalz]
-      for (const ym of yeniSpriteMalz) {
-        const idx = birlesik.findIndex(m => m.adi === ym.adi)
-        if (idx >= 0) birlesik[idx] = { ...birlesik[idx], miktar: ym.miktar }
-        else birlesik.push(ym)
-      }
-      if (birlesik.length) {
-        onMalzemeGuncelle?.({
-          key: direkKey,
-          x: mevcutNot?.x || direk.x,
-          y: mevcutNot?.y || direk.y,
-          yukseklik: 3.5,
-          katman: 'metraj',
-          malzemeler: birlesik,
-        })
-      }
-      // Sprite verisi — konum + yükseklik + punto + renk + satırlar + katman
-      const spriteVeri = {
+      const tumMalz = [...otomatikler, ...malzemeler]
+      const spriteMalz = tumMalz.filter(m => m.spriteText).map(m => ({ adi: m.adi, miktar: m.miktar }))
+
+      // Sprite güncelle
+      onMalzemeGuncelle?.({
+        key: direkKey,
         x: mevcutNot?.x || direk.x,
         y: mevcutNot?.y || direk.y,
         yukseklik: 3.5,
-        punto: 3.5,
-        renk: '#4ade80',
         katman: 'metraj',
-        satirlar: birlesik.map(m => `${m.miktar}x ${m.adi}`),
+        malzemeler: spriteMalz,
+      })
+
+      const spriteVeri = {
+        x: mevcutNot?.x || direk.x, y: mevcutNot?.y || direk.y,
+        yukseklik: 3.5, punto: 3.5, renk: '#4ade80', katman: 'metraj',
+        satirlar: spriteMalz.map(m => `${m.miktar}x ${m.adi}`),
       }
-      await api.post(`/hak-edis-metraj/${projeId}`, {
+      const kayitVeri = {
         nokta1: direkNumara || direk.etiket || '', nokta2: komsu?.numara || '', nokta_durum: 'Yeni',
         direk_tur: direkTur || '', direk_tip: direkTip ? (direkTur === 'Galvaniz' ? 'G-' : '') + direkTip + (hasPotans ? '(P)' : '') : '',
         ara_mesafe: komsu?.mesafe || 0,
         ag_iletken: iletkenListesi.filter(il => /AG|ROSE|PANSY|ASTER|AER/i.test(il.adi)).map(il => il.adi).join(', ') || null,
         og_iletken: iletkenListesi.filter(il => /OG|SWALLOW|RAVEN|PIGEON|HAWK/i.test(il.adi)).map(il => il.adi).join(', ') || null,
         kaynak: 'kroki', kaynak_direk_x: direk.x, kaynak_direk_y: direk.y,
-        notlar: [...tumMalzemeler.map(m => `${m.miktar}x ${m.adi}`), ...iletkenListesi.map(il => `Iletken: ${il.adi}${il.mesafe ? ' (' + il.mesafe + 'm)' : ''}`)].join('\n'),
+        notlar: [...tumMalz.map(m => `${m.miktar}x ${m.adi}`), ...iletkenListesi.map(il => `Iletken: ${il.adi}${il.mesafe ? ' (' + il.mesafe + 'm)' : ''}`)].join('\n'),
         sprite_veri: spriteVeri,
-      })
-      // Hak Ediş sekmesini yenile ve geçiş yap
+      }
+
+      // Mevcut kayıt var mı kontrol et — varsa güncelle, yoksa oluştur
+      const mevcutRes = await api.get(`/hak-edis-metraj/${projeId}`)
+      const mevcutSatirlar = mevcutRes.data || []
+      const mevcutKayit = mevcutSatirlar.find(s => s.nokta1 === kayitVeri.nokta1)
+
+      if (mevcutKayit) {
+        await api.put(`/hak-edis-metraj/${projeId}/${mevcutKayit.id}`, kayitVeri)
+      } else {
+        await api.post(`/hak-edis-metraj/${projeId}`, kayitVeri)
+      }
+
       metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj', projeId] })
       metrajQc.invalidateQueries({ queryKey: ['hak-edis-metraj-ozet', projeId] })
-      // DXF'e yazma otomatik yapılmaz — "Metraj'a Kaydet" butonuyla ayrıca yapılır
       onSekmeGit?.('hak_edis')
     } catch (err) { alert('Hata: ' + err.message) }
   }
@@ -1155,7 +1153,20 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
       e.preventDefault()
     }
 
-    const onPointerUp = () => { dragRef.current = null }
+    const onPointerUp = () => {
+      // Sürükleme bittiyse konum değişikliğini DB'ye kaydet
+      if (dragRef.current) {
+        const { sprite } = dragRef.current
+        const key = Object.entries(spritelerRef.current).find(([, s]) => s === sprite)?.[0]
+        if (key && projeId) {
+          const viewer = viewerRef.current
+          const origin = viewer?.origin || { x: 0, y: 0 }
+          const nx = sprite.position.x + origin.x, ny = sprite.position.y + origin.y
+          api.patch(`/hak-edis-metraj/${projeId}/sprite-konum`, { nokta1: key, x: nx, y: ny }).catch(() => {})
+        }
+      }
+      dragRef.current = null
+    }
 
     container.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('pointermove', onPointerMove)

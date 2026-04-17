@@ -129,7 +129,7 @@ router.put('/:projeId/:id', (req, res) => {
       direk_tur, direk_tip, traversler,
       ara_mesafe, ag_iletken_durum, og_iletken_durum,
       ag_iletken, og_iletken,
-      yeni_iletken, dmm_iletken, notlar,
+      yeni_iletken, dmm_iletken, notlar, sprite_veri,
     } = req.body;
 
     db.prepare(`
@@ -139,6 +139,7 @@ router.put('/:projeId/:id', (req, res) => {
         ara_mesafe = ?, ag_iletken_durum = ?, og_iletken_durum = ?,
         ag_iletken = ?, og_iletken = ?,
         yeni_iletken = ?, dmm_iletken = ?, notlar = ?,
+        sprite_veri = COALESCE(?, sprite_veri),
         guncelleme_tarihi = datetime('now')
       WHERE id = ?
     `).run(
@@ -149,7 +150,9 @@ router.put('/:projeId/:id', (req, res) => {
       ag_iletken || null, og_iletken || null,
       yeni_iletken ? (typeof yeni_iletken === 'string' ? yeni_iletken : JSON.stringify(yeni_iletken)) : null,
       dmm_iletken ? (typeof dmm_iletken === 'string' ? dmm_iletken : JSON.stringify(dmm_iletken)) : null,
-      notlar || null, id
+      notlar || null,
+      sprite_veri ? (typeof sprite_veri === 'string' ? sprite_veri : JSON.stringify(sprite_veri)) : null,
+      id
     );
 
     const guncellenmis = db.prepare('SELECT * FROM hak_edis_metraj WHERE id = ?').get(id);
@@ -164,6 +167,24 @@ router.delete('/:projeId/:id', (req, res) => {
     db.prepare('DELETE FROM hak_edis_metraj WHERE id = ? AND proje_id = ?')
       .run(parseInt(req.params.id), parseInt(req.params.projeId));
     basarili(res, { silindi: true });
+  } catch (err) { hata(res, err.message, 500); }
+});
+
+// PATCH /:projeId/sprite-konum — Sprite konumunu güncelle (sürükleme sonrası)
+router.patch('/:projeId/sprite-konum', (req, res) => {
+  try {
+    const db = getDb();
+    const { nokta1, x, y } = req.body;
+    if (!nokta1) return hata(res, 'nokta1 gerekli', 400);
+    const satir = db.prepare(
+      'SELECT id, sprite_veri FROM hak_edis_metraj WHERE proje_id = ? AND nokta1 = ? ORDER BY id DESC LIMIT 1'
+    ).get(parseInt(req.params.projeId), nokta1);
+    if (!satir) return hata(res, 'Metraj kaydı bulunamadı', 404);
+    const sv = satir.sprite_veri ? JSON.parse(satir.sprite_veri) : {};
+    sv.x = x; sv.y = y;
+    db.prepare('UPDATE hak_edis_metraj SET sprite_veri = ?, guncelleme_tarihi = datetime(\'now\') WHERE id = ?')
+      .run(JSON.stringify(sv), satir.id);
+    basarili(res, { id: satir.id });
   } catch (err) { hata(res, err.message, 500); }
 });
 
