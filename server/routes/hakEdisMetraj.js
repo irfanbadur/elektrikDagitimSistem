@@ -134,11 +134,11 @@ router.put('/:projeId/:id', (req, res) => {
 
     db.prepare(`
       UPDATE hak_edis_metraj SET
-        nokta1 = ?, nokta2 = ?, nokta_durum = ?,
-        direk_tur = ?, direk_tip = ?, traversler = ?,
-        ara_mesafe = ?, ag_iletken_durum = ?, og_iletken_durum = ?,
-        ag_iletken = ?, og_iletken = ?,
-        yeni_iletken = ?, dmm_iletken = ?, notlar = ?,
+        nokta1 = COALESCE(?, nokta1), nokta2 = COALESCE(?, nokta2), nokta_durum = COALESCE(?, nokta_durum),
+        direk_tur = COALESCE(?, direk_tur), direk_tip = COALESCE(?, direk_tip), traversler = COALESCE(?, traversler),
+        ara_mesafe = COALESCE(?, ara_mesafe), ag_iletken_durum = COALESCE(?, ag_iletken_durum), og_iletken_durum = COALESCE(?, og_iletken_durum),
+        ag_iletken = COALESCE(?, ag_iletken), og_iletken = COALESCE(?, og_iletken),
+        yeni_iletken = COALESCE(?, yeni_iletken), dmm_iletken = COALESCE(?, dmm_iletken), notlar = COALESCE(?, notlar),
         sprite_veri = COALESCE(?, sprite_veri),
         guncelleme_tarihi = datetime('now')
       WHERE id = ?
@@ -146,7 +146,7 @@ router.put('/:projeId/:id', (req, res) => {
       nokta1 || null, nokta2 || null, nokta_durum || null,
       direk_tur || null, direk_tip || null,
       traversler ? (typeof traversler === 'string' ? traversler : JSON.stringify(traversler)) : null,
-      ara_mesafe || 0, ag_iletken_durum || null, og_iletken_durum || null,
+      ara_mesafe || null, ag_iletken_durum || null, og_iletken_durum || null,
       ag_iletken || null, og_iletken || null,
       yeni_iletken ? (typeof yeni_iletken === 'string' ? yeni_iletken : JSON.stringify(yeni_iletken)) : null,
       dmm_iletken ? (typeof dmm_iletken === 'string' ? dmm_iletken : JSON.stringify(dmm_iletken)) : null,
