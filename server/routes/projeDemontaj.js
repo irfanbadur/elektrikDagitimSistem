@@ -30,7 +30,9 @@ router.get('/:projeId/ozet', (req, res) => {
         COUNT(*) as toplam_kalem,
         SUM(CASE WHEN durum = 'tamamlandi' THEN 1 ELSE 0 END) as tamamlanan_kalem,
         SUM(CASE WHEN durum = 'planli' THEN 1 ELSE 0 END) as bekleyen_kalem,
-        SUM(CASE WHEN durum = 'devam_ediyor' THEN 1 ELSE 0 END) as devam_eden_kalem
+        SUM(CASE WHEN durum = 'devam_ediyor' THEN 1 ELSE 0 END) as devam_eden_kalem,
+        ROUND(SUM(miktar * birim_fiyat), 2) as toplam_tutar,
+        ROUND(SUM(ilerleme * birim_fiyat), 2) as ilerleme_tutar
       FROM proje_demontaj WHERE proje_id = ?
     `).get(req.params.projeId);
     basarili(res, ozet);

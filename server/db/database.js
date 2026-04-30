@@ -342,6 +342,73 @@ function runMigrations(database) {
   `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_kullanici_eslestirme_norm ON kullanici_eslestirme(excel_adi_norm)');
 
+  // ═══════════════════════════════════════════════════
+  // Malzeme Grupları — Kısa ad altında birden çok katalog malzemesini gruplamak
+  // (örn: "makara" → izolatör + mil + özengi + askı)
+  // ═══════════════════════════════════════════════════
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS malzeme_gruplari (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kisa_ad TEXT NOT NULL UNIQUE,
+      aciklama TEXT,
+      olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+      guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_malzeme_gruplari_kisa_ad ON malzeme_gruplari(kisa_ad)');
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS malzeme_grup_kalemleri (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      grup_id INTEGER NOT NULL REFERENCES malzeme_gruplari(id) ON DELETE CASCADE,
+      katalog_id INTEGER REFERENCES depo_malzeme_katalogu(id),
+      malzeme_adi TEXT NOT NULL,
+      malzeme_kodu TEXT,
+      miktar REAL DEFAULT 1,
+      birim TEXT DEFAULT 'Ad',
+      kisa_isim TEXT,
+      sira INTEGER DEFAULT 0
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_malzeme_grup_kalemleri_grup ON malzeme_grup_kalemleri(grup_id)');
+
+  // proje_demontaj — ilerleme/birim_fiyat/birim_agirlik kolonları (excel sync için)
+  addColumnIfNotExists(database, 'proje_demontaj', 'ilerleme', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'proje_demontaj', 'birim_fiyat', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'proje_demontaj', 'birim_agirlik', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'proje_demontaj', 'kapsayici', 'INTEGER DEFAULT 0');
+
+  // proje_dmm — Demontajdan Montaj kalemleri (proje_kesif benzeri yapı)
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS proje_dmm (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      proje_id INTEGER NOT NULL,
+      malzeme_kodu TEXT,
+      poz_no TEXT,
+      malzeme_adi TEXT NOT NULL,
+      birim TEXT DEFAULT 'Ad',
+      miktar REAL DEFAULT 0,
+      ilerleme REAL DEFAULT 0,
+      birim_fiyat REAL DEFAULT 0,
+      birim_agirlik REAL DEFAULT 0,
+      kapsayici INTEGER DEFAULT 0,
+      durum TEXT DEFAULT 'planli',
+      notlar TEXT,
+      olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+      guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_proje_dmm_proje ON proje_dmm(proje_id)');
+
+  // Excel alt-toplamlarını proje seviyesinde sakla (Mlz+Mt / DM / DMM)
+  addColumnIfNotExists(database, 'projeler', 'excel_mlzmt_tutar', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'projeler', 'excel_mlzmt_ilerleme', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'projeler', 'excel_dm_tutar', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'projeler', 'excel_dm_ilerleme', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'projeler', 'excel_dmm_tutar', 'REAL DEFAULT 0');
+  addColumnIfNotExists(database, 'projeler', 'excel_dmm_ilerleme', 'REAL DEFAULT 0');
+
   // sorumlu_pozisyon_id → sorumlu_rol_id migration
   renameColumnIfNeeded(database, 'is_tipi_fazlari', 'sorumlu_pozisyon_id', 'sorumlu_rol_id');
   renameColumnIfNeeded(database, 'proje_adimlari', 'sorumlu_pozisyon_id', 'sorumlu_rol_id');

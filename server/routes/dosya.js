@@ -606,16 +606,46 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
     }
     if (inLine && lineEnt.x1 !== undefined && lineEnt.x2 !== undefined) hatCizgileri.push(lineEnt);
 
-    // Direk stilindeki elemanları ayır
+    // Direk stilindeki elemanları ayır — genişletilmiş
     const SEMBOL_MAP = { 'E': 'Direk', 'C': 'Armatür', '4': 'Koruma Topraklama', '5': 'İşletme Topraklama', 'A': 'Ağaç Direk', '2': 'Beton Direk' };
-    const direkler = elemanlar.filter(e => e.stil === 'Direk').map(e => ({
+    // Bir TEXT entity'si sembol mü? Kriterler:
+    //  1) stil adı 'Direk' / 'DIREK' / 'SEMBOL' / 'DIREKMEVCUT' vb. içeriyorsa
+    //  2) text tek karakterli ise (sembol fontu kullanılmış olabilir)
+    const sembolStiliMi = (s) => {
+      if (!s) return false
+      const u = String(s).toUpperCase()
+      return u.includes('DIREK') || u.includes('SEMBOL') || u.includes('SYMBOL')
+    }
+    const direkler = elemanlar.filter(e => {
+      if (!e.text) return false
+      if (sembolStiliMi(e.stil)) return true
+      // Fallback: tek karakterli ve bilinen sembol karakteri
+      if (e.text.length === 1 && /[A-Za-z0-9]/.test(e.text)) return true
+      return false
+    }).map(e => ({
       ...e, sembolAdi: SEMBOL_MAP[e.text] || e.text
     }));
-    // Normal textler (etiketler — direk adları vb.)
-    const etiketler = elemanlar.filter(e => e.stil !== 'Direk' && e.text);
+    // Stil bazlı log — debug için
+    const stilSayimi = {}
+    for (const e of elemanlar) {
+      if (!e.text) continue
+      const s = e.stil || '(yok)'
+      stilSayimi[s] = (stilSayimi[s] || 0) + 1
+    }
+    console.log('[dxf-elemanlar] text stil dağılımı:', stilSayimi)
+    console.log('[dxf-elemanlar] aday direk sayısı:', direkler.length)
+    // Normal textler (etiketler — direk adları, iletken adları vb.)
+    const etiketler = elemanlar.filter(e => {
+      if (!e.text) return false
+      if (sembolStiliMi(e.stil)) return false
+      // Tek karakterli sembol olasılığı → etiket değil
+      if (e.text.length === 1 && /[A-Za-z0-9]/.test(e.text)) return false
+      return true
+    });
 
-    // Direk numarası pattern: A01, B02, C10 vb. (harf + rakam)
-    const NUMARA_RE = /^[A-Z]\d{1,3}$/i;
+    // Direk numarası pattern: A01, B02, O-01, O-N02, B-A04 vb.
+    //   1-2 harf + opsiyonel (-[harf?]) + 1-3 rakam
+    const NUMARA_RE = /^[A-Z]{1,2}(-[A-Z]?)?\d{1,3}$/i;
     // Direk tipi pattern: G-10I, G-K1, G-12I(P) vb.
     const TIP_RE = /^G-/i;
     // İletken pattern: 3x70, AER, ROSE, PANSY, SWALLOW vb.
@@ -669,11 +699,17 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
     const iletkenTextleri = etiketler.filter(et => ILETKEN_RE.test(et.text));
     const mesafeTextleri = etiketler.filter(et => /^\d+\.?\d*$/.test(et.text) && parseFloat(et.text) >= 5 && parseFloat(et.text) < 500);
 
-    // Ana direkler (E, A, 2 sembolü, benzersiz numara)
+    // Ana direk sembolleri (kullanıcı tanımı):
+    //   A, R, P → Mevcut (içi boş)
+    //   8, E, M → Yeni (tam dolu)
+    //   T, B, S → DMM (yarı dolu)
+    const DIREK_SEMBOLLERI = new Set(['A','R','P','8','E','M','T','B','S']);
+    // Dedupe pozisyon bazlı (aynı numaranın farklı trafolarda birden fazla olması durumuna izin ver)
     const anaDigitMap = new Map();
     for (const d of sonuc) {
-      if (!d.numara || !['E', 'A', '2'].includes(d.sembol)) continue;
-      if (!anaDigitMap.has(d.numara)) anaDigitMap.set(d.numara, d);
+      if (!d.numara || !DIREK_SEMBOLLERI.has(d.sembol)) continue;
+      const key = `${d.numara}_${Math.round((d.x || 0) / 5)}_${Math.round((d.y || 0) / 5)}`;
+      if (!anaDigitMap.has(key)) anaDigitMap.set(key, d);
     }
     const anaDirekler = [...anaDigitMap.values()];
     const ESIK = 8; // direk-line ucu eşleşme eşiği

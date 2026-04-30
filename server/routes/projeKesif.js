@@ -32,24 +32,43 @@ router.get('/:projeId', (req, res) => {
     const db = getDb();
     const { depo_id } = req.query;
     let sql, params;
+    // Katalogtan malzeme/montaj birim fiyatlarını ayrı çek
+    const KATALOG_JOIN = `
+        LEFT JOIN depo_malzeme_katalogu dmk ON
+          (dmk.poz_birlesik = pk.poz_no OR (dmk.malzeme_kodu = pk.malzeme_kodu AND pk.malzeme_kodu IS NOT NULL AND pk.malzeme_kodu != ''))
+    `;
+    const KATALOG_FIELDS = `
+          COALESCE(dmk.malzeme_birim_fiyat, 0) as katalog_malzeme_fiyat,
+          COALESCE(dmk.montaj_birim_fiyat, 0) as katalog_montaj_fiyat,
+          COALESCE(dmk.demontaj_birim_fiyat, 0) as katalog_demontaj_fiyat,
+          COALESCE(dmk.demontajdan_montaj_fiyat, 0) as katalog_dmm_fiyat,
+    `;
     if (depo_id) {
       sql = `
         SELECT pk.*,
           (SELECT SUM(bk.miktar) FROM bono_kalemleri bk WHERE bk.proje_kesif_id = pk.id) as alinan_miktar,
-          COALESCE(ds.miktar, 0) as depo_stok
+          COALESCE(ds.miktar, 0) as depo_stok,
+          ${KATALOG_FIELDS}
+          1 as _has_katalog
         FROM proje_kesif pk
         LEFT JOIN malzemeler m ON m.malzeme_kodu = pk.malzeme_kodu AND pk.malzeme_kodu IS NOT NULL AND pk.malzeme_kodu != ''
         LEFT JOIN depo_stok ds ON ds.malzeme_id = m.id AND ds.depo_id = ?
+        ${KATALOG_JOIN}
         WHERE pk.proje_id = ?
+        GROUP BY pk.id
         ORDER BY pk.id
       `;
       params = [depo_id, req.params.projeId];
     } else {
       sql = `
         SELECT pk.*,
-          (SELECT SUM(bk.miktar) FROM bono_kalemleri bk WHERE bk.proje_kesif_id = pk.id) as alinan_miktar
+          (SELECT SUM(bk.miktar) FROM bono_kalemleri bk WHERE bk.proje_kesif_id = pk.id) as alinan_miktar,
+          ${KATALOG_FIELDS}
+          1 as _has_katalog
         FROM proje_kesif pk
+        ${KATALOG_JOIN}
         WHERE pk.proje_id = ?
+        GROUP BY pk.id
         ORDER BY pk.id
       `;
       params = [req.params.projeId];

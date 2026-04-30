@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
+import { COLORS } from '@/constants/colors'
+import DxfSahne from './DxfSahne'
 import KesifParseModal from './KesifParseModal'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 
@@ -617,6 +619,12 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
   const [seciliNesneler, setSeciliNesneler] = useState([]) // Three.js objeleri
   const orijinalMatRef = useRef(new Map()) // obj → orijinal materyal
   const demontajGroupRef = useRef(null)
+  // ── Boyama modu (AutoCAD benzeri window/crossing seçim) ──
+  const [paintRenk, setPaintRenk] = useState(null) // { id, renk, hex, ad } | null
+  const [paintRect, setPaintRect] = useState(null) // { x1,y1,x2,y2, yon: 'sag'|'sol' }
+  const paintStartRef = useRef(null)
+  const paintOverlayRef = useRef(null)
+  const paintOverlayGroupRef = useRef(null) // Seçim vurgularının eklendiği grup (scene üzerine)
 
   const handleMetrajKaydet = async () => {
     if (!direkNotlari || !Object.keys(direkNotlari).length) return alert('Henüz direk malzemesi eklenmemiş')
@@ -708,6 +716,140 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
           }
         })
         URL.revokeObjectURL(url)
+
+        // ⭐ Post-load: batched mesh'leri tek tek entity'lere patlat (Projabze mimarisi)
+        // Her LINE_SEGMENT / TRIANGLE ayrı bir Three.js objesi olur, userData ile metadata taşır.
+        // Bu sayede seçim/renk değişimi AutoCAD benzeri her entity için bağımsız çalışır.
+        try {
+          const postScene = viewer.GetScene?.() || viewer.scene
+          if (!postScene) throw new Error('scene yok')
+
+          const patlatilacak = []
+          postScene.traverse(obj => {
+            if (obj === postScene || obj.isLight || obj.isSprite) return
+            if (!obj.geometry) return
+            patlatilacak.push(obj)
+          })
+
+          let segSayi = 0, triSayi = 0, atlananBuyuk = 0, atlananLimit = 0, diger = 0
+          const MAX_PARCA = 500000
+          const MAX_TRI_PER_MESH = 50000
+
+          for (const obj of patlatilacak) {
+            const geom = obj.geometry
+            const posAttr = geom.getAttribute?.('position')
+            const colorAttr = geom.getAttribute?.('color')
+            const indexAttr = geom.getIndex?.()
+            if (!posAttr) { diger++; continue }
+            const count = posAttr.count
+
+            const uniformColor = obj.material?.uniforms?.color?.value
+            const defaultRenk = uniformColor?.isColor
+              ? uniformColor.clone()
+              : (uniformColor?.x !== undefined
+                  ? new three.Color(uniformColor.x, uniformColor.y, uniformColor.z)
+                  : new three.Color(0xffffff))
+            const getColor = (i) => {
+              if (!colorAttr) return defaultRenk.clone()
+              return new three.Color(colorAttr.getX(i), colorAttr.getY(i), colorAttr.getZ(i))
+            }
+
+            const isLine = obj.type === 'LineSegments' || obj.type === 'Line' || obj.type === 'LineLoop'
+            const isMesh = obj.isMesh || obj.type === 'Mesh'
+
+            // Ön hesap
+            const step = (obj.type === 'LineSegments') ? 2 : 1
+            const triCount = indexAttr ? Math.floor(indexAttr.count / 3) : Math.floor(count / 3)
+            const beklenenParca = isLine ? Math.floor(count / step) : (isMesh ? triCount : 0)
+
+            if (segSayi + triSayi + beklenenParca > MAX_PARCA) { atlananLimit++; continue }
+            if (isMesh && triCount > MAX_TRI_PER_MESH) { atlananBuyuk++; continue }
+
+            let tamPatlatildi = false
+            // Yeni objeler orijinal'in parent'ına eklenir → transform otomatik doğru
+            const yeniler = []
+
+            if (isLine) {
+              const loop = (obj.type === 'LineLoop')
+              for (let i = 0; i + 1 < count; i += step) {
+                const j = i + 1
+                const segGeom = new three.BufferGeometry()
+                segGeom.setAttribute('position', new three.BufferAttribute(new Float32Array([
+                  posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i),
+                  posAttr.getX(j), posAttr.getY(j), posAttr.getZ(j)
+                ]), 3))
+                segGeom.computeBoundingSphere()
+                const col = getColor(i)
+                const seg = new three.LineSegments(segGeom, new three.LineBasicMaterial({ color: col }))
+                // Orijinal transform'u kopyala
+                seg.position.copy(obj.position)
+                seg.rotation.copy(obj.rotation)
+                seg.scale.copy(obj.scale)
+                seg.userData = {
+                  id: `${obj.uuid.slice(0, 4)}-s${i}`, type: 'LINE_SEGMENT', layerId: 'drawing',
+                  selectable: true, originalColor: col.getHex(), state: { selected: false, hovered: false },
+                }
+                yeniler.push(seg)
+                segSayi++
+              }
+              if (loop && count > 0) {
+                const segGeom = new three.BufferGeometry()
+                segGeom.setAttribute('position', new three.BufferAttribute(new Float32Array([
+                  posAttr.getX(count - 1), posAttr.getY(count - 1), posAttr.getZ(count - 1),
+                  posAttr.getX(0), posAttr.getY(0), posAttr.getZ(0)
+                ]), 3))
+                segGeom.computeBoundingSphere()
+                const col = getColor(count - 1)
+                const seg = new three.LineSegments(segGeom, new three.LineBasicMaterial({ color: col }))
+                seg.position.copy(obj.position)
+                seg.rotation.copy(obj.rotation)
+                seg.scale.copy(obj.scale)
+                seg.userData = {
+                  id: `${obj.uuid.slice(0, 4)}-loop`, type: 'LINE_SEGMENT', layerId: 'drawing',
+                  selectable: true, originalColor: col.getHex(), state: { selected: false, hovered: false },
+                }
+                yeniler.push(seg)
+                segSayi++
+              }
+              tamPatlatildi = true
+            } else if (isMesh) {
+              for (let t = 0; t < triCount; t++) {
+                const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3
+                const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1
+                const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2
+                const triGeom = new three.BufferGeometry()
+                triGeom.setAttribute('position', new three.BufferAttribute(new Float32Array([
+                  posAttr.getX(i0), posAttr.getY(i0), posAttr.getZ(i0),
+                  posAttr.getX(i1), posAttr.getY(i1), posAttr.getZ(i1),
+                  posAttr.getX(i2), posAttr.getY(i2), posAttr.getZ(i2)
+                ]), 3))
+                triGeom.computeBoundingSphere()
+                const col = getColor(i0)
+                const tri = new three.Mesh(triGeom, new three.MeshBasicMaterial({ color: col, side: three.DoubleSide }))
+                tri.position.copy(obj.position)
+                tri.rotation.copy(obj.rotation)
+                tri.scale.copy(obj.scale)
+                tri.userData = {
+                  id: `${obj.uuid.slice(0, 4)}-t${t}`, type: 'TRIANGLE', layerId: 'drawing',
+                  selectable: true, originalColor: col.getHex(), state: { selected: false, hovered: false },
+                }
+                yeniler.push(tri)
+                triSayi++
+              }
+              tamPatlatildi = true
+            } else {
+              diger++
+            }
+
+            // Aynı parent'a ekle ki ancestor transform'ları otomatik uygulansın
+            const parent = obj.parent || postScene
+            for (const y of yeniler) parent.add(y)
+
+            if (tamPatlatildi) obj.visible = false
+          }
+          console.info(`[explode] ${segSayi} segment + ${triSayi} triangle (toplam ${segSayi + triSayi})`,
+            `| atlanan: limit=${atlananLimit} büyük=${atlananBuyuk} diğer=${diger} | orijinal batch: ${patlatilacak.length}`)
+        } catch (err) { console.warn('[explode] hata:', err) }
 
         // Tüm sahneye fit et
         if (viewer.bounds && viewer.origin) {
@@ -1053,6 +1195,171 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
     setSecimModu(false)
   }, [])
 
+  // ── Boyama modu handler'ları (AutoCAD window/crossing) ──
+  const handlePaintDown = useCallback((e) => {
+    if (e.button !== 0) return
+    e.stopPropagation(); e.preventDefault()
+    const el = paintOverlayRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    paintStartRef.current = { x: e.clientX - r.left, y: e.clientY - r.top }
+    setPaintRect(null)
+  }, [])
+
+  const handlePaintMove = useCallback((e) => {
+    if (!paintStartRef.current) return
+    e.stopPropagation(); e.preventDefault()
+    const el = paintOverlayRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const cx = e.clientX - r.left, cy = e.clientY - r.top
+    const sx = paintStartRef.current.x, sy = paintStartRef.current.y
+    setPaintRect({
+      x1: Math.min(sx, cx), y1: Math.min(sy, cy),
+      x2: Math.max(sx, cx), y2: Math.max(sy, cy),
+      yon: cx >= sx ? 'sag' : 'sol', // sag = window (kapsama), sol = crossing (kesişim)
+    })
+  }, [])
+
+  const handlePaintUp = useCallback(() => {
+    const rect = paintRect
+    const yon = rect?.yon
+    paintStartRef.current = null
+    setPaintRect(null)
+    if (!rect || !paintRenk) return
+    if (Math.abs(rect.x2 - rect.x1) < 3 && Math.abs(rect.y2 - rect.y1) < 3) return
+
+    const viewer = viewerRef.current, three = threeRef.current
+    if (!viewer || !three) return
+    const camera = viewer.GetCamera?.() || viewer.camera
+    const scene = viewer.GetScene?.() || viewer.scene
+    if (!camera || !scene) return
+    const el = paintOverlayRef.current
+    if (!el) return
+    const bbox = el.getBoundingClientRect()
+
+    // ── Rect'in world koordinatlarını bul (unproject ile) ──
+    const toWorld = (sx, sy) => {
+      const ndcX = (sx / bbox.width) * 2 - 1
+      const ndcY = -((sy / bbox.height) * 2 - 1)
+      const vv = new three.Vector3(ndcX, ndcY, 0).unproject(camera)
+      return { x: vv.x, y: vv.y }
+    }
+    const wc1 = toWorld(rect.x1, rect.y1)
+    const wc2 = toWorld(rect.x2, rect.y2)
+    const wRect = {
+      minX: Math.min(wc1.x, wc2.x), maxX: Math.max(wc1.x, wc2.x),
+      minY: Math.min(wc1.y, wc2.y), maxY: Math.max(wc1.y, wc2.y),
+    }
+
+    // Objeleri topla
+    const allObjects = []
+    scene.traverse(obj => {
+      if (obj === scene || obj.isLight || obj.isSprite || !obj.geometry) return
+      let gizli = obj.visible === false
+      let pp = obj.parent
+      while (!gizli && pp && pp !== scene) { if (pp.visible === false) gizli = true; pp = pp.parent }
+      if (gizli) return
+      allObjects.push(obj)
+    })
+    if (!allObjects.length) { viewer.Render(); return }
+
+    const renk = new three.Color(paintRenk.renk)
+    const v = new three.Vector3()
+    const inRect = (x, y) => x >= wRect.minX && x <= wRect.maxX && y >= wRect.minY && y <= wRect.maxY
+    // 2D segment-segment kesişimi
+    const segSegInt = (p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y) => {
+      const den = (p4y - p3y) * (p2x - p1x) - (p4x - p3x) * (p2y - p1y)
+      if (den === 0) return false
+      const ua = ((p4x - p3x) * (p1y - p3y) - (p4y - p3y) * (p1x - p3x)) / den
+      const ub = ((p2x - p1x) * (p1y - p3y) - (p2y - p1y) * (p1x - p3x)) / den
+      return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1
+    }
+    const segCrosses = (p1, p2) => {
+      if (inRect(p1.x, p1.y) || inRect(p2.x, p2.y)) return true
+      const r = wRect
+      // Segment p1→p2'nin rect'in 4 kenarından biriyle kesişimi
+      return (
+        segSegInt(p1.x, p1.y, p2.x, p2.y, r.minX, r.minY, r.maxX, r.minY) ||
+        segSegInt(p1.x, p1.y, p2.x, p2.y, r.maxX, r.minY, r.maxX, r.maxY) ||
+        segSegInt(p1.x, p1.y, p2.x, p2.y, r.maxX, r.maxY, r.minX, r.maxY) ||
+        segSegInt(p1.x, p1.y, p2.x, p2.y, r.minX, r.maxY, r.minX, r.minY)
+      )
+    }
+
+    // Projabze CAD tarzı per-entity seçim: sadece userData.selectable olanlar
+    // Her entity zaten ayrı bir obje (post-load explode sonrası)
+    const hex = parseInt(paintRenk.renk.replace('#', ''), 16)
+    let boyanan = 0
+    for (const obj of allObjects) {
+      if (!obj.userData?.selectable) continue
+      const posAttr = obj.geometry.getAttribute?.('position')
+      if (!posAttr) continue
+      obj.updateMatrixWorld()
+      const count = posAttr.count
+
+      const wp = new Array(count)
+      for (let i = 0; i < count; i++) {
+        v.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i)).applyMatrix4(obj.matrixWorld)
+        wp[i] = { x: v.x, y: v.y }
+      }
+
+      let secili = false
+      if (yon === 'sag') {
+        // Window: TÜM vertex'ler rect içinde olmalı
+        secili = count > 0
+        for (let i = 0; i < count; i++) {
+          if (!inRect(wp[i].x, wp[i].y)) { secili = false; break }
+        }
+      } else {
+        // Crossing: herhangi bir segment/vertex rect ile etkileşiyor
+        if (obj.type === 'LineSegments' || obj.type === 'Line') {
+          for (let i = 0; i + 1 < count; i += (obj.type === 'LineSegments' ? 2 : 1)) {
+            if (segCrosses(wp[i], wp[i + 1])) { secili = true; break }
+          }
+        } else {
+          // Mesh/Points/Triangle — herhangi bir vertex rect içinde veya bbox kesişiyor
+          for (let i = 0; i < count; i++) {
+            if (inRect(wp[i].x, wp[i].y)) { secili = true; break }
+          }
+          if (!secili) {
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+            for (const p of wp) {
+              if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x
+              if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y
+            }
+            if (!(maxX < wRect.minX || minX > wRect.maxX || maxY < wRect.minY || minY > wRect.maxY)) {
+              secili = true
+            }
+          }
+        }
+      }
+
+      if (!secili) continue
+
+      // Entity'nin TAMAMINI boya — artık her entity ayrı materyal sahibi
+      try {
+        const m = obj.material
+        if (m?.color?.set) {
+          m.color.set(hex)
+          m.needsUpdate = true
+        }
+        obj.userData.state = { ...obj.userData.state, selected: true }
+      } catch (err) { console.error('[paint] apply err:', err) }
+      boyanan++
+    }
+
+    if (boyanan === 0) {
+      console.warn('[paint] Hiçbir eleman bulunamadı.', { yon, obj: allObjects.length })
+      viewer.Render()
+      return
+    }
+
+    viewer.Render()
+    requestAnimationFrame(() => viewer.Render())
+    console.info(`[paint] ${boyanan} entity boyandı (${yon === 'sag' ? 'window' : 'crossing'}, ${paintRenk.ad})`)
+  }, [paintRect, paintRenk])
+
   // direkNotlari veya katman ayarları değiştiğinde sprite'ları senkronize et
   useEffect(() => {
     const viewer = viewerRef.current
@@ -1294,6 +1601,58 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
           </div>
         )}
         </>
+      )}
+      {/* Boyama — sol üst renk kutuları */}
+      {!yukleniyor && !hata && !secimModu && (
+        <div className="absolute top-2 left-2 z-30 flex flex-col gap-1.5">
+          <div className="flex items-center gap-1 rounded-lg bg-white/90 px-1.5 py-1.5 shadow-sm border border-border">
+            {PAINT_RENKLER.map(r => (
+              <button key={r.id}
+                onClick={() => setPaintRenk(p => p?.id === r.id ? null : r)}
+                className={cn('h-6 w-6 rounded border-2 transition-all',
+                  paintRenk?.id === r.id ? 'border-gray-800 ring-2 ring-offset-1 ring-gray-800 scale-110' : 'border-white/80 hover:scale-105')}
+                style={{ background: r.renk }}
+                title={`${r.ad} — sağa sürükle: kapsama, sola sürükle: kesişim`}
+              />
+            ))}
+            {paintRenk && (
+              <button onClick={() => setPaintRenk(null)}
+                className="ml-1 rounded p-1 text-muted-foreground hover:bg-muted" title="Boyama modunu kapat">
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          {paintRenk && (
+            <div className="rounded-md bg-gray-900/90 px-2 py-1 text-[10px] text-white shadow backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <span style={{ color: paintRenk.renk }}>●</span>
+                <span className="font-medium">{paintRenk.ad}</span>
+              </div>
+              <div className="text-[9px] text-white/70 mt-0.5">→ Kapsama • ← Kesişim</div>
+            </div>
+          )}
+        </div>
+      )}
+      {/* Boyama overlay div — paintRenk varken aktif */}
+      {paintRenk && !secimModu && (
+        <div
+          ref={paintOverlayRef}
+          onPointerDown={handlePaintDown}
+          onPointerMove={handlePaintMove}
+          onPointerUp={handlePaintUp}
+          style={{ position: 'absolute', inset: 0, zIndex: 12, cursor: 'crosshair', touchAction: 'none' }}
+        />
+      )}
+      {/* Boyama dikdörtgeni */}
+      {paintRenk && paintRect && (
+        <div style={{
+          position: 'absolute', pointerEvents: 'none', zIndex: 13,
+          left: paintRect.x1, top: paintRect.y1,
+          width: paintRect.x2 - paintRect.x1, height: paintRect.y2 - paintRect.y1,
+          border: `2px ${paintRect.yon === 'sag' ? 'solid' : 'dashed'} ${paintRect.yon === 'sag' ? '#3b82f6' : '#22c55e'}`,
+          background: paintRect.yon === 'sag' ? 'rgba(59,130,246,0.2)' : 'rgba(34,197,94,0.2)',
+          borderRadius: 2,
+        }} />
       )}
       {/* Seçim modu: şeffaf overlay div — DxfViewer event'lerini bloklar */}
       {secimModu && (
@@ -1868,6 +2227,33 @@ function AdimKarti({ adim, projeId, onDosyaSec }) {
   )
 }
 
+// Boyama modu renkleri (sol üst renk kutuları) — COLORS paletinden
+const PAINT_RENKLER = [
+  { id: 'mavi', renk: '#' + COLORS.paint.mavi.hex.toString(16).padStart(6, '0'), ad: COLORS.paint.mavi.ad },
+  { id: 'gri', renk: '#' + COLORS.paint.gri.hex.toString(16).padStart(6, '0'), ad: COLORS.paint.gri.ad },
+  { id: 'beyaz', renk: '#' + COLORS.paint.beyaz.hex.toString(16).padStart(6, '0'), ad: COLORS.paint.beyaz.ad },
+]
+
+// 2D segment — rect kesişim testi (line-segment clipping)
+function _segmentRectCrosses(p1, p2, rect) {
+  const inRect = p => p[0] >= rect.x1 && p[0] <= rect.x2 && p[1] >= rect.y1 && p[1] <= rect.y2
+  if (inRect(p1) || inRect(p2)) return true
+  const segsIntersect = (x1, y1, x2, y2, x3, y3, x4, y4) => {
+    const den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+    if (den === 0) return false
+    const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den
+    const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den
+    return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1
+  }
+  const [x1, y1] = p1, [x2, y2] = p2
+  return (
+    segsIntersect(x1, y1, x2, y2, rect.x1, rect.y1, rect.x2, rect.y1) || // top
+    segsIntersect(x1, y1, x2, y2, rect.x2, rect.y1, rect.x2, rect.y2) || // right
+    segsIntersect(x1, y1, x2, y2, rect.x2, rect.y2, rect.x1, rect.y2) || // bottom
+    segsIntersect(x1, y1, x2, y2, rect.x1, rect.y2, rect.x1, rect.y1)    // left
+  )
+}
+
 // ─── Ana Komponent ───────────────────────────
 export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, onDirekSec, onSpriteGuncelleRef }) {
   const { data: ilerleme } = useProjeFazIlerleme(projeId)
@@ -1885,6 +2271,13 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
       onSpriteGuncelleRef.current = (nokta1, satirlar) => {
         if (!nokta1) return
         setDirekNotlari(prev => {
+          // Görünür malzeme kalmadıysa entry'i tamamen sil — aksi halde stale sprite kalır
+          if (!satirlar?.length) {
+            if (!prev[nokta1]) return prev
+            const yeni = { ...prev }
+            delete yeni[nokta1]
+            return yeni
+          }
           const mevcut = prev[nokta1] || {}
           const direkEl = direkListesi.find(d => d.numara === nokta1 && ['E', 'A', '2'].includes(d.sembol))
           return {
@@ -2067,14 +2460,11 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
           <PanZoomResim src={`/api/dosya/${seciliDosya.id}/dosya`} alt={seciliDosya.adi} />
         ) : seciliDosya.dxf ? (
           <div className="relative flex-1 flex flex-col min-h-0">
-            <DxfOnizleme
+            <DxfSahne
               src={`/api/dosya/${seciliDosya.id}/dosya`}
               dosyaId={seciliDosya.id}
-              projeId={projeId}
-              overlayUrl={seciliDosya.overlayId ? `/api/dosya/${seciliDosya.overlayId}/dosya` : null}
-              onDirekTikla={seciliDosya.dxf ? (d) => {
+              onDirekTikla={(d) => {
                 if (seciliDosya.adimKodu === 'hak_edis_krokisi' && onDirekSec && d.numara) {
-                  // Yakın elemanları tespit et
                   const yakinlar = { armatur: false, koruma: false, isletme: false }
                   for (const el of direkListesi) {
                     if (el.numara !== d.numara || el === d) continue
@@ -2086,9 +2476,7 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
                 } else {
                   if (!seciliDirek) setSeciliDirek(d)
                 }
-              } : undefined}
-              direkNotlari={seciliDosya.dxf ? direkNotlari : undefined}
-              onNotSil={seciliDosya.dxf ? (key) => key === '__ALL__' ? setDirekNotlari({}) : setDirekNotlari(prev => { const y = { ...prev }; delete y[key]; return y }) : undefined}
+              }}
               onDireklerYuklendi={setDirekListesi}
             />
             {seciliDosya.dxf && seciliDirek && (

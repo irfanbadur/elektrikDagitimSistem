@@ -20,8 +20,15 @@ export default function ProjeListesi() {
   const { izinVar } = useAuth()
   const silmeYetkisi = izinVar('projeler', 'silme')
 
-  const [filtreler, setFiltreler] = useState({ durum: '', bolge_id: '', tip: '' })
-  const { data: projeler, isLoading } = useProjeler(filtreler)
+  const [filtreler, setFiltreler] = useState({ durum: '', bolge_id: '', tip: '', yer_teslim: '' })
+  const { data: rawProjeler, isLoading } = useProjeler(filtreler)
+  // Yer teslim client-side filtre
+  const projeler = useMemo(() => {
+    if (!rawProjeler || !filtreler.yer_teslim) return rawProjeler
+    if (filtreler.yer_teslim === 'var') return rawProjeler.filter(p => !!p.teslim_tarihi)
+    if (filtreler.yer_teslim === 'yok') return rawProjeler.filter(p => !p.teslim_tarihi)
+    return rawProjeler
+  }, [rawProjeler, filtreler.yer_teslim])
   const { data: bolgeler } = useBolgeler()
   const { data: isTipleri } = useIsTipleri()
   const { data: sablonlar } = useDonguSablonlari()
@@ -183,9 +190,37 @@ export default function ProjeListesi() {
           : <span className="text-muted-foreground">-</span>,
       },
       {
-        accessorKey: 'aktif_sorumlu_adi',
-        header: 'Sorumlu',
-        cell: ({ row }) => row.original.aktif_sorumlu_adi || row.original.aktif_sorumlu_rol_adi || <span className="text-muted-foreground">-</span>,
+        accessorKey: 'kesif_ilerleme_tutar',
+        header: 'İlerleme',
+        cell: ({ row }) => {
+          const tutar = row.original.kesif_ilerleme_tutar ?? 0
+          const yuzde = row.original.kesif_ilerleme_yuzdesi ?? 0
+          if (!tutar && !yuzde) return <span className="text-muted-foreground">-</span>
+          return (
+            <div className="flex flex-col leading-tight">
+              <span className="tabular-nums font-medium text-blue-700">
+                {tutar.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ₺
+              </span>
+              {yuzde > 0 && <span className="text-[10px] text-muted-foreground">%{yuzde}</span>}
+            </div>
+          )
+        },
+      },
+      {
+        accessorKey: 'kesif_tutari',
+        header: 'Fiyat',
+        cell: ({ row }) => {
+          // Öncelik: Excel'den gelen kesif_tutari > sözleşme > hesaplanan > hakediş
+          const r = row.original
+          const tutar = (Number(r.kesif_tutari) > 0 ? Number(r.kesif_tutari) : 0)
+            || (Number(r.sozlesme_kesfi) > 0 ? Number(r.sozlesme_kesfi) : 0)
+            || (Number(r.kesif_toplam_tutar) > 0 ? Number(r.kesif_toplam_tutar) : 0)
+            || (Number(r.hakedis_miktari) > 0 ? Number(r.hakedis_miktari) : 0)
+          if (!tutar) return <span className="text-muted-foreground">-</span>
+          return <span className="tabular-nums font-medium text-emerald-700">
+            {tutar.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ₺
+          </span>
+        },
       },
       {
         accessorKey: 'durum',
@@ -208,31 +243,24 @@ export default function ProjeListesi() {
         },
       },
       {
-        accessorKey: 'kesif_ilerleme_yuzdesi',
-        header: 'İlerleme',
-        cell: ({ row }) => {
-          const v = row.original.kesif_ilerleme_yuzdesi || 0
-          const kalem = row.original.kesif_kalem_sayisi || 0
-          return (
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-16 rounded-full bg-gray-200">
-                <div
-                  className={cn(
-                    'h-2 rounded-full',
-                    v >= 100 ? 'bg-emerald-500' : v >= 50 ? 'bg-primary' : v > 0 ? 'bg-amber-500' : 'bg-gray-300'
-                  )}
-                  style={{ width: `${Math.min(v, 100)}%` }}
-                />
-              </div>
-              <span className="text-xs text-muted-foreground">%{v}</span>
-              {kalem === 0 && <span className="text-[10px] text-red-400" title="Keşif yok">!</span>}
-            </div>
-          )
+        accessorKey: 'teslim_tarihi',
+        header: 'Yer Teslim',
+        cell: ({ getValue }) => {
+          const v = getValue()
+          return v ? <span className="text-xs">{v.slice(0, 10)}</span> : <span className="text-muted-foreground">-</span>
         },
       },
       {
-        accessorKey: 'teslim_tarihi',
-        header: 'Yer Teslim',
+        accessorKey: 'baslama_tarihi',
+        header: 'Başlangıç',
+        cell: ({ getValue }) => {
+          const v = getValue()
+          return v ? <span className="text-xs">{v.slice(0, 10)}</span> : <span className="text-muted-foreground">-</span>
+        },
+      },
+      {
+        accessorKey: 'bitis_tarihi',
+        header: 'Bitiş',
         cell: ({ getValue }) => {
           const v = getValue()
           return v ? <span className="text-xs">{v.slice(0, 10)}</span> : <span className="text-muted-foreground">-</span>
@@ -316,6 +344,40 @@ export default function ProjeListesi() {
         </button>
       </div>
 
+      {/* Özet kartları — filtrelenmiş projelerin Toplam Tutar / İlerleme Tutarı / Kalan */}
+      {(projeler?.length || 0) > 0 && (() => {
+        const fiyatBul = (p) => (Number(p.kesif_tutari) > 0 ? Number(p.kesif_tutari) : 0)
+          || (Number(p.sozlesme_kesfi) > 0 ? Number(p.sozlesme_kesfi) : 0)
+          || (Number(p.kesif_toplam_tutar) > 0 ? Number(p.kesif_toplam_tutar) : 0)
+          || (Number(p.hakedis_miktari) > 0 ? Number(p.hakedis_miktari) : 0)
+        const toplamTutar = projeler.reduce((t, p) => t + fiyatBul(p), 0)
+        const ilerlemeTutar = projeler.reduce((t, p) => t + (Number(p.kesif_ilerleme_tutar) || 0), 0)
+        const kalanTutar = Math.max(toplamTutar - ilerlemeTutar, 0)
+        const yuzde = toplamTutar > 0 ? Math.round((ilerlemeTutar / toplamTutar) * 100) : 0
+        const fmt = (n) => n.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ₺'
+        return (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border border-input bg-card px-4 py-3">
+              <p className="text-xs text-muted-foreground">Proje Sayısı</p>
+              <p className="text-xl font-bold tabular-nums">{projeler.length}</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+              <p className="text-xs text-muted-foreground">Toplam Tutar</p>
+              <p className="text-xl font-bold tabular-nums text-emerald-700">{fmt(toplamTutar)}</p>
+            </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50/50 px-4 py-3">
+              <p className="text-xs text-muted-foreground">İlerleme</p>
+              <p className="text-xl font-bold tabular-nums text-blue-700">{fmt(ilerlemeTutar)}</p>
+              <p className="text-[10px] text-muted-foreground">%{yuzde}</p>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3">
+              <p className="text-xs text-muted-foreground">Kalan</p>
+              <p className="text-xl font-bold tabular-nums text-amber-700">{fmt(kalanTutar)}</p>
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="flex flex-wrap gap-3">
         <select
           value={filtreler.tip}
@@ -356,6 +418,15 @@ export default function ProjeListesi() {
               {b.bolge_adi}
             </option>
           ))}
+        </select>
+        <select
+          value={filtreler.yer_teslim}
+          onChange={(e) => handleFiltreChange('yer_teslim', e.target.value)}
+          className="rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <option value="">Yer Teslim (Hepsi)</option>
+          <option value="var">Yer Teslimi Var</option>
+          <option value="yok">Yer Teslimi Yok</option>
         </select>
       </div>
 

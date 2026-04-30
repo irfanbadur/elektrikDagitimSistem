@@ -16,8 +16,9 @@ function DemontajOzet({ projeId }) {
   const { data: ozet } = useProjeDemontajOzet(projeId)
   if (!ozet) return null
 
+  const fmt = (v) => Number(v || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ₺'
   return (
-    <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
       <div className="rounded-lg border border-input bg-card px-4 py-3">
         <p className="text-xs text-muted-foreground">Toplam Kalem</p>
         <p className="text-lg font-bold">{ozet.toplam_kalem || 0}</p>
@@ -33,6 +34,14 @@ function DemontajOzet({ projeId }) {
       <div className="rounded-lg border border-input bg-card px-4 py-3">
         <p className="text-xs text-muted-foreground">Bekleyen</p>
         <p className="text-lg font-bold text-amber-600">{ozet.bekleyen_kalem || 0}</p>
+      </div>
+      <div className="rounded-lg border border-blue-200 bg-blue-50/50 px-4 py-3">
+        <p className="text-xs text-muted-foreground">İlerleme Tutar</p>
+        <p className="text-lg font-bold text-blue-700 tabular-nums">{fmt(ozet.ilerleme_tutar)}</p>
+      </div>
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+        <p className="text-xs text-muted-foreground">Toplam Tutar</p>
+        <p className="text-lg font-bold text-emerald-700 tabular-nums">{fmt(ozet.toplam_tutar)}</p>
       </div>
     </div>
   )
@@ -77,13 +86,29 @@ function DuzenlenebilirHucre({ deger, onKaydet, type = 'number' }) {
 }
 
 function DemontajSatiri({ kalem: k, durum, onGuncelle, onDurumDegistir, onSil }) {
+  const fiyat = Number(k.birim_fiyat) || 0
+  const ilerleme = Number(k.ilerleme) || 0
+  const miktar = Number(k.miktar) || 0
+  const fmtTL = (v) => v ? v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TL' : '-'
   return (
     <tr className="border-b border-input/50 hover:bg-muted/30 transition-colors">
       <td className="px-3 py-2 font-mono text-xs text-blue-600">{k.poz_no || '-'}</td>
       <td className="px-3 py-2 text-xs font-medium">{k.malzeme_adi}</td>
       <td className="px-3 py-2 text-xs text-muted-foreground">{k.birim}</td>
-      <td className="px-3 py-2 text-left text-xs tabular-nums">
-        <DuzenlenebilirHucre deger={k.miktar || 0} onKaydet={(v) => onGuncelle({ miktar: v })} />
+      <td className="px-3 py-2 text-right text-xs tabular-nums">
+        <DuzenlenebilirHucre deger={miktar} onKaydet={(v) => onGuncelle({ miktar: v })} />
+      </td>
+      <td className="px-3 py-2 text-right text-xs tabular-nums">
+        <DuzenlenebilirHucre deger={ilerleme} onKaydet={(v) => onGuncelle({ ilerleme: v })} />
+      </td>
+      <td className="px-3 py-2 text-right text-xs tabular-nums text-muted-foreground">
+        {fiyat ? fiyat.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+      </td>
+      <td className="px-3 py-2 text-right text-xs tabular-nums text-blue-600">
+        {fmtTL(ilerleme * fiyat)}
+      </td>
+      <td className="px-3 py-2 text-right text-xs tabular-nums font-medium text-primary">
+        {fmtTL(miktar * fiyat)}
       </td>
       <td className="px-3 py-2">
         <select
@@ -219,6 +244,10 @@ function DemontajFormSatiri({ onKaydet, onIptal }) {
         <input type="number" value={form.miktar} onChange={e => setForm({...form, miktar: e.target.value})} placeholder="0" className="w-20 rounded border border-input bg-background px-2 py-1 text-xs" />
       </td>
       <td className="px-3 py-2"></td>
+      <td className="px-3 py-2"></td>
+      <td className="px-3 py-2"></td>
+      <td className="px-3 py-2"></td>
+      <td className="px-3 py-2"></td>
       <td className="px-3 py-2">
         <div className="flex gap-1">
           <button onClick={handleSerbestKaydet} disabled={!arama.trim()} className="rounded bg-primary px-2 py-1 text-xs text-white hover:bg-primary/90 disabled:opacity-50">Kaydet</button>
@@ -353,7 +382,11 @@ export default function ProjeDemontaj({ projeId }) {
                 <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Poz No</th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Malzeme</th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Birim</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Miktar</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Miktar</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">İlerleme</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">B.Fiyat</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">İlerleme Tutar</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground">Toplam Tutar</th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground">Durum</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground w-16"></th>
               </tr>
@@ -371,7 +404,7 @@ export default function ProjeDemontaj({ projeId }) {
                 ))
               ) : !demontajlar?.length && !yeniSatir ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-12 text-center">
+                  <td colSpan={10} className="px-3 py-12 text-center">
                     <Wrench className="mx-auto mb-2 h-10 w-10 text-muted-foreground/40" />
                     <p className="text-sm font-medium text-muted-foreground">Demontaj listesi bos</p>
                     <p className="mt-1 text-xs text-muted-foreground/70">Manuel olarak veya yer teslim tutanagindan malzeme ekleyin</p>
@@ -386,6 +419,21 @@ export default function ProjeDemontaj({ projeId }) {
                 })
               )}
             </tbody>
+            {demontajlar?.length > 0 && (() => {
+              const top = demontajlar.reduce((t, k) => t + (Number(k.miktar)||0) * (Number(k.birim_fiyat)||0), 0)
+              const il = demontajlar.reduce((t, k) => t + (Number(k.ilerleme)||0) * (Number(k.birim_fiyat)||0), 0)
+              const fmt = (v) => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TL'
+              return (
+                <tfoot className="sticky bottom-0 bg-muted/95 backdrop-blur-sm border-t-2 border-primary/20">
+                  <tr>
+                    <td className="px-3 py-2 text-xs font-bold text-right" colSpan={6}>TOPLAM</td>
+                    <td className="px-3 py-2 text-right text-sm font-bold text-blue-600 tabular-nums">{fmt(il)}</td>
+                    <td className="px-3 py-2 text-right text-sm font-bold text-primary tabular-nums">{fmt(top)}</td>
+                    <td colSpan={2} />
+                  </tr>
+                </tfoot>
+              )
+            })()}
           </table>
         </div>
       </div>

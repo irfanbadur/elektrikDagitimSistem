@@ -6,6 +6,7 @@ import ProjeTipleri from '@/components/ayarlar/ProjeTipleri'
 import DepartmanYonetimi from '@/components/ayarlar/DepartmanYonetimi'
 import RolYonetimi from '@/components/ayarlar/RolYonetimi'
 import KullaniciYonetimi from '@/components/ayarlar/KullaniciYonetimi'
+import MalzemeGruplari from '@/components/ayarlar/MalzemeGruplari'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 
@@ -13,6 +14,7 @@ const sekmeler = [
   { id: 'firma', label: 'Firma Bilgileri' },
   { id: 'bolgeler', label: 'Bölge Yönetimi' },
   { id: 'tipler', label: 'İş Tipleri' },
+  { id: 'malzeme_gruplari', label: 'Malzeme Grupları' },
   { id: 'departmanlar', label: 'Departmanlar' },
   { id: 'roller', label: 'Rol Yönetimi', modul: 'ayarlar', aksiyon: 'roller' },
   { id: 'kullanicilar', label: 'Kullanıcılar', modul: 'ayarlar', aksiyon: 'kullanicilar' },
@@ -50,6 +52,7 @@ export default function AyarlarPage() {
       {aktifSekme === 'firma' && <FirmaBilgileri />}
       {aktifSekme === 'bolgeler' && <BolgeYonetimi />}
       {aktifSekme === 'tipler' && <ProjeTipleri />}
+      {aktifSekme === 'malzeme_gruplari' && <MalzemeGruplari />}
       {aktifSekme === 'departmanlar' && <DepartmanYonetimi />}
       {aktifSekme === 'roller' && <RolYonetimi />}
       {aktifSekme === 'kullanicilar' && <KullaniciYonetimi />}
