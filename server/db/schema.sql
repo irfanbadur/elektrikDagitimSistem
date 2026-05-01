@@ -1550,3 +1550,28 @@ CREATE TABLE IF NOT EXISTS hak_edis_metraj (
 );
 
 CREATE INDEX IF NOT EXISTS idx_hak_edis_metraj_proje ON hak_edis_metraj(proje_id);
+
+-- ============================================
+-- PROJE KEŞİF METRAJ (hak_edis_metraj ile aynı şema; Yeni Durum DXF'inden direk-bazlı keşif)
+-- ============================================
+CREATE TABLE IF NOT EXISTS proje_kesif_metraj (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proje_id INTEGER NOT NULL,
+    sira INTEGER DEFAULT 0,
+    nokta1 TEXT, nokta2 TEXT, nokta_durum TEXT,
+    direk_tur TEXT, direk_tip TEXT,
+    traversler TEXT,
+    ara_mesafe REAL DEFAULT 0,
+    ag_iletken_durum TEXT, og_iletken_durum TEXT,
+    ag_iletken TEXT, og_iletken TEXT,
+    yeni_iletken TEXT, dmm_iletken TEXT,
+    kaynak TEXT DEFAULT 'kroki',
+    kaynak_direk_x REAL, kaynak_direk_y REAL,
+    sprite_veri TEXT,
+    notlar TEXT,
+    olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_proje_kesif_metraj_proje ON proje_kesif_metraj(proje_id);

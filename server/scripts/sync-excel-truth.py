@@ -28,23 +28,25 @@ def norm(s):
     s = re.sub(r'[^A-Z0-9 ]', ' ', s)
     return re.sub(r'\s+', ' ', s).strip()
 
-def parse_xlsx(path):
+def parse_xlsx(path, sheet_name=None):
     """Returns list of {ad, mlz_mt: [...], dm: [...], dmm: [...], excel_yt_toplam: float}
     Bölüm tespiti: FILTRE kolonu (col 0) 'MALZEME - MONTAJ' / 'DEMONTAJ' / 'DM+M' (DMM) değerlerine göre
     excel_yt_toplam: TOPLAM satırından okunan proje YT toplam tutarı (Excel'in kendi hesabı)
+    sheet_name: None ise ilk sayfa, aksi halde belirtilen sayfa
     """
-    print(f'Açılıyor: {os.path.basename(path)}')
+    print(f'Açılıyor: {os.path.basename(path)} (sheet={sheet_name or "ilk"})')
     wb = CalamineWorkbook.from_path(path)
-    sheet = wb.get_sheet_by_name(wb.sheet_names[0])
+    sheet = wb.get_sheet_by_name(sheet_name if sheet_name else wb.sheet_names[0])
     rows = sheet.to_python()
     proje_ad_map, ilerleme_cols, yt_cols = {}, [], []
-    width = len(rows[0]) if rows else 0
-    for c in range(min(280, width)):
+    # Geniş tarama: 280 sütundan fazla projeler de var (YB1'de 84 İLERLEME var, 700+ sütuna kadar)
+    width = max(len(r) for r in rows[:5]) if rows else 0
+    for c in range(min(2400, width)):
         v0 = rows[0][c] if c < len(rows[0]) else None
         v2 = rows[2][c] if len(rows) > 2 and c < len(rows[2]) else None
         s0 = str(v0).strip() if v0 else ''
         s2 = str(v2).strip() if v2 else ''
-        if s0 and not re.match(r'^(KE[ŞS]|MALZEME|F[İI]LTRE|[İI]HALE|KIRILIM)', s0, re.I):
+        if s0 and not re.match(r'^(KE[ŞS]|MALZEME|F[İI]LTRE|[İI]HALE|KIRILIM|YEDA[ŞS]|ARTIRIM|TENZIL|MALZ|DOK|YAYIN|REVIZYON|TOPLAM|MNTJ|HARCAMA|KONTROL)', s0, re.I):
             proje_ad_map[c] = s0
         if s2 == 'İLERLEME': ilerleme_cols.append(c)
         if s2.startswith('YER TESL'): yt_cols.append(c)
@@ -80,29 +82,55 @@ def parse_xlsx(path):
         bolumler.append((cur_start, len(rows), cur_type))
     print(f'  Bölümler: {bolumler}')
 
-    # Alt-toplam satırlarını bul (proje seviyesi — ilk grup)
-    # Excel'de iki set var: R102-R105 (proje alt toplam), R106-R109 (master alt toplam)
-    # İlerden taracağız → ilk grup proje alt toplamı
+    # Alt-toplam satırlarını bul: önce ilk "TOPLAM" satırını altan tara, sonra ondan
+    # ÖNCEKI 3 satır sırasıyla DMM, DM, MLZ+MT raw alt-toplamlarıdır.
+    # (Excel'de 1.1x'li ARTIRIMLI bloku TOPLAM'dan SONRA gelir; o yüzden ilk TOPLAM raw'dur.)
     altsubtotal = {}
+    toplam_idx = None
+    for i in range(len(rows) - 1, -1, -1):
+        r = rows[i]
+        if not r or len(r) <= 5 or not r[5]: continue
+        s = str(r[5]).strip().upper()
+        if s == 'TOPLAM':
+            toplam_idx = i  # son TOPLAM (artırımlı bloğun toplamı veya raw'ın toplamı — kontrol et)
+    # En sondaki TOPLAM artırımlı blok'un da olabilir; raw TOPLAM'ı bulmak için
+    # YUKARIDAN AŞAĞIYA ilk TOPLAM'ı bul (raw blok daha önce gelir).
     for i in range(len(rows)):
         r = rows[i]
         if not r or len(r) <= 5 or not r[5]: continue
         s = str(r[5]).strip().upper()
-        if 'MALZEME' in s and 'MONTAJ' in s and 'mlz_mt' not in altsubtotal: altsubtotal['mlz_mt'] = i
-        elif s == 'DEMONTAJ' and 'dm' not in altsubtotal: altsubtotal['dm'] = i
-        elif ('DEMONTAJDAN' in s or 'DM+M' in s) and 'dmm' not in altsubtotal: altsubtotal['dmm'] = i
-        elif s == 'TOPLAM' and 'toplam' not in altsubtotal: altsubtotal['toplam'] = i
-        # Tümünü bulduysak dur
-        if all(k in altsubtotal for k in ('mlz_mt', 'dm', 'dmm', 'toplam')): break
+        if s == 'TOPLAM' and i > 100:  # üstteki TOPLAM olabilirler değil; ilk büyük olanı al
+            toplam_idx = i
+            break
+    if toplam_idx:
+        altsubtotal['toplam'] = toplam_idx
+        # toplam_idx'den önce 3 etiket: DMM (toplam-1), DM (toplam-2), MLZ+MT (toplam-3)
+        for offset, key in [(-3, 'mlz_mt'), (-2, 'dm'), (-1, 'dmm')]:
+            ridx = toplam_idx + offset
+            if ridx < 0: continue
+            r = rows[ridx]
+            if not r or len(r) <= 5: continue
+            s = str(r[5]).strip().upper() if r[5] else ''
+            # Beklenen etiket kontrolü (yumuşak — boşsa da kabul et)
+            if (key == 'mlz_mt' and ('MALZEME' in s and 'MONTAJ' in s)) \
+               or (key == 'dm' and 'DEMONTAJ' in s and 'DEMONTAJDAN' not in s) \
+               or (key == 'dmm' and ('DEMONTAJDAN' in s or 'DM+M' in s)) \
+               or s == '':
+                altsubtotal[key] = ridx
     toplam_row_idx = altsubtotal.get('toplam')
     print(f'  Alt-toplam satırları: {altsubtotal}')
 
     projeler = []
     for ic in ilerleme_cols:
         ytc = next((c for c in yt_cols if c == ic - 1), ic - 1)
+        # Proje adı tipik olarak ic+2 sütunundaki "PYP AKTARIM HARCAMA" kolon başlığı R0'da
+        # önce ic+2 kontrolü, sonra geniş tarama
         ad = None
-        for c in range(ytc - 2, ic + 6):
-            if c in proje_ad_map: ad = proje_ad_map[c]; break
+        for delta in [2, 1, 3, 0, -1, 4, 5, -2, -3]:
+            c = ic + delta
+            if c in proje_ad_map:
+                ad = proje_ad_map[c]
+                break
         if not ad or len(ad) < 3: continue
         # Excel alt-toplam satırlarından her bölümün YT/İlerleme tutarlarını çek
         def safe_float(v):
@@ -135,6 +163,20 @@ def parse_xlsx(path):
                 cins = row[5] if len(row) > 5 else None
                 olcu = row[6] if len(row) > 6 else None
                 agirlik = row[7] if len(row) > 7 else None
+                # Excel'in kendi birim fiyatları (section'a göre)
+                #   C8: Malzeme, C9: Montaj, C10: Demontaj, C11: Demontajdan Montaj  (RAW = ihale)
+                #   C13: Malzeme, C14: Montaj, C15: Demontaj, C16: Demontajdan Montaj (ARTIRIMLI = +%10 yuvarlı)
+                if tip == 'mlz_mt':
+                    excel_fiyat = (safe_float(row[8] if len(row) > 8 else 0)
+                                  + safe_float(row[9] if len(row) > 9 else 0))
+                    excel_fiyat_artirimli = (safe_float(row[13] if len(row) > 13 else 0)
+                                            + safe_float(row[14] if len(row) > 14 else 0))
+                elif tip == 'dm':
+                    excel_fiyat = safe_float(row[10] if len(row) > 10 else 0)
+                    excel_fiyat_artirimli = safe_float(row[15] if len(row) > 15 else 0)
+                else:
+                    excel_fiyat = safe_float(row[11] if len(row) > 11 else 0)
+                    excel_fiyat_artirimli = safe_float(row[16] if len(row) > 16 else 0)
                 yt = row[ytc] if len(row) > ytc else None
                 il = row[ic] if len(row) > ic else None
                 if not cins: continue
@@ -152,6 +194,8 @@ def parse_xlsx(path):
                     'miktar': yt,
                     'ilerleme': il,
                     'birim_agirlik': ag,
+                    'excel_fiyat': excel_fiyat,
+                    'excel_fiyat_artirimli': excel_fiyat_artirimli,
                 })
         # Tüm bölümler boşsa atla
         if not (secim['mlz_mt'] or secim['dm'] or secim['dmm']): continue
@@ -166,8 +210,30 @@ def parse_xlsx(path):
     return projeler
 
 # Her iki dosyayı oku
-ket = parse_xlsx(os.path.join(ROOT, 'doc', 'ilerleme.xlsx'))
-yb = parse_xlsx(os.path.join(ROOT, 'doc', 'ilerleme YB.xlsx'))
+KET_ONLY = '--ket-only' in sys.argv
+YB_ONLY = '--yb-only' in sys.argv
+
+# Yatırım Takip xlsm tek dosya — hem KET hem YB için
+# 'Samsun Batı Ket' / 'Samsun Batı YB1' sayfaları aynı şemada per-kalem detay içerir
+_YT_PATH = os.path.join(ROOT, 'doc', 'Yatırım Takip_2026 BATI  KETYB 30.04.2026.xlsm')
+_KET_FALLBACK_PATHS = [
+    os.path.join(ROOT, 'doc', 'ilerleme KET.xlsx'),
+    os.path.join(ROOT, 'doc', 'ilerleme.xlsx'),
+]
+ket_path = _YT_PATH if os.path.exists(_YT_PATH) else next((p for p in _KET_FALLBACK_PATHS if os.path.exists(p)), _KET_FALLBACK_PATHS[0])
+ket_sheet = 'Samsun Batı Ket' if ket_path == _YT_PATH else None
+
+if YB_ONLY:
+    ket = []
+else:
+    ket = parse_xlsx(ket_path, sheet_name=ket_sheet) if ket_sheet else parse_xlsx(ket_path)
+
+if KET_ONLY:
+    yb = []
+elif os.path.exists(_YT_PATH):
+    yb = parse_xlsx(_YT_PATH, sheet_name='Samsun Batı YB1')
+else:
+    yb = parse_xlsx(os.path.join(ROOT, 'doc', 'ilerleme YB.xlsx'))
 print(f'\nKET: {len(ket)} proje, YB: {len(yb)} proje')
 
 # DB
@@ -260,21 +326,22 @@ def sync_section(con, tablo, pid, items):
             con.execute(f'DELETE FROM {tablo} WHERE id = ?', (r['id'],))
             silindi += 1
     for m in items:
-        fiyat = fiyat_bul(m)
+        # SADECE Excel sayfasının kendi section birim fiyatını kullan.
+        fiyat = m.get('excel_fiyat') or 0
+        fiyat_art = m.get('excel_fiyat_artirimli') or 0
         cur = con.execute(f'SELECT id, birim_fiyat FROM {tablo} WHERE proje_id = ? AND poz_no = ? LIMIT 1', (pid, m['poz'])).fetchone()
         if cur:
-            yf = fiyat if fiyat > 0 else (cur['birim_fiyat'] or 0)
             con.execute(f'''UPDATE {tablo} SET malzeme_adi = ?, malzeme_kodu = COALESCE(?, malzeme_kodu),
                 birim = ?, miktar = ?, ilerleme = ?, birim_agirlik = COALESCE(?, birim_agirlik),
-                birim_fiyat = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?''',
+                birim_fiyat = ?, artirimli_birim_fiyat = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?''',
                 (m['malzeme_adi'], m['malzeme_kodu'], m['birim'], m['miktar'], m['ilerleme'],
-                 m['birim_agirlik'], yf, cur['id']))
+                 m['birim_agirlik'], fiyat, fiyat_art, cur['id']))
         elif m['miktar'] > 0 or m['ilerleme'] > 0:
             con.execute(f'''INSERT INTO {tablo} (proje_id, poz_no, malzeme_kodu, malzeme_adi,
-                birim, miktar, ilerleme, birim_agirlik, birim_fiyat, durum)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'planli')''',
+                birim, miktar, ilerleme, birim_agirlik, birim_fiyat, artirimli_birim_fiyat, durum)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planli')''',
                 (pid, m['poz'], m['malzeme_kodu'], m['malzeme_adi'], m['birim'],
-                 m['miktar'], m['ilerleme'], m['birim_agirlik'], fiyat))
+                 m['miktar'], m['ilerleme'], m['birim_agirlik'], fiyat, fiyat_art))
             eklendi += 1
     return silindi, eklendi
 

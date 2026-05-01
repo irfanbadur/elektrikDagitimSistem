@@ -98,6 +98,7 @@ app.use('/api/malzeme-katalog', require('./routes/depoKatalog'));
 app.use('/api/proje-kesif', require('./routes/projeKesif'));
 app.use('/api/proje-demontaj', require('./routes/projeDemontaj'));
 app.use('/api/hak-edis-metraj', require('./routes/hakEdisMetraj'));
+app.use('/api/proje-kesif-metraj', require('./routes/projeKesifMetraj'));
 app.use('/api/proje-direkler', require('./routes/projeDirekler'));
 app.use('/api/proje-kroki-kesif', require('./routes/projeKrokiKesif'));
 app.use('/api/bonolar', require('./routes/bonolar'));

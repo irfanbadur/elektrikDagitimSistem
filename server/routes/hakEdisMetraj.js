@@ -14,6 +14,15 @@ router.get('/:projeId', (req, res) => {
   } catch (err) { hata(res, err.message, 500); }
 });
 
+// GET /:projeId/malzeme-ozeti — Direk + malzeme + iletken agrega + katalog fiyatlarıyla zenginleştirilmiş
+router.get('/:projeId/malzeme-ozeti', (req, res) => {
+  try {
+    const { malzemeOzetiUret } = require('../services/metrajOzetService');
+    const ozet = malzemeOzetiUret('hak_edis_metraj', parseInt(req.params.projeId));
+    basarili(res, ozet);
+  } catch (err) { hata(res, err.message, 500); }
+});
+
 // GET /:projeId/ozet — Özet bilgileri
 router.get('/:projeId/ozet', (req, res) => {
   try {

@@ -305,7 +305,11 @@ export default function ProjeDetay() {
       {/* Yasam Dongusu — her zaman tam genislik */}
       <div className="flex-shrink-0">
         <ProjeDonguBar projeId={id} previewPortalRef={previewRef} onSekmeGit={setAktifTab}
-          onDirekSec={(direkBilgi) => { setSeciliDirekBilgi(direkBilgi); setAktifTab('hak_edis') }}
+          onDirekSec={(direkBilgi) => {
+            setSeciliDirekBilgi(direkBilgi)
+            // Yeni Durum DXF → Proje-Keşif sekmesi; Hak Ediş Krokisi → Hak Ediş sekmesi
+            setAktifTab(direkBilgi?._adimKodu === 'yeni_durum_proje' ? 'kesif' : 'hak_edis')
+          }}
           onSpriteGuncelleRef={spriteGuncelleRef} />
       </div>
 
@@ -496,7 +500,10 @@ export default function ProjeDetay() {
         )}
 
         {aktifTab === 'kesif' && (
-          <ProjeKesif projeId={id} />
+          <ProjeKesif projeId={id} seciliDirekBilgi={seciliDirekBilgi} onSeciliDirekTemizle={() => setSeciliDirekBilgi(null)}
+            onSpriteGuncelle={(nokta1, satirlar) => {
+              if (spriteGuncelleRef.current) spriteGuncelleRef.current(nokta1, satirlar)
+            }} />
         )}
 
 {aktifTab === 'demontaj' && (

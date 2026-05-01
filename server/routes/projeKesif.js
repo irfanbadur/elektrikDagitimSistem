@@ -279,6 +279,28 @@ router.put('/:projeId/:id', (req, res) => {
   }
 });
 
+// PUT /:projeId/ilerleme - Belirli bir poz_no için ilerleme değerini upsert
+// (Özet tablosundaki inline edit: poz_no varsa UPDATE, yoksa INSERT)
+router.put('/:projeId/ilerleme', (req, res) => {
+  try {
+    const db = getDb();
+    const projeId = parseInt(req.params.projeId);
+    const { poz_no, ilerleme, malzeme_adi, birim } = req.body;
+    if (!poz_no) return hata(res, 'poz_no gerekli', 400);
+    const yeniIlerleme = Number(ilerleme) || 0;
+    const mevcut = db.prepare('SELECT id FROM proje_kesif WHERE proje_id = ? AND poz_no = ? LIMIT 1').get(projeId, poz_no);
+    if (mevcut) {
+      db.prepare('UPDATE proje_kesif SET ilerleme = ?, guncelleme_tarihi = datetime(\'now\') WHERE id = ?').run(yeniIlerleme, mevcut.id);
+    } else {
+      // INSERT minimal kayıt — ad/birim verilmediyse "—" kullan
+      db.prepare(`INSERT INTO proje_kesif (proje_id, poz_no, malzeme_adi, birim, ilerleme, durum)
+                  VALUES (?, ?, ?, ?, ?, 'planli')`)
+        .run(projeId, poz_no, malzeme_adi || poz_no, birim || 'Ad', yeniIlerleme);
+    }
+    basarili(res, { poz_no, ilerleme: yeniIlerleme });
+  } catch (err) { hata(res, err.message, 500); }
+});
+
 // DELETE /:projeId/:id - keşif kalemi sil
 router.delete('/:projeId/:id', (req, res) => {
   try {

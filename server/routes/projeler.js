@@ -40,36 +40,33 @@ const PROJE_SELECT = `SELECT p.*, b.bolge_adi, e.ekip_adi,
   dk.ad_soyad AS teslim_eden_adi, dk.unvan AS teslim_eden_unvan, dk.kurum AS teslim_eden_kurum,
   (SELECT CASE WHEN SUM(pk.miktar) > 0 THEN ROUND(SUM(pk.ilerleme) * 100.0 / SUM(pk.miktar)) ELSE 0 END FROM proje_kesif pk WHERE pk.proje_id = p.id AND pk.kapsayici = 0) AS kesif_ilerleme_yuzdesi,
   (SELECT COUNT(*) FROM proje_kesif pk2 WHERE pk2.proje_id = p.id AND pk2.kapsayici = 0) AS kesif_kalem_sayisi,
-  -- Proje-Keşif "TOPLAM TUTAR" formülü: her satır için miktar × birim_fiyat (kapsayıcı dahil)
-  (SELECT COALESCE(SUM(
-    CASE
-      WHEN pk3.kapsayici = 1 THEN
-        pk3.birim_fiyat * COALESCE((
-          SELECT SUM(c.birim_agirlik * c.miktar)
-          FROM proje_kesif c
-          WHERE c.proje_id = pk3.proje_id AND c.kapsayici = 0
-            AND c.poz_no IS NOT NULL AND pk3.poz_no IS NOT NULL
-            AND c.poz_no LIKE pk3.poz_no || '%'
-            AND c.poz_no <> pk3.poz_no
-        ), pk3.miktar)
-      ELSE pk3.miktar * pk3.birim_fiyat
-    END
-  ), 0) FROM proje_kesif pk3 WHERE pk3.proje_id = p.id) AS kesif_toplam_tutar,
-  -- Proje-Keşif "İlerleme" tutarı: yapılan iş × birim_fiyat (kapsayıcı için ağırlıklı ilerleme)
-  (SELECT COALESCE(SUM(
-    CASE
-      WHEN pk4.kapsayici = 1 THEN
-        pk4.birim_fiyat * COALESCE((
-          SELECT SUM(c.birim_agirlik * c.ilerleme)
-          FROM proje_kesif c
-          WHERE c.proje_id = pk4.proje_id AND c.kapsayici = 0
-            AND c.poz_no IS NOT NULL AND pk4.poz_no IS NOT NULL
-            AND c.poz_no LIKE pk4.poz_no || '%'
-            AND c.poz_no <> pk4.poz_no
-        ), pk4.ilerleme)
-      ELSE pk4.ilerleme * pk4.birim_fiyat
-    END
-  ), 0) FROM proje_kesif pk4 WHERE pk4.proje_id = p.id) AS kesif_ilerleme_tutar
+  -- Proje keşif TOPLAM TUTAR (raw): 3 bölüm naive Σ(miktar × birim_fiyat)
+  (
+    COALESCE((SELECT SUM(miktar * birim_fiyat) FROM proje_kesif WHERE proje_id = p.id), 0)
+    + COALESCE((SELECT SUM(miktar * birim_fiyat) FROM proje_demontaj WHERE proje_id = p.id), 0)
+    + COALESCE((SELECT SUM(miktar * birim_fiyat) FROM proje_dmm WHERE proje_id = p.id), 0)
+  ) AS kesif_toplam_tutar,
+  -- Proje keşif TOPLAM TUTAR (artırımlı): Excel KET-YB özet sayfasındaki C17 (KEŞİF TUTARI 1.1x).
+  -- Detay sayfa (Samsun Batı) ile özet sayfa (KET-YB PROJE İLERLEME) arasında bazı projelerde
+  -- fark olabilir; user özet sayfayı referans alıyor — onu döndürürüz.
+  COALESCE(p.kesif_tutari, 0) AS kesif_toplam_tutar_artirimli,
+  -- İLERLEME (raw)
+  (
+    COALESCE((SELECT SUM(ilerleme * birim_fiyat) FROM proje_kesif WHERE proje_id = p.id), 0)
+    + COALESCE((SELECT SUM(ilerleme * birim_fiyat) FROM proje_demontaj WHERE proje_id = p.id), 0)
+    + COALESCE((SELECT SUM(ilerleme * birim_fiyat) FROM proje_dmm WHERE proje_id = p.id), 0)
+  ) AS kesif_ilerleme_tutar,
+  -- İLERLEME (artırımlı): Excel KET-YB özet sayfası C20 (İLERLEME MİKTARI 1.1x)
+  COALESCE(p.ilerleme_miktari, 0) AS kesif_ilerleme_tutar_artirimli,
+  -- Tüm adımların listesi (frontend'de adim_kodu ile eşleşip dosya_sayisi sütunlara dağıtılır)
+  (SELECT json_group_array(json_object(
+    'id', sub.id, 'adim_kodu', sub.adim_kodu, 'adim_adi', sub.adim_adi,
+    'faz_adi', sub.faz_adi, 'durum', sub.durum, 'dosya_sayisi', sub.dosya_sayisi
+  )) FROM (
+    SELECT pa.id, pa.sira_global, pa.adim_kodu, pa.adim_adi, pa.faz_adi, pa.durum,
+      (SELECT COUNT(*) FROM dosyalar d WHERE d.proje_adim_id = pa.id AND d.durum = 'aktif') AS dosya_sayisi
+    FROM proje_adimlari pa WHERE pa.proje_id = p.id ORDER BY pa.sira_global
+  ) sub) AS adimlar_json
   FROM projeler p
   LEFT JOIN bolgeler b ON p.bolge_id = b.id
   LEFT JOIN ekipler e ON p.ekip_id = e.id
@@ -93,7 +90,9 @@ router.get('/', (req, res) => {
     if (bolge_id) { sql += ' AND p.bolge_id = ?'; params.push(bolge_id); }
     if (tip) { sql += ' AND p.proje_tipi = ?'; params.push(tip); }
     if (ekip_id) { sql += ' AND p.ekip_id = ?'; params.push(ekip_id); }
-    sql += ' ORDER BY p.olusturma_tarihi DESC';
+    // Excel "KET-YB PROJE İLERLEME" sayfasındaki SIRA kolonu öncelikli;
+    // sira_no'su olmayan projeler en sona düşer (oluşturma tarihine göre).
+    sql += ' ORDER BY p.excel_sira IS NULL, p.excel_sira ASC, p.olusturma_tarihi DESC';
     const projeler = db.prepare(sql).all(...params);
     basarili(res, projeler);
   } catch (err) {

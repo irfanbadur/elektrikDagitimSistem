@@ -1,7 +1,43 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
 import { Plus, Trash2, BarChart3, Ruler, MapPin, FileSpreadsheet, Upload, Loader2, ExternalLink, ChevronDown, ChevronRight, Search, Wand2, Package } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useHakEdisMetraj, useHakEdisMetrajOzet, useHakEdisMetrajEkle, useHakEdisMetrajGuncelle, useHakEdisMetrajSil } from '@/hooks/useHakEdisMetraj'
+import {
+  useHakEdisMetraj, useHakEdisMetrajOzet, useHakEdisMetrajMalzemeOzeti, useHakEdisMetrajEkle, useHakEdisMetrajGuncelle, useHakEdisMetrajSil,
+  useProjeKesifMetraj, useProjeKesifMetrajOzet, useProjeKesifMetrajMalzemeOzeti, useProjeKesifMetrajEkle, useProjeKesifMetrajGuncelle, useProjeKesifMetrajSil,
+} from '@/hooks/useHakEdisMetraj'
+
+// İki sekme aynı UI'yi paylaşır; konfigürasyon hangi tablo/route/DXF kaynağı kullanılacağını belirler.
+export const HAK_EDIS_KONFIGI = {
+  baslik: 'Sebeke Metraji',
+  altBaslik: 'Direk bazlı malzeme ve iletken listesi',
+  dxfAdimKodu: 'hak_edis_krokisi',
+  dxfBulunamadiMesaji: 'Hak Ediş Krokisi DXF bulunamadı. Önce krokiyi oluşturun.',
+  excelAktarim: true,
+  hooks: {
+    useListe: useHakEdisMetraj,
+    useOzet: useHakEdisMetrajOzet,
+    useMalzemeOzeti: useHakEdisMetrajMalzemeOzeti,
+    useEkle: useHakEdisMetrajEkle,
+    useGuncelle: useHakEdisMetrajGuncelle,
+    useSil: useHakEdisMetrajSil,
+  },
+}
+
+export const KESIF_KONFIGI = {
+  baslik: 'Proje Keşif',
+  altBaslik: 'Yeni Durum DXF\'ten direk bazlı keşif listesi',
+  dxfAdimKodu: 'yeni_durum_proje',
+  dxfBulunamadiMesaji: 'Yeni Durum Proje DXF bulunamadı.',
+  excelAktarim: false,
+  hooks: {
+    useListe: useProjeKesifMetraj,
+    useOzet: useProjeKesifMetrajOzet,
+    useMalzemeOzeti: useProjeKesifMetrajMalzemeOzeti,
+    useEkle: useProjeKesifMetrajEkle,
+    useGuncelle: useProjeKesifMetrajGuncelle,
+    useSil: useProjeKesifMetrajSil,
+  },
+}
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
 
@@ -530,10 +566,15 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
   }
 
   return (
-    <>
+    <div className={cn(
+      'transition-all',
+      acik
+        ? 'border-2 border-primary/60 rounded-md my-1.5 shadow-sm'
+        : 'border-b border-input/50'
+    )}>
       {/* Ana satır */}
       <div onClick={onToggle}
-        className={cn('flex items-center gap-2 px-3 py-2 border-b border-input/50 cursor-pointer transition-colors',
+        className={cn('flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors',
           acik ? 'bg-primary/5' : 'hover:bg-muted/30', secili && 'bg-red-50/50')}>
         <input type="checkbox" checked={secili} onClick={e => e.stopPropagation()} onChange={e => onSecim(e.target.checked)}
           className="h-3.5 w-3.5 accent-primary cursor-pointer" />
@@ -549,9 +590,10 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
         </button>
       </div>
 
-      {/* Detay paneli */}
+      {/* Detay paneli — açıldığında satırın çocuğu olduğu, çevredeki kalın çerçeve ile belli olur */}
       {acik && (
-        <div className="border-b border-input bg-muted/10 px-4 py-3 space-y-3">
+        <div className="border-t border-primary/30">
+          <div className="bg-muted/10 px-4 py-3 space-y-3">
           {/* Üst: Durum + Tür + Tip + Mesafe */}
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
             <label className="flex items-center gap-1">
@@ -715,18 +757,20 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
               )}
             </div>
           </div>
+          </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
-export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBilgi, onSeciliDirekTemizle }) {
-  const { data: satirlar, isLoading } = useHakEdisMetraj(projeId)
-  const { data: ozet } = useHakEdisMetrajOzet(projeId)
-  const ekle = useHakEdisMetrajEkle(projeId)
-  const guncelle = useHakEdisMetrajGuncelle(projeId)
-  const sil = useHakEdisMetrajSil(projeId)
+export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBilgi, onSeciliDirekTemizle, konfig = HAK_EDIS_KONFIGI }) {
+  const { data: satirlar, isLoading } = konfig.hooks.useListe(projeId)
+  const { data: ozet } = konfig.hooks.useOzet(projeId)
+  const ekle = konfig.hooks.useEkle(projeId)
+  const guncelle = konfig.hooks.useGuncelle(projeId)
+  const sil = konfig.hooks.useSil(projeId)
+  const { data: malzemeOzeti } = konfig.hooks.useMalzemeOzeti(projeId)
   const qc = useQueryClient()
   const [seciliIdler, setSeciliIdler] = useState(new Set())
   const [acikIdler, setAcikIdler] = useState(new Set())
@@ -800,12 +844,12 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
     try {
       const dxfListRes = await api.get(`/dosya/proje/${projeId}/dxf-listesi`)
       const dxfler = dxfListRes?.data || dxfListRes || []
-      const hakEdisDxf = dxfler.find(d => d.adim_kodu === 'hak_edis_krokisi')
-      if (!hakEdisDxf) {
-        alert('Hak Ediş Krokisi DXF bulunamadı. Önce krokiyi oluşturun.')
+      const kaynakDxf = dxfler.find(d => d.adim_kodu === konfig.dxfAdimKodu)
+      if (!kaynakDxf) {
+        alert(konfig.dxfBulunamadiMesaji)
         return
       }
-      const elemanRes = await api.get(`/dosya/${hakEdisDxf.id}/dxf-elemanlar`)
+      const elemanRes = await api.get(`/dosya/${kaynakDxf.id}/dxf-elemanlar`)
       const elemanlar = (elemanRes?.data || elemanRes)?.elemanlar || []
 
       // Diagnostic: hangi sembol karakterleri mevcut?
@@ -889,28 +933,32 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
       {/* Başlık */}
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Sebeke Metraji</h3>
-          <p className="text-xs text-muted-foreground">Direk bazli malzeme ve iletken listesi</p>
+          <h3 className="text-lg font-semibold">{konfig.baslik}</h3>
+          <p className="text-xs text-muted-foreground">{konfig.altBaslik}</p>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
           <button onClick={handleOtomatikTespit} disabled={otoTaraYukleniyor}
-            title="Hak Ediş Krokisi DXF'indeki tüm direkleri otomatik tara ve malzeme listesini oluştur"
+            title={`${konfig.dxfAdimKodu === 'hak_edis_krokisi' ? 'Hak Ediş Krokisi' : 'Yeni Durum Proje'} DXF'indeki tüm direkleri otomatik tara ve malzeme listesini oluştur`}
             className="flex items-center gap-1 rounded border border-violet-300 bg-violet-50 px-2 py-1.5 text-xs text-violet-700 hover:bg-violet-100 disabled:opacity-50">
             {otoTaraYukleniyor ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
             {otoTaraYukleniyor && otoTaraIlerleme
               ? `Taraniyor ${otoTaraIlerleme.yapilan}/${otoTaraIlerleme.toplam}`
               : 'Otomatik Tespit'}
           </button>
-          <button onClick={handleSablonKopyala} disabled={excelYukleniyor}
-            className="flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
-            {excelYukleniyor ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSpreadsheet className="h-3 w-3" />} Sablon
-          </button>
-          <button onClick={handleExcelAktar} disabled={excelYukleniyor || !satirlar?.length}
-            className="flex items-center gap-1 rounded border border-blue-300 bg-blue-50 px-2 py-1.5 text-xs text-blue-700 hover:bg-blue-100 disabled:opacity-50">
-            {excelYukleniyor ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />} Excel
-          </button>
-          {excelDosyaId && <a href={`/api/dosya/${excelDosyaId}/indir`} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1 rounded border border-input px-2 py-1.5 text-xs text-primary hover:bg-primary/5"><ExternalLink className="h-3 w-3" /> Indir</a>}
+          {konfig.excelAktarim && (
+            <>
+              <button onClick={handleSablonKopyala} disabled={excelYukleniyor}
+                className="flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+                {excelYukleniyor ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSpreadsheet className="h-3 w-3" />} Sablon
+              </button>
+              <button onClick={handleExcelAktar} disabled={excelYukleniyor || !satirlar?.length}
+                className="flex items-center gap-1 rounded border border-blue-300 bg-blue-50 px-2 py-1.5 text-xs text-blue-700 hover:bg-blue-100 disabled:opacity-50">
+                {excelYukleniyor ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />} Excel
+              </button>
+              {excelDosyaId && <a href={`/api/dosya/${excelDosyaId}/indir`} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1 rounded border border-input px-2 py-1.5 text-xs text-primary hover:bg-primary/5"><ExternalLink className="h-3 w-3" /> Indir</a>}
+            </>
+          )}
           <button onClick={handleYeniSatir} className="flex items-center gap-1 rounded bg-primary px-2 py-1.5 text-xs font-medium text-white hover:bg-primary/90">
             <Plus className="h-3 w-3" /> Ekle
           </button>
@@ -985,6 +1033,172 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
             onSpriteGuncelle={onSpriteGuncelle}
           />
         ))}
+      </div>
+
+      {/* Malzeme Özeti — agrega edilmiş kalemler + katalog fiyatlarıyla genel toplam */}
+      {malzemeOzeti && satirlar?.length > 0 && (
+        <MalzemeOzetiTablosu
+          ozet={malzemeOzeti}
+          projeId={projeId}
+          onIlerlemeKaydedildi={() => {
+            qc.invalidateQueries({ queryKey: ['proje-kesif-metraj-malzeme-ozeti', projeId] })
+            qc.invalidateQueries({ queryKey: ['hak-edis-metraj-malzeme-ozeti', projeId] })
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// İlerleme inline edit hücresi — debounced upsert /api/proje-kesif/:projeId/ilerleme
+function IlerlemeInput({ projeId, poz, value, onSaved, malzeme_adi, birim }) {
+  const [val, setVal] = useState(value ?? '')
+  const timerRef = useRef(null)
+  useEffect(() => { setVal(value ?? '') }, [value])
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
+
+  const kaydet = (yeni) => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(async () => {
+      try {
+        await api.put(`/proje-kesif/${projeId}/ilerleme`, {
+          poz_no: poz, ilerleme: Number(yeni) || 0,
+          malzeme_adi, birim,
+        })
+        onSaved?.()
+      } catch (e) { console.error('İlerleme kaydet hatası:', e.message) }
+    }, 500)
+  }
+
+  return (
+    <input
+      type="number" step="any" value={val}
+      onChange={e => { setVal(e.target.value); kaydet(e.target.value) }}
+      className="w-full text-right text-xs tabular-nums text-blue-700 bg-transparent rounded border border-transparent hover:border-input focus:border-primary focus:bg-white focus:outline-none px-1 py-0.5"
+    />
+  )
+}
+
+// ── Malzeme özeti tablosu — parent-child katalog gruplama ile
+function MalzemeOzetiTablosu({ ozet, projeId, onIlerlemeKaydedildi }) {
+  const fiyatBicim = (n) => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const miktarBicim = (n) => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
+
+  return (
+    <div className="mt-4 rounded-lg border border-input bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b border-input">
+        <h4 className="text-sm font-semibold">Malzeme Özeti</h4>
+        <span className="text-xs text-muted-foreground">
+          İlerleme: <span className="font-bold text-blue-700">{fiyatBicim(ozet.genel_ilerleme_tutar || 0)} ₺</span>
+          {' / '}
+          Genel Toplam: <span className="font-bold text-emerald-700">{fiyatBicim(ozet.genel_toplam)} ₺</span>
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/20">
+            <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              <th className="px-2 py-1.5 text-left">Adı</th>
+              <th className="px-2 py-1.5 text-right w-20">Miktar</th>
+              <th className="px-2 py-1.5 text-right w-20">İlerleme</th>
+              <th className="px-2 py-1.5 text-left w-14">Birim</th>
+              <th className="px-2 py-1.5 text-right w-24">B. Fiyat</th>
+              <th className="px-2 py-1.5 text-right w-28">Tutar</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Gruplar: parent toplam satırı + altında çocuklar */}
+            {ozet.gruplar?.map(g => (
+              <Fragment key={`g-${g.poz}`}>
+                <tr className="border-t-2 border-emerald-300 bg-emerald-50/50 font-semibold">
+                  <td className="px-2 py-1.5 text-xs">
+                    {g.adi}
+                    <span className="ml-1 text-[9px] text-muted-foreground font-mono font-normal">[{g.poz}]</span>
+                  </td>
+                  <td className="px-2 py-1.5 text-xs tabular-nums text-right">{miktarBicim(g.toplam_miktar)}</td>
+                  <td className="px-2 py-1.5 text-xs tabular-nums text-right text-blue-700">
+                    {g.ilerleme_miktar > 0 ? miktarBicim(g.ilerleme_miktar) : '-'}
+                  </td>
+                  <td className="px-2 py-1.5 text-[11px] text-muted-foreground">{g.birim}</td>
+                  <td className="px-2 py-1.5 text-xs tabular-nums text-right">
+                    {g.birim_fiyat > 0 ? `${fiyatBicim(g.birim_fiyat)} ₺` : '-'}
+                  </td>
+                  <td className="px-2 py-1.5 text-xs tabular-nums text-right text-emerald-700">
+                    {g.toplam_tutar > 0 ? `${fiyatBicim(g.toplam_tutar)} ₺` : '-'}
+                  </td>
+                </tr>
+                {g.cocuklar.map((c, i) => (
+                  <tr key={`g-${g.poz}-c-${i}`} className="border-b border-input/30 hover:bg-muted/20">
+                    <td className="px-2 py-1 text-xs pl-6 text-muted-foreground">
+                      <span className="text-foreground">{c.adi}</span>
+                      <span className="ml-1 text-[9px] font-mono">[{c.poz}]</span>
+                    </td>
+                    <td className="px-2 py-1 text-xs tabular-nums text-right text-muted-foreground">{miktarBicim(c.miktar)}</td>
+                    <td className="px-1 py-1">
+                      <IlerlemeInput
+                        projeId={projeId} poz={c.poz} value={c.ilerleme}
+                        malzeme_adi={c.adi} birim={c.birim}
+                        onSaved={onIlerlemeKaydedildi}
+                      />
+                    </td>
+                    <td className="px-2 py-1 text-[11px] text-muted-foreground">{c.birim}</td>
+                    <td className="px-2 py-1 text-[10px] text-muted-foreground italic">
+                      {c.agirlik > 0 ? `${miktarBicim(c.agirlik)} kg/${c.birim}` : ''}
+                    </td>
+                    <td className="px-2 py-1 text-[10px] text-muted-foreground italic text-right">
+                      {c.alt_toplam_miktar > 0 ? `= ${miktarBicim(c.alt_toplam_miktar)} kg` : ''}
+                    </td>
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+            {/* Bağımsız (parent grubu olmayan) kalemler */}
+            {ozet.bagimsiz?.length > 0 && (
+              <>
+                <tr className="border-t-2 border-slate-300 bg-slate-50/60">
+                  <td colSpan={6} className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                    Bağımsız Kalemler ({ozet.bagimsiz.length})
+                  </td>
+                </tr>
+                {ozet.bagimsiz.map((b, i) => (
+                  <tr key={`b-${i}`} className="border-b border-input/30 hover:bg-muted/30">
+                    <td className="px-2 py-1 text-xs">
+                      {b.adi}
+                      {b.poz && <span className="ml-1 text-[9px] text-muted-foreground font-mono">[{b.poz}]</span>}
+                      {b.katalog_eslesmedi && <span className="ml-1 text-[9px] text-amber-600">(katalog ✗)</span>}
+                    </td>
+                    <td className="px-2 py-1 text-xs tabular-nums text-right">{miktarBicim(b.miktar)}</td>
+                    <td className="px-1 py-1">
+                      {b.poz ? (
+                        <IlerlemeInput
+                          projeId={projeId} poz={b.poz} value={b.ilerleme}
+                          malzeme_adi={b.adi} birim={b.birim}
+                          onSaved={onIlerlemeKaydedildi}
+                        />
+                      ) : <span className="text-muted-foreground/40 text-xs">-</span>}
+                    </td>
+                    <td className="px-2 py-1 text-[11px] text-muted-foreground">{b.birim}</td>
+                    <td className="px-2 py-1 text-xs tabular-nums text-right">
+                      {b.birim_fiyat > 0 ? `${fiyatBicim(b.birim_fiyat)} ₺` : '-'}
+                    </td>
+                    <td className="px-2 py-1 text-xs tabular-nums text-right font-medium">
+                      {b.toplam_tutar > 0 ? `${fiyatBicim(b.toplam_tutar)} ₺` : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </>
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-primary/40 bg-muted/30">
+              <td colSpan={2} className="px-2 py-2 text-right text-xs font-bold">GENEL TOPLAM</td>
+              <td colSpan={3} className="px-2 py-2 text-right text-xs font-bold text-blue-700">
+                İlerleme: {fiyatBicim(ozet.genel_ilerleme_tutar || 0)} ₺
+              </td>
+              <td className="px-2 py-2 text-right text-sm font-bold tabular-nums text-emerald-700">{fiyatBicim(ozet.genel_toplam)} ₺</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   )

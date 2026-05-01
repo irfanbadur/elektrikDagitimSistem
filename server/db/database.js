@@ -609,6 +609,9 @@ function _initSingleDb() {
   // Mevcut verileri yeni faz sistemine taşı
   migrateToFazSistemi(database);
 
+  // YB Kabul fazı: Tutanaklar→BHP, Eksiklerin giderilmesi→EVP, GK tamamlama ve Teminatlar kaldır
+  migrateYbKabulFazi(database);
+
   // Proje durumlarını aktif adıma göre senkronize et
   fixProjeDurumlari(database);
 
@@ -617,6 +620,51 @@ function _initSingleDb() {
     database.prepare("SELECT sprite_veri FROM hak_edis_metraj LIMIT 1").get();
   } catch {
     try { database.prepare("ALTER TABLE hak_edis_metraj ADD COLUMN sprite_veri TEXT").run(); } catch {}
+  }
+
+  // proje_kesif_metraj tablosu (hak_edis_metraj ile aynı şema; Yeni Durum DXF'inden keşif)
+  try {
+    database.prepare(`
+      CREATE TABLE IF NOT EXISTS proje_kesif_metraj (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proje_id INTEGER NOT NULL,
+        sira INTEGER DEFAULT 0,
+        nokta1 TEXT, nokta2 TEXT, nokta_durum TEXT,
+        direk_tur TEXT, direk_tip TEXT,
+        traversler TEXT,
+        ara_mesafe REAL DEFAULT 0,
+        ag_iletken_durum TEXT, og_iletken_durum TEXT,
+        ag_iletken TEXT, og_iletken TEXT,
+        yeni_iletken TEXT, dmm_iletken TEXT,
+        kaynak TEXT DEFAULT 'kroki',
+        kaynak_direk_x REAL, kaynak_direk_y REAL,
+        sprite_veri TEXT,
+        notlar TEXT,
+        olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+        guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE
+      )
+    `).run();
+    database.prepare(`CREATE INDEX IF NOT EXISTS idx_proje_kesif_metraj_proje ON proje_kesif_metraj(proje_id)`).run();
+  } catch (err) {
+    console.error('proje_kesif_metraj tablo hatası:', err.message);
+  }
+
+  // projeler.excel_sira — Excel "KET-YB PROJE İLERLEME" sayfasındaki SIRA kolonu
+  try {
+    database.prepare("SELECT excel_sira FROM projeler LIMIT 1").get();
+  } catch {
+    try { database.prepare("ALTER TABLE projeler ADD COLUMN excel_sira INTEGER").run(); } catch {}
+  }
+
+  // proje_kesif/demontaj/dmm tablolarına artirimli_birim_fiyat kolonu ekle
+  // (Excel'in C13/C14/C15/C16 = ARTIRIMLI/TENZİLATLI BİRİM FİYATLAR — 2 ondalığa yuvarlı)
+  for (const tablo of ['proje_kesif', 'proje_demontaj', 'proje_dmm']) {
+    try {
+      database.prepare(`SELECT artirimli_birim_fiyat FROM ${tablo} LIMIT 1`).get();
+    } catch {
+      try { database.prepare(`ALTER TABLE ${tablo} ADD COLUMN artirimli_birim_fiyat REAL DEFAULT 0`).run(); } catch {}
+    }
   }
 }
 
@@ -806,8 +854,6 @@ function seedIsTipleri(database) {
         sorumlu: 'koordinator', tahmini_gun: 15,
         adimlar: [
           { adim_adi: 'Metraj', adim_kodu: 'metraj', tahmini_gun: 5 },
-          { adim_adi: 'Hesap', adim_kodu: 'hesap', tahmini_gun: 5 },
-          { adim_adi: 'Kurum Şablon', adim_kodu: 'kurum_sablon', tahmini_gun: 5 },
         ]
       },
       {
@@ -938,6 +984,168 @@ function migrateToFazSistemi(database) {
   } catch (err) {
     console.error('Faz sistemi migration hatası:', err.message);
   }
+}
+
+function migrateYbKabulFazi(database) {
+  // YB: Tutanaklar→BHP, Eksiklerin giderilmesi→EVP, GK tamamlama+Teminatlar sil
+  // KET: Tutanaklar sil (BHP yok), Eksiklerin giderilmesi→EVP, GK tamamlama+Teminatlar sil
+  // Hak Ediş (tüm tipler): hesap+kurum_sablon sil → sadece Metraj ve Hak Ediş Krokisi kalır
+  const KONFIGLER = [
+    {
+      fazKodu: 'kabul', kod: 'YB',
+      renames: [
+        { adim_kodu: 'kabul_tutanaklar', yeniAdi: 'BHP' },
+        { adim_kodu: 'eksik_giderim', yeniAdi: 'EVP' },
+      ],
+      silinecekKodlar: ['gk_tamamlama', 'teminatlar'],
+    },
+    {
+      fazKodu: 'kabul', kod: 'KET',
+      renames: [{ adim_kodu: 'eksik_giderim', yeniAdi: 'EVP' }],
+      silinecekKodlar: ['kabul_tutanaklar', 'gk_tamamlama', 'teminatlar'],
+    },
+    // Hak Ediş: tüm iş tipleri için hesap ve kurum_sablon kaldır
+    { fazKodu: 'hak_edis', kod: null, renames: [], silinecekKodlar: ['hesap', 'kurum_sablon'] },
+  ];
+
+  for (const cfg of KONFIGLER) {
+    try {
+      uygulaFazAdimKonfigi(database, cfg);
+    } catch (err) {
+      console.error(`${cfg.kod || 'TÜM'} ${cfg.fazKodu} fazı migration hatası:`, err.message);
+    }
+  }
+}
+
+function uygulaFazAdimKonfigi(database, cfg) {
+  const renameKodlari = cfg.renames.map(r => r.adim_kodu);
+  const renameYeniAdlari = cfg.renames.map(r => r.yeniAdi);
+  const silinecekKodlar = cfg.silinecekKodlar;
+  const fazKodu = cfg.fazKodu;
+  // cfg.kod === null ise tüm iş tipleri (filtre yok)
+  const kodFiltre = cfg.kod ? 'AND it.kod = ?' : '';
+  const kodParam = cfg.kod ? [cfg.kod] : [];
+
+  // Yapılacak iş var mı?
+  const eskiAdSorgusu = renameKodlari.length > 0
+    ? `(fa.adim_kodu IN (${renameKodlari.map(() => '?').join(',')}) AND fa.adim_adi NOT IN (${renameYeniAdlari.map(() => '?').join(',')}))`
+    : '0';
+  const silSorgusu = silinecekKodlar.length > 0
+    ? `fa.adim_kodu IN (${silinecekKodlar.map(() => '?').join(',')})`
+    : '0';
+
+  const templateParams = [...renameKodlari, ...renameYeniAdlari, ...silinecekKodlar];
+  const templateGuncellenecek = database.prepare(`
+    SELECT COUNT(*) as c FROM faz_adimlari fa
+    JOIN is_tipi_fazlari itf ON fa.faz_id = itf.id
+    JOIN is_tipleri it ON itf.is_tipi_id = it.id
+    WHERE itf.faz_kodu = ? ${kodFiltre} AND (${eskiAdSorgusu} OR ${silSorgusu})
+  `).get(fazKodu, ...kodParam, ...templateParams);
+
+  const projeEskiAdSorgusu = renameKodlari.length > 0
+    ? `(pa.adim_kodu IN (${renameKodlari.map(() => '?').join(',')}) AND pa.adim_adi NOT IN (${renameYeniAdlari.map(() => '?').join(',')}))`
+    : '0';
+  const projeSilSorgusu = silinecekKodlar.length > 0
+    ? `pa.adim_kodu IN (${silinecekKodlar.map(() => '?').join(',')})`
+    : '0';
+  const projeGuncellenecek = database.prepare(`
+    SELECT COUNT(*) as c FROM proje_adimlari pa
+    JOIN projeler p ON pa.proje_id = p.id
+    JOIN is_tipleri it ON p.is_tipi_id = it.id
+    WHERE pa.faz_kodu = ? ${kodFiltre} AND (${projeEskiAdSorgusu} OR ${projeSilSorgusu})
+  `).get(fazKodu, ...kodParam, ...templateParams);
+
+  if (templateGuncellenecek.c === 0 && projeGuncellenecek.c === 0) return;
+
+  const tx = database.transaction(() => {
+    // 1) Şablon (faz_adimlari) güncellemesi
+    const fazlar = database.prepare(`
+      SELECT itf.id FROM is_tipi_fazlari itf
+      JOIN is_tipleri it ON itf.is_tipi_id = it.id
+      WHERE itf.faz_kodu = ? ${kodFiltre}
+    `).all(fazKodu, ...kodParam);
+
+    let templateGuncellendi = 0;
+    for (const f of fazlar) {
+      for (const r of cfg.renames) {
+        database.prepare(`UPDATE faz_adimlari SET adim_adi = ? WHERE faz_id = ? AND adim_kodu = ?`)
+          .run(r.yeniAdi, f.id, r.adim_kodu);
+      }
+      if (silinecekKodlar.length > 0) {
+        const phSil = silinecekKodlar.map(() => '?').join(',');
+        const silinecekIds = database.prepare(
+          `SELECT id FROM faz_adimlari WHERE faz_id = ? AND adim_kodu IN (${phSil})`
+        ).all(f.id, ...silinecekKodlar).map(r => r.id);
+        if (silinecekIds.length > 0) {
+          const phIds = silinecekIds.map(() => '?').join(',');
+          database.prepare(`UPDATE proje_adimlari SET adim_tanim_id = NULL WHERE adim_tanim_id IN (${phIds})`)
+            .run(...silinecekIds);
+          database.prepare(`DELETE FROM faz_adimlari WHERE id IN (${phIds})`).run(...silinecekIds);
+        }
+      }
+      // sira'yı 1'den itibaren yeniden numaralandır (UNIQUE çakışmasını önlemek için +10000 offset)
+      database.prepare(`UPDATE faz_adimlari SET sira = sira + 10000 WHERE faz_id = ?`).run(f.id);
+      const adimRows = database.prepare(`SELECT id FROM faz_adimlari WHERE faz_id = ? ORDER BY sira`).all(f.id);
+      const setSiraStmt = database.prepare(`UPDATE faz_adimlari SET sira = ? WHERE id = ?`);
+      adimRows.forEach((a, i) => setSiraStmt.run(i + 1, a.id));
+      templateGuncellendi++;
+    }
+
+    // 2) Mevcut projelerde proje_adimlari güncellemesi
+    const projeler = database.prepare(`
+      SELECT DISTINCT p.id as proje_id
+      FROM projeler p
+      JOIN is_tipleri it ON p.is_tipi_id = it.id
+      WHERE 1=1 ${kodFiltre}
+    `).all(...kodParam);
+
+    let projeGuncellendi = 0;
+    for (const pr of projeler) {
+      const projeId = pr.proje_id;
+
+      for (const r of cfg.renames) {
+        database.prepare(
+          `UPDATE proje_adimlari SET adim_adi = ? WHERE proje_id = ? AND faz_kodu = ? AND adim_kodu = ?`
+        ).run(r.yeniAdi, projeId, fazKodu, r.adim_kodu);
+      }
+
+      let silindi = 0;
+      if (silinecekKodlar.length > 0) {
+        const phSil = silinecekKodlar.map(() => '?').join(',');
+        const silinecek = database.prepare(
+          `SELECT id FROM proje_adimlari WHERE proje_id = ? AND faz_kodu = ? AND adim_kodu IN (${phSil})`
+        ).all(projeId, fazKodu, ...silinecekKodlar);
+        if (silinecek.length > 0) {
+          database.prepare(`UPDATE proje_adimlari SET sira_global = sira_global + 10000 WHERE proje_id = ?`).run(projeId);
+          const phIds = silinecek.map(() => '?').join(',');
+          database.prepare(`DELETE FROM proje_adimlari WHERE id IN (${phIds})`).run(...silinecek.map(s => s.id));
+          silindi = silinecek.length;
+        }
+      }
+
+      const allRows = database.prepare(`
+        SELECT id, faz_sira FROM proje_adimlari WHERE proje_id = ? ORDER BY sira_global
+      `).all(projeId);
+      const setGlobalStmt = database.prepare(`UPDATE proje_adimlari SET sira_global = ? WHERE id = ?`);
+      const setAdimSiraStmt = database.prepare(`UPDATE proje_adimlari SET adim_sira = ? WHERE id = ?`);
+      let lastFaz = null;
+      let adimSira = 0;
+      allRows.forEach((r, i) => {
+        if (silindi > 0) setGlobalStmt.run(i + 1, r.id);
+        if (r.faz_sira !== lastFaz) { lastFaz = r.faz_sira; adimSira = 0; }
+        adimSira++;
+        setAdimSiraStmt.run(adimSira, r.id);
+      });
+
+      projeGuncellendi++;
+    }
+
+    const renameOzet = cfg.renames.map(r => `${r.adim_kodu}→${r.yeniAdi}`).join(', ');
+    const silOzet = silinecekKodlar.join(', ') || '-';
+    const kodOzet = cfg.kod || 'TÜM TİPLER';
+    console.log(`✅ ${kodOzet} ${fazKodu} fazı güncellendi: ${templateGuncellendi} şablon, ${projeGuncellendi} proje (rename: ${renameOzet || '-'}; sil: ${silOzet})`);
+  });
+  tx();
 }
 
 function fixProjeDurumlari(database) {

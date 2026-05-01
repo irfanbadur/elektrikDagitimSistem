@@ -145,23 +145,31 @@ export default function DataTable({ columns, data = [], searchable = true, searc
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className={cn("border-b-2 border-border", stickyHeader ? "bg-muted/95 backdrop-blur-sm" : "bg-muted/70")}>
                 {rowNumber && <th className="w-10 px-3 py-3.5 text-center text-xs font-semibold text-muted-foreground">#</th>}
-                {hg.headers.map((header) => (
-                  <th key={header.id} className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {header.isPlaceholder ? null : (
-                      <div
-                        className={header.column.getCanSort() ? 'flex cursor-pointer select-none items-center gap-1' : ''}
-                        onClick={header.column.getToggleSortingHandler()}
-                      >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getCanSort() && (
-                          header.column.getIsSorted() === 'asc' ? <ChevronUp className="h-4 w-4" /> :
-                          header.column.getIsSorted() === 'desc' ? <ChevronDown className="h-4 w-4" /> :
-                          <ChevronsUpDown className="h-4 w-4 opacity-50" />
-                        )}
-                      </div>
-                    )}
-                  </th>
-                ))}
+                {hg.headers.map((header) => {
+                  const meta = header.column.columnDef.meta || {}
+                  const thClass = meta.thClassName ?? 'px-4 py-3.5 text-left'
+                  return (
+                    <th
+                      key={header.id}
+                      className={cn(thClass, 'text-xs font-semibold uppercase tracking-wider text-muted-foreground')}
+                      style={meta.thStyle}
+                    >
+                      {header.isPlaceholder ? null : (
+                        <div
+                          className={header.column.getCanSort() ? 'flex cursor-pointer select-none items-center gap-1' : ''}
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {header.column.getCanSort() && (
+                            header.column.getIsSorted() === 'asc' ? <ChevronUp className="h-4 w-4" /> :
+                            header.column.getIsSorted() === 'desc' ? <ChevronDown className="h-4 w-4" /> :
+                            <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                          )}
+                        </div>
+                      )}
+                    </th>
+                  )
+                })}
               </tr>
             ))}
           </thead>
@@ -178,11 +186,18 @@ export default function DataTable({ columns, data = [], searchable = true, searc
                   } hover:bg-primary/5 ${onRowDoubleClick ? 'cursor-pointer' : ''}`}
                 >
                   {rowNumber && <td className="px-3 py-3.5 text-center text-xs text-muted-foreground">{i + 1}</td>}
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3.5">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const meta = cell.column.columnDef.meta || {}
+                    return (
+                      <td
+                        key={cell.id}
+                        className={meta.tdClassName ?? 'px-4 py-3.5'}
+                        style={meta.tdStyle}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    )
+                  })}
                 </tr>
               ))
             )}

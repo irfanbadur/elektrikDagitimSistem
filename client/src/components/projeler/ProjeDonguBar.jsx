@@ -2464,7 +2464,11 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
               src={`/api/dosya/${seciliDosya.id}/dosya`}
               dosyaId={seciliDosya.id}
               onDirekTikla={(d) => {
-                if (seciliDosya.adimKodu === 'hak_edis_krokisi' && onDirekSec && d.numara) {
+                // Hak Ediş Krokisi → Hak Ediş sekmesinde direk satırını aç
+                // Yeni Durum Proje  → Proje-Keşif sekmesinde direk satırını aç
+                // Diğer DXF'ler     → eski popup açılır
+                const direkBazliDxf = seciliDosya.adimKodu === 'hak_edis_krokisi' || seciliDosya.adimKodu === 'yeni_durum_proje'
+                if (direkBazliDxf && onDirekSec && d.numara) {
                   const yakinlar = { armatur: false, koruma: false, isletme: false }
                   for (const el of direkListesi) {
                     if (el.numara !== d.numara || el === d) continue
@@ -2472,7 +2476,11 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
                     if (el.sembol === '4') yakinlar.koruma = true
                     if (el.sembol === '5') yakinlar.isletme = true
                   }
-                  onDirekSec({ numara: d.numara, tip: d.tip, sembol: d.sembol, sembolAdi: d.sembolAdi, komsular: d.komsular, yakinlar })
+                  onDirekSec({
+                    numara: d.numara, tip: d.tip, sembol: d.sembol, sembolAdi: d.sembolAdi,
+                    komsular: d.komsular, yakinlar,
+                    _adimKodu: seciliDosya.adimKodu,
+                  })
                 } else {
                   if (!seciliDirek) setSeciliDirek(d)
                 }
