@@ -666,6 +666,32 @@ function _initSingleDb() {
       try { database.prepare(`ALTER TABLE ${tablo} ADD COLUMN artirimli_birim_fiyat REAL DEFAULT 0`).run(); } catch {}
     }
   }
+
+  // metraj_islem_gecmisi — Undo/Redo için operasyon log'u
+  // hak_edis_metraj ve proje_kesif_metraj tabloları için ekle/güncelle/sil işlemleri kaydedilir.
+  // Aynı kullanıcı işlemi birden fazla satıra yazıyorsa (Otomatik Tespit) batch_id ile gruplanır.
+  try {
+    database.prepare(`
+      CREATE TABLE IF NOT EXISTS metraj_islem_gecmisi (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proje_id INTEGER NOT NULL,
+        tablo TEXT NOT NULL,
+        islem_tipi TEXT NOT NULL,        -- 'ekle' | 'guncelle' | 'sil'
+        satir_id INTEGER,                -- ilgili tablodaki satır id
+        eski_satir TEXT,                 -- JSON snapshot (sil/guncelle için)
+        yeni_satir TEXT,                 -- JSON snapshot (ekle/guncelle için)
+        batch_id TEXT,                   -- aynı kullanıcı işleminde grup
+        aciklama TEXT,
+        geri_alindi INTEGER DEFAULT 0,   -- 1 = undo edildi (redo'da tekrar uygulanır)
+        tarih INTEGER NOT NULL,
+        FOREIGN KEY (proje_id) REFERENCES projeler(id) ON DELETE CASCADE
+      )
+    `).run();
+    database.prepare(`CREATE INDEX IF NOT EXISTS idx_mig_proje_tablo ON metraj_islem_gecmisi(proje_id, tablo, tarih)`).run();
+    database.prepare(`CREATE INDEX IF NOT EXISTS idx_mig_batch ON metraj_islem_gecmisi(batch_id)`).run();
+  } catch (err) {
+    console.error('metraj_islem_gecmisi tablo hatası:', err.message);
+  }
 }
 
 function fixFazSorumluRol(database) {

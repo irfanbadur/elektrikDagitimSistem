@@ -74,9 +74,44 @@ export function metrajHookFactory({ apiBase = '/hak-edis-metraj', queryPrefix = 
     })
   }
 
+  // Geçmiş + undo + redo
+  const gecmis = (projeId) => useQuery({
+    queryKey: [`${queryPrefix}-gecmis`, projeId],
+    queryFn: () => api.get(`${apiBase}/${projeId}/gecmis`),
+    select: (res) => res.data,
+    enabled: !!projeId,
+  })
+
+  const undo = (projeId) => {
+    const qc = useQueryClient()
+    return useMutation({
+      mutationFn: () => api.post(`${apiBase}/${projeId}/undo`),
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: [queryPrefix, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-ozet`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-malzeme-ozeti`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-gecmis`, projeId] })
+      },
+    })
+  }
+
+  const redo = (projeId) => {
+    const qc = useQueryClient()
+    return useMutation({
+      mutationFn: () => api.post(`${apiBase}/${projeId}/redo`),
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: [queryPrefix, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-ozet`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-malzeme-ozeti`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-gecmis`, projeId] })
+      },
+    })
+  }
+
   return {
     useListe: liste, useOzet: ozet, useMalzemeOzeti: malzemeOzeti,
     useEkle: ekle, useTopluEkle: topluEkle, useGuncelle: guncelle, useSil: sil,
+    useGecmis: gecmis, useUndo: undo, useRedo: redo,
   }
 }
 
@@ -89,6 +124,9 @@ export const useHakEdisMetrajEkle        = hakEdisHooks.useEkle
 export const useHakEdisMetrajTopluEkle   = hakEdisHooks.useTopluEkle
 export const useHakEdisMetrajGuncelle    = hakEdisHooks.useGuncelle
 export const useHakEdisMetrajSil         = hakEdisHooks.useSil
+export const useHakEdisMetrajGecmis      = hakEdisHooks.useGecmis
+export const useHakEdisMetrajUndo        = hakEdisHooks.useUndo
+export const useHakEdisMetrajRedo        = hakEdisHooks.useRedo
 
 // Proje-Keşif tablosu için hook'lar
 const kesifHooks = metrajHookFactory({ apiBase: '/proje-kesif-metraj', queryPrefix: 'proje-kesif-metraj' })
@@ -99,3 +137,6 @@ export const useProjeKesifMetrajEkle         = kesifHooks.useEkle
 export const useProjeKesifMetrajTopluEkle    = kesifHooks.useTopluEkle
 export const useProjeKesifMetrajGuncelle     = kesifHooks.useGuncelle
 export const useProjeKesifMetrajSil          = kesifHooks.useSil
+export const useProjeKesifMetrajGecmis       = kesifHooks.useGecmis
+export const useProjeKesifMetrajUndo         = kesifHooks.useUndo
+export const useProjeKesifMetrajRedo         = kesifHooks.useRedo

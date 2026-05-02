@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
-import { Plus, Trash2, BarChart3, Ruler, MapPin, FileSpreadsheet, Upload, Loader2, ExternalLink, ChevronDown, ChevronRight, Search, Wand2, Package } from 'lucide-react'
+import { Plus, Trash2, BarChart3, Ruler, MapPin, FileSpreadsheet, Upload, Loader2, ExternalLink, ChevronDown, ChevronRight, Search, Wand2, Package, Undo2, Redo2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useHakEdisMetraj, useHakEdisMetrajOzet, useHakEdisMetrajMalzemeOzeti, useHakEdisMetrajEkle, useHakEdisMetrajGuncelle, useHakEdisMetrajSil,
+  useHakEdisMetrajGecmis, useHakEdisMetrajUndo, useHakEdisMetrajRedo,
   useProjeKesifMetraj, useProjeKesifMetrajOzet, useProjeKesifMetrajMalzemeOzeti, useProjeKesifMetrajEkle, useProjeKesifMetrajGuncelle, useProjeKesifMetrajSil,
+  useProjeKesifMetrajGecmis, useProjeKesifMetrajUndo, useProjeKesifMetrajRedo,
 } from '@/hooks/useHakEdisMetraj'
 
 // İki sekme aynı UI'yi paylaşır; konfigürasyon hangi tablo/route/DXF kaynağı kullanılacağını belirler.
@@ -20,6 +22,9 @@ export const HAK_EDIS_KONFIGI = {
     useEkle: useHakEdisMetrajEkle,
     useGuncelle: useHakEdisMetrajGuncelle,
     useSil: useHakEdisMetrajSil,
+    useGecmis: useHakEdisMetrajGecmis,
+    useUndo: useHakEdisMetrajUndo,
+    useRedo: useHakEdisMetrajRedo,
   },
 }
 
@@ -36,6 +41,9 @@ export const KESIF_KONFIGI = {
     useEkle: useProjeKesifMetrajEkle,
     useGuncelle: useProjeKesifMetrajGuncelle,
     useSil: useProjeKesifMetrajSil,
+    useGecmis: useProjeKesifMetrajGecmis,
+    useUndo: useProjeKesifMetrajUndo,
+    useRedo: useProjeKesifMetrajRedo,
   },
 }
 import api from '@/api/client'
@@ -310,20 +318,198 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMik
   )
 }
 
-// ── Otomatik malzeme kuralları ──
-function hesaplaOtoMalzemeler(tip, yakinlar) {
+// ── İletken metnini ayrıştır ──
+// Girdi örnekleri: "3x70/16+95_AER", "(4P+R)", "[3xSW]+[4P+R]", "3xSW+(4P+R)", "(3xSW)+(4P+R)"
+// Çıktı: { agIletken: {tip,kesit|tertip,tel_sayisi}, ogIletken: {tip,tertip,faz_sayisi}, durum }
+function parseIletken(text) {
+  if (!text) return { agIletken: null, ogIletken: null, durum: 'Yeni' }
+  const ham = text.trim()
+  // Tüm metinde [ varsa DMM, ( varsa ama [] yok → Mevcut, hiçbiri → Yeni
+  const tumDmm = /\[/.test(ham)
+  const tumMevcut = !tumDmm && /^\(/.test(ham)
+  const durumGenel = tumDmm ? 'DMM' : (tumMevcut ? 'Mevcut' : 'Yeni')
+
+  // Parantezleri parça parça çözümle: her bölüm için durumu farklı olabilir
+  // "3xSW+(4P+R)" → OG yeni "3xSW" + AG mevcut "4P+R"
+  const ogPattern = /(\(|\[)?([0-9]+\s*x\s*(?:SW|SWALLOW|PIGEON|RAVEN|HAWK|PARTRIDGE))(\)|\])?/i
+  const agAerPattern = /(\(|\[)?(\d+\s*x\s*\d+\s*\/?\s*\d*\s*\+?\s*\d*[_\s]*AER)(\)|\])?/i
+  // AG çıplak tertip: 4P+R, 3A+P/R, 5xR, 4P. (SW olmamak şartıyla)
+  const agCiplakPattern = /(\(|\[)?(\d+\s*x?\s*[PARLI](?:[+\/][PARLI]+)*)(\)|\])?/i
+  // Çıplak Al iletken: 3x150/70-Al, 3x150/70-Al/95ÇLK
+  const ciplakAlPattern = /(\(|\[)?(\d+\s*x\s*\d+\s*\/?\s*\d*\s*-\s*AL[\/\d]*[ÇCK]*)(\)|\])?/i
+
+  let agIletken = null, ogIletken = null
+
+  const ogMatch = ham.match(ogPattern)
+  if (ogMatch) {
+    const fazSay = parseInt(ogMatch[2].match(/^(\d+)/)?.[1] || '3')
+    const ogDur = ogMatch[1] === '[' ? 'DMM' : (ogMatch[1] === '(' ? 'Mevcut' : 'Yeni')
+    ogIletken = { tip: 'CIPLAK', tertip: ogMatch[2].trim(), faz_sayisi: fazSay, durum: ogDur }
+  }
+  const aerMatch = ham.match(agAerPattern)
+  const alMatch = ham.match(ciplakAlPattern)
+  if (aerMatch) {
+    const kesitMatch = aerMatch[2].match(/3x(\d+)/i)
+    const agDur = aerMatch[1] === '[' ? 'DMM' : (aerMatch[1] === '(' ? 'Mevcut' : 'Yeni')
+    agIletken = { tip: 'AER', kesit: kesitMatch?.[1] || null, durum: agDur }
+  } else if (alMatch) {
+    // Çıplak Al — N95 + konsol kombinasyonuyla taşınır (4P+R'a benzer)
+    const agDur = alMatch[1] === '[' ? 'DMM' : (alMatch[1] === '(' ? 'Mevcut' : 'Yeni')
+    agIletken = { tip: 'CIPLAK_AL', tertip: alMatch[2].trim(), tel_sayisi: 4, durum: agDur }
+  } else {
+    // Sadece AER/Al yoksa AG çıplak harf-tertibe bak
+    // Önce OG eşleşmesini metinden çıkar (ki "3xSW+(4P+R)" sadece (4P+R)'i bulsun)
+    const ogIle = ogMatch ? ham.replace(ogMatch[0], '') : ham
+    const ciplakMatch = ogIle.match(agCiplakPattern)
+    if (ciplakMatch) {
+      const tertip = ciplakMatch[2]
+      if (!/SW/i.test(tertip)) {
+        const tel = (() => {
+          let toplam = 0
+          // 4P, 5xR, 3A
+          for (const m of tertip.matchAll(/(\d+)\s*x?\s*[PARLI]/gi)) toplam += parseInt(m[1])
+          // +R, +P/R
+          for (const m of tertip.matchAll(/\+\s*([PARLI](?:\/[PARLI])*)/gi)) toplam += m[1].split('/').length
+          return toplam || 5
+        })()
+        const agDur = ciplakMatch[1] === '[' ? 'DMM' : (ciplakMatch[1] === '(' ? 'Mevcut' : 'Yeni')
+        agIletken = { tip: 'CIPLAK', tertip, tel_sayisi: tel, durum: agDur }
+      }
+    }
+  }
+
+  return { agIletken, ogIletken, durum: durumGenel }
+}
+
+// ── Direk koşullarını analiz et ──
+function analizDirek(rawTip, sembol, komsular) {
+  const tip = rawTip || ''
+  const tipUst = tip.toUpperCase()
+  const potans = /\(P\)/.test(tipUst)
+  // Çift apostrof: '' veya " (DXF kaynağına göre değişebilir)
+  const ciftApos = /''/.test(tip) || /[A-Z0-9]"/.test(tip)
+  const isKtipi = /\bG-?K\d/i.test(tip)
+  const isItipi = /\bG-?(8|10|12)\s*I/i.test(tip) || /^(8|10|12)\s*I/i.test(tip)
+  const isE = /^E$/i.test(tip.trim())
+  const isBeton = /^\d+\s*\/\s*\d+/.test(tip)  // "11/5"
+
+  // Sembol durumu (Yeni/Mevcut/DMM) — DXF parser kuralları
+  const SEMBOL_DURUM = {
+    'A': 'Mevcut', 'R': 'Mevcut', 'P': 'Mevcut',
+    '8': 'Yeni', 'E': 'Yeni', 'M': 'Yeni',
+    'T': 'DMM', 'B': 'DMM', 'S': 'DMM',
+  }
+  const direkDurum = SEMBOL_DURUM[sembol] || 'Yeni'
+
+  // İletken — komşulardan ilkine bak (en yakın hat)
+  const komsuList = komsular || []
+  const ilkIletken = komsuList[0]?.iletken || ''
+  const { agIletken, ogIletken } = parseIletken(ilkIletken)
+
+  // Konum tahmini — komşu sayısı + iletken durumu
+  const aktifKomsuSay = komsuList.filter(k => k.iletken && k.hatDurum !== 'Mevcut').length
+  let konum = 'DUZ'
+  if (aktifKomsuSay <= 1) konum = 'HAT_SONU'
+  else if (aktifKomsuSay >= 3) konum = 'KUVVET'
+
+  return {
+    tip, potans, ciftApos, isKtipi, isItipi, isE, isBeton,
+    direkDurum, agIletken, ogIletken, konum,
+  }
+}
+
+// ── Otomatik malzeme kuralları (KARAR AĞACI) ──
+// Bkz: doc/hakediş/kroki-analizi/DIREK-DONANIM-KURALLARI.md §7
+function hesaplaOtoMalzemeler(tip, yakinlar, komsular, sembol) {
+  const a = analizDirek(tip, sembol, komsular)
   const oto = []
-  const hasPotans = /\(P\)/i.test(tip || '')
-  if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1, birim: 'Ad', gorunur: false })
-  if (yakinlar?.armatur) oto.push({ adi: 'ARM. LED KOR. SINIF 1 S15/8/1', miktar: 1, birim: 'Ad', gorunur: false })
+  const ekle = (adi, miktar = 1) => oto.push({ adi, miktar, birim: 'Ad', gorunur: false })
+
+  // A) Mevcut direk — yeni malzeme yok, sadece işaret
+  if (a.direkDurum === 'Mevcut') {
+    return oto  // Boş liste — kullanıcı manuel ekler
+  }
+
+  // B) Potans direkleri (yön değişimi/kuvvet) → travers
+  if (a.potans) {
+    if (a.isKtipi)        ekle('D-AG-3 (3 telli AG düz travers)', 1)
+    else if (a.isItipi)   ekle('T-AG-5(L3=150cm)', 1)
+    else                  ekle('T-AG-5(L3=150cm)', 1)
+  }
+  // C) AG+OG geçiş direği (çift apostrof — '' ya da ")
+  else if (a.ciftApos) {
+    if (a.isKtipi) ekle('MD-2 (montaj traversi K-direk)', 1)
+    else           ekle('MT-2 (montaj traversi 12I)', 1)
+    ekle('36 KV VHD 35 (20 mm/kV) Normal Tip', 3)            // OG faz izolatörü
+    ekle('Taş.Mak.İzolatör Sapı TK TS 205', 1)               // T-250 yerine kataloglu
+    ekle('D 80 ( Deve Boynu )', 1)                            // 6,5U-80 yerine kataloglu AG konsol
+    ekle('Makara İzolator TK MI 85', 1)                      // AG kablo gergi
+  }
+  // D) Trafo altı E direği — AG kablo geliyor, OG havadan iniyor
+  else if (yakinlar?.trafoAlti && a.agIletken?.tip === 'AER') {
+    ekle('TAG-5(L3=150cm)', 1)
+    ekle('Makara İzolator TK MI 85', 1)
+  }
+  // E) Normal direkler — iletken tipine göre konsol+izolatör
+  else {
+    // E.1) AG AER kablo (askılı)
+    if (a.agIletken?.tip === 'AER') {
+      if (a.konum === 'HAT_SONU') {
+        ekle('D 95 ( Deve Boynu )', 3)                        // 6,5U-100 muadili
+        ekle('Makara İzolator TK MI 85', 3)
+      } else if (a.konum === 'KUVVET') {
+        ekle('D 95 ( Deve Boynu )', 2)
+        ekle('Makara İzolator TK MI 85', 2)
+      } else {
+        ekle('D 80 ( Deve Boynu )', 1)
+        ekle('Makara İzolator TK MI 85', 1)
+      }
+    }
+    // E.2) AG çıplak iletken (4P+R, 3A+P/R, çıplak Al)
+    else if (a.agIletken?.tip === 'CIPLAK' || a.agIletken?.tip === 'CIPLAK_AL') {
+      const tel = a.agIletken.tel_sayisi || 5
+      if (a.konum === 'HAT_SONU') {
+        ekle('D 95 ( Deve Boynu )', 3)
+        ekle('1 KV N 95', tel * 2)                            // çift askı izolatör (her uçtan)
+        ekle('Makara İzolator TK MI 85', 3)
+      } else if (a.konum === 'KUVVET') {
+        ekle('D 95 ( Deve Boynu )', 2)
+        ekle('1 KV N 95', tel * 2)
+        ekle('Makara İzolator TK MI 85', 2)
+      } else {
+        ekle('D 80 ( Deve Boynu )', 1)
+        ekle('1 KV N 95', tel)                                // tek askı (her tel için 1)
+      }
+    }
+    // E.3) OG çıplak iletken (3SW, 3xPIGEON vb.)
+    if (a.ogIletken?.tip === 'CIPLAK') {
+      const fazSay = a.ogIletken.faz_sayisi || 3
+      if (a.konum === 'HAT_SONU') {
+        ekle('ÇİFT GERGİ Swallow - Raven - Pigeon (K2)', fazSay)
+        ekle('36 KV VHD 35 (20 mm/kV) Normal Tip', fazSay)
+      } else if (a.konum === 'KUVVET') {
+        ekle('TEK GERGİ Swallow - Raven - Pigeon (K1)', fazSay)
+        ekle('36 KV VHD 35 (20 mm/kV) Normal Tip', fazSay)
+      } else {
+        ekle('TEK ASKI Swallow - Raven - Pigeon (K1)', fazSay)
+        ekle('36 KV VHD 35 (20 mm/kV) Normal Tip', fazSay)
+      }
+    }
+  }
+
+  // F) Topraklama (sembol bazlı yakınlık)
   if (yakinlar?.koruma) {
-    oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', gorunur: false })
+    ekle('2m Galvanizli 65x65x7 Kosebent', 1)
     oto.push({ adi: '95 mm2 Galvanizli Celik Iletken ve gomulmesi', miktar: 5, birim: 'm', gorunur: false })
   }
   if (yakinlar?.isletme) {
-    oto.push({ adi: '2m Galvanizli 65x65x7 Kosebent', miktar: 1, birim: 'Ad', gorunur: false })
+    ekle('2m Galvanizli 65x65x7 Kosebent', 1)
     oto.push({ adi: '95 mm2 NAYY kablo ve gomulmesi', miktar: 30, birim: 'm', gorunur: false })
   }
+  if (yakinlar?.armatur) {
+    ekle('ARM. LED KOR. SINIF 1 S15/8/1', 1)
+  }
+
   return oto
 }
 
@@ -771,14 +957,62 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
   const guncelle = konfig.hooks.useGuncelle(projeId)
   const sil = konfig.hooks.useSil(projeId)
   const { data: malzemeOzeti } = konfig.hooks.useMalzemeOzeti(projeId)
+  // Undo / Redo
+  const { data: gecmisData } = konfig.hooks.useGecmis ? konfig.hooks.useGecmis(projeId) : { data: null }
+  const undo = konfig.hooks.useUndo ? konfig.hooks.useUndo(projeId) : null
+  const redo = konfig.hooks.useRedo ? konfig.hooks.useRedo(projeId) : null
+  const undoVar = !!gecmisData?.undo
+  const redoVar = !!gecmisData?.redo
   const qc = useQueryClient()
   const [seciliIdler, setSeciliIdler] = useState(new Set())
   const [acikIdler, setAcikIdler] = useState(new Set())
 
+  const handleUndo = useCallback(async () => {
+    if (!undo || !undoVar) return
+    try {
+      const r = await undo.mutateAsync()
+      const data = r?.data || r
+      if (data?.undone > 0) {
+        // Sessiz başarı — istenirse toast eklenebilir
+        console.info(`[Undo] ${data.undone} işlem geri alındı: ${data.aciklama || ''}`)
+      }
+    } catch (e) { alert('Geri alma hatası: ' + (e.message || '')) }
+  }, [undo, undoVar])
+
+  const handleRedo = useCallback(async () => {
+    if (!redo || !redoVar) return
+    try {
+      const r = await redo.mutateAsync()
+      const data = r?.data || r
+      if (data?.redone > 0) {
+        console.info(`[Redo] ${data.redone} işlem tekrar uygulandı: ${data.aciklama || ''}`)
+      }
+    } catch (e) { alert('Yeniden uygulama hatası: ' + (e.message || '')) }
+  }, [redo, redoVar])
+
+  // Klavye kısayolları: Ctrl+Z / Ctrl+Shift+Z (veya Ctrl+Y)
+  useEffect(() => {
+    const handler = (e) => {
+      // Input'a yazılırken kısayolları yutma — sadece tablo aktifken
+      const t = e.target
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (!(e.ctrlKey || e.metaKey)) return
+      const k = e.key.toLowerCase()
+      if (k === 'z' && !e.shiftKey) {
+        e.preventDefault(); handleUndo()
+      } else if ((k === 'z' && e.shiftKey) || k === 'y') {
+        e.preventDefault(); handleRedo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleUndo, handleRedo])
+
   // Bir direk bilgisinden yeni satır oluştur ya da mevcut satırı aç
   // (Hem click handler hem otomatik tespit butonu tarafından kullanılır)
+  // batchInfo: { batch_id, aciklama } — varsa ekle isteğine eklenir (otomatik tespit için)
   const direkBilgisiniIsle = useCallback(async (bilgi, mevcutSatirlar, opts = {}) => {
-    const { zorlaYeni = false, acma = true } = opts
+    const { zorlaYeni = false, acma = true, batchInfo = null } = opts
     if (!bilgi?.numara) return null
     const numara = bilgi.numara
     if (!zorlaYeni) {
@@ -792,7 +1026,7 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
     const cleanTip = rawTip.replace(/^G-/i, '').replace(/\(P\)/gi, '').trim()
     const turFromTip = TIP_TUR_MAP[cleanTip] || (rawTip.startsWith('G-') ? 'AG Direk' : '')
     const komsu = bilgi.komsular?.[0]
-    const otoMalz = hesaplaOtoMalzemeler(rawTip, bilgi.yakinlar)
+    const otoMalz = hesaplaOtoMalzemeler(rawTip, bilgi.yakinlar, bilgi.komsular, bilgi.sembol)
     const otoNotlar = otoMalz.map(m => `${m.miktar}||${m.adi}|${m.gorunur === false ? '0' : '1'}`).join('\n')
     const iletkenText = komsu?.iletken || ''
     const temizIletken = iletkenText.replace(/[()[\]]/g, '').trim()
@@ -813,6 +1047,7 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
       ag_iletken_durum: komsu?.hatDurum || 'Yeni',
       notlar: [otoNotlar, iletkenNot].filter(Boolean).join('\n'),
       kaynak: 'kroki',
+      ...(batchInfo ? { _batch_id: batchInfo.batch_id, _aciklama: batchInfo.aciklama } : {}),
     })
     const yeniId = (res?.data || res)?.id
     if (yeniId && acma) setAcikIdler(prev => new Set([...prev, yeniId]))
@@ -878,6 +1113,14 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
 
       if (!anaDirekler.length) { alert('DXF içinde ana direk bulunamadı.'); return }
 
+      // Tüm bu işlemleri tek bir undo grubu yap (Otomatik Tespit'ten önceki duruma dönmek için)
+      const batchInfo = {
+        batch_id: (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `oto-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        aciklama: `Otomatik Tespit (${anaDirekler.length} direk)`,
+      }
+
       let guncelSatirlar = [...(satirlar || [])]
       let eklenen = 0
       for (let i = 0; i < anaDirekler.length; i++) {
@@ -895,14 +1138,16 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
           numara: d.numara, tip: d.tip, sembol: d.sembol, sembolAdi: d.sembolAdi,
           komsular: d.komsular, yakinlar, durum,
         }
-        // Otomatik tespit: zorla yeni satır oluştur + hepsini kapalı bırak (çok sayıda direkte performans için)
-        const sonuc = await direkBilgisiniIsle(bilgi, guncelSatirlar, { zorlaYeni: true, acma: false })
+        // Otomatik tespit: zorla yeni satır + batch_id ile grupla (tek undo ile geri al)
+        const sonuc = await direkBilgisiniIsle(bilgi, guncelSatirlar, {
+          zorlaYeni: true, acma: false, batchInfo,
+        })
         if (sonuc?.yeni && sonuc.id) {
           guncelSatirlar.push({ id: sonuc.id, nokta1: d.numara })
           eklenen++
         }
       }
-      alert(`${anaDirekler.length} direk tarandı, ${eklenen} yeni satır eklendi.`)
+      alert(`${anaDirekler.length} direk tarandı, ${eklenen} yeni satır eklendi.\nGeri almak için Ctrl+Z.`)
     } catch (err) {
       alert('Otomatik tespit hatası: ' + (err.message || ''))
     } finally {
@@ -937,6 +1182,16 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
           <p className="text-xs text-muted-foreground">{konfig.altBaslik}</p>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
+          <button onClick={handleUndo} disabled={!undoVar || undo?.isPending}
+            title={undoVar ? `Geri Al (Ctrl+Z)${gecmisData?.liste?.[0]?.aciklama ? ' — ' + gecmisData.liste[0].aciklama : ''}` : 'Geri alınacak işlem yok'}
+            className="flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-700 hover:bg-amber-100 disabled:opacity-40">
+            {undo?.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />} Geri Al
+          </button>
+          <button onClick={handleRedo} disabled={!redoVar || redo?.isPending}
+            title={redoVar ? 'İleri Al (Ctrl+Y)' : 'Tekrar uygulanacak işlem yok'}
+            className="flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-700 hover:bg-amber-100 disabled:opacity-40">
+            {redo?.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Redo2 className="h-3 w-3" />} İleri Al
+          </button>
           <button onClick={handleOtomatikTespit} disabled={otoTaraYukleniyor}
             title={`${konfig.dxfAdimKodu === 'hak_edis_krokisi' ? 'Hak Ediş Krokisi' : 'Yeni Durum Proje'} DXF'indeki tüm direkleri otomatik tara ve malzeme listesini oluştur`}
             className="flex items-center gap-1 rounded border border-violet-300 bg-violet-50 px-2 py-1.5 text-xs text-violet-700 hover:bg-violet-100 disabled:opacity-50">

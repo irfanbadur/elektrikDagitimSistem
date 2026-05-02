@@ -4,8 +4,13 @@
 const router = require('express').Router();
 const { getDb } = require('../db/database');
 const { basarili, hata } = require('../utils/helpers');
+const gecmis = require('../services/metrajGecmisService');
 
 const TABLO = 'proje_kesif_metraj';
+const batchBilgi = (req) => ({
+  batch_id: req.body?._batch_id || req.query?.batch || null,
+  aciklama: req.body?._aciklama || null,
+});
 
 // GET /:projeId — Liste
 router.get('/:projeId', (req, res) => {
@@ -84,6 +89,14 @@ router.post('/:projeId', (req, res) => {
     );
 
     const yeni = db.prepare(`SELECT * FROM ${TABLO} WHERE id = ?`).get(result.lastInsertRowid);
+    try {
+      const { batch_id, aciklama } = batchBilgi(req);
+      gecmis.kayit({
+        proje_id: projeId, tablo: TABLO, islem_tipi: 'ekle',
+        satir_id: yeni.id, yeni_satir: yeni, batch_id,
+        aciklama: aciklama || `Direk eklendi: ${yeni.nokta1 || `#${yeni.id}`}`,
+      });
+    } catch (e) { console.error('[gecmis] ekle log hatası:', e.message); }
     basarili(res, yeni);
   } catch (err) { hata(res, err.message, 500); }
 });
@@ -138,6 +151,8 @@ router.put('/:projeId/:id', (req, res) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id);
+    const projeId = parseInt(req.params.projeId);
+    const eskiSatir = db.prepare(`SELECT * FROM ${TABLO} WHERE id = ?`).get(id);
     const {
       nokta1, nokta2, nokta_durum,
       direk_tur, direk_tip, traversler,
@@ -170,6 +185,16 @@ router.put('/:projeId/:id', (req, res) => {
     );
 
     const guncellenmis = db.prepare(`SELECT * FROM ${TABLO} WHERE id = ?`).get(id);
+    if (eskiSatir && JSON.stringify(eskiSatir) !== JSON.stringify(guncellenmis)) {
+      try {
+        const { batch_id, aciklama } = batchBilgi(req);
+        gecmis.kayit({
+          proje_id: projeId, tablo: TABLO, islem_tipi: 'guncelle',
+          satir_id: id, eski_satir: eskiSatir, yeni_satir: guncellenmis, batch_id,
+          aciklama: aciklama || `Güncellendi: ${guncellenmis.nokta1 || `#${id}`}`,
+        });
+      } catch (e) { console.error('[gecmis] guncelle log hatası:', e.message); }
+    }
     basarili(res, guncellenmis);
   } catch (err) { hata(res, err.message, 500); }
 });
@@ -178,9 +203,42 @@ router.put('/:projeId/:id', (req, res) => {
 router.delete('/:projeId/:id', (req, res) => {
   try {
     const db = getDb();
-    db.prepare(`DELETE FROM ${TABLO} WHERE id = ? AND proje_id = ?`)
-      .run(parseInt(req.params.id), parseInt(req.params.projeId));
+    const id = parseInt(req.params.id);
+    const projeId = parseInt(req.params.projeId);
+    const eski = db.prepare(`SELECT * FROM ${TABLO} WHERE id = ?`).get(id);
+    db.prepare(`DELETE FROM ${TABLO} WHERE id = ? AND proje_id = ?`).run(id, projeId);
+    if (eski) {
+      try {
+        const { batch_id, aciklama } = batchBilgi(req);
+        gecmis.kayit({
+          proje_id: projeId, tablo: TABLO, islem_tipi: 'sil',
+          satir_id: id, eski_satir: eski, batch_id,
+          aciklama: aciklama || `Silindi: ${eski.nokta1 || `#${id}`}`,
+        });
+      } catch (e) { console.error('[gecmis] sil log hatası:', e.message); }
+    }
     basarili(res, { silindi: true });
+  } catch (err) { hata(res, err.message, 500); }
+});
+
+// ── Undo / Redo / Geçmiş ──
+router.post('/:projeId/undo', (req, res) => {
+  try {
+    const r = gecmis.undo({ proje_id: parseInt(req.params.projeId), tablo: TABLO });
+    basarili(res, r);
+  } catch (err) { hata(res, err.message, 500); }
+});
+router.post('/:projeId/redo', (req, res) => {
+  try {
+    const r = gecmis.redo({ proje_id: parseInt(req.params.projeId), tablo: TABLO });
+    basarili(res, r);
+  } catch (err) { hata(res, err.message, 500); }
+});
+router.get('/:projeId/gecmis', (req, res) => {
+  try {
+    const liste = gecmis.gecmisListele({ proje_id: parseInt(req.params.projeId), tablo: TABLO });
+    const dur = gecmis.durum({ proje_id: parseInt(req.params.projeId), tablo: TABLO });
+    basarili(res, { ...dur, liste });
   } catch (err) { hata(res, err.message, 500); }
 });
 
