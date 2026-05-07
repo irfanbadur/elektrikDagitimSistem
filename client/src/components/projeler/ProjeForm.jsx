@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ArrowLeftRight, Save, X, Sparkles, AlertCircle } from 'lucide-react'
 import { useProje, useProjeOlustur, useProjeGuncelle } from '@/hooks/useProjeler'
+import { useIhaleler } from '@/hooks/useIhaleler'
 import api from '@/api/client'
 import { useBolgeler } from '@/hooks/useBolgeler'
 import { useEkipler } from '@/hooks/useEkipler'
@@ -72,6 +73,8 @@ function DisKisiSecici({ value, onChange, placeholder }) {
       <input
         ref={inputRef}
         type="text"
+        name="dis_kisi_secici_ad"
+        autoComplete="new-password"
         value={value || ''}
         onChange={handleInputChange}
         onFocus={() => { if (value?.length >= 2) { ara(value); setAcik(true) } }}
@@ -108,6 +111,7 @@ function DisKisiSecici({ value, onChange, placeholder }) {
 const BOS_FORM = {
   proje_no: '',
   proje_tipi: '',
+  ihale_id: '',
   musteri_adi: '',
   bolge_id: '',
   mahalle: '',
@@ -132,10 +136,12 @@ const BOS_FORM = {
   ada_parsel: '',
   telefon: '',
   tesis: '',
+  teknik_birim: '',
   abone_kablosu: '',
   abone_kablosu_metre: '',
   enerji_alinan_direk_no: '',
   kesinti_ihtiyaci: null,
+  kesinti_suresi: '',
   izinler: null,
   // Excel import alanları
   yil: '',
@@ -171,6 +177,7 @@ export default function ProjeForm() {
   const { data: isTipleri } = useIsTipleri()
   const { data: personelRes } = usePersonelListesi()
   const personeller = personelRes?.data || personelRes || []
+  const { data: ihaleler } = useIhaleler()
   const projeOlustur = useProjeOlustur()
   const projeGuncelle = useProjeGuncelle()
 
@@ -183,6 +190,9 @@ export default function ProjeForm() {
   const [direkListesi, setDirekListesi] = useState([])
   const [yerTeslimDosya, setYerTeslimDosya] = useState(null)
   const [yerTeslimEkBilgi, setYerTeslimEkBilgi] = useState(null)
+  // Aynı isimli proje kontrolü (yeni proje + edit modunda kendisi hariç)
+  const [adKontrol, setAdKontrol] = useState({ tam: [], benzer: [] })
+  const adKontrolTimerRef = useRef(null)
 
   // Proje tipine göre eşleşen iş tipi fazları
   const eslesmisIsTipi = useMemo(() => {
@@ -219,6 +229,7 @@ export default function ProjeForm() {
       setForm({
         proje_no: proje.proje_no || '',
         proje_tipi: proje.proje_tipi || '',
+        ihale_id: proje.ihale_id != null ? String(proje.ihale_id) : '',
         musteri_adi: proje.musteri_adi || '',
         bolge_id: proje.bolge_id ? String(proje.bolge_id) : '',
         mahalle: proje.mahalle || '',
@@ -242,10 +253,12 @@ export default function ProjeForm() {
         ada_parsel: proje.ada_parsel || '',
         telefon: proje.telefon || '',
         tesis: proje.tesis || '',
+        teknik_birim: proje.teknik_birim || '',
         abone_kablosu: proje.abone_kablosu || '',
         abone_kablosu_metre: proje.abone_kablosu_metre || '',
         enerji_alinan_direk_no: proje.enerji_alinan_direk_no || '',
         kesinti_ihtiyaci: proje.kesinti_ihtiyaci != null ? Boolean(proje.kesinti_ihtiyaci) : null,
+        kesinti_suresi: proje.kesinti_suresi || '',
         izinler: proje.izinler ? (typeof proje.izinler === 'string' ? JSON.parse(proje.izinler) : proje.izinler) : null,
         yil: proje.yil || '',
         pyp: proje.pyp || '',
@@ -282,6 +295,70 @@ export default function ProjeForm() {
       })
     }
   }
+
+  // Proje adı (musteri_adi) → debounce ile aynı isimli proje var mı kontrol et
+  useEffect(() => {
+    if (adKontrolTimerRef.current) clearTimeout(adKontrolTimerRef.current)
+    const ad = (form.musteri_adi || '').trim()
+    if (ad.length < 3) {
+      setAdKontrol({ tam: [], benzer: [] })
+      return
+    }
+    adKontrolTimerRef.current = setTimeout(async () => {
+      try {
+        const r = await api.get('/projeler/ad-kontrol', { params: { ad, haric_id: id || 0 } })
+        setAdKontrol(r?.data || { tam: [], benzer: [] })
+      } catch { setAdKontrol({ tam: [], benzer: [] }) }
+    }, 400)
+    return () => { if (adKontrolTimerRef.current) clearTimeout(adKontrolTimerRef.current) }
+  }, [form.musteri_adi, id])
+
+  // İl + ilçe + mahalle + ada/parsel → adres otomatik oluştur
+  // Kullanıcı manuel adres yazdıysa üstüne yazma (sonOtoAdresRef ile takip).
+  const sonOtoAdresRef = useRef('')
+  useEffect(() => {
+    const olusturAdres = (s) => {
+      const parts = []
+      const m = (s.mahalle || '').trim()
+      if (m) parts.push(/mah(allesi)?\.?$/i.test(m) ? m : `${m} Mah.`)
+      const ap = (s.ada_parsel || '').trim()
+      if (ap) parts.push(`Ada/Parsel: ${ap}`)
+      const il = (s.il || '').trim()
+      const ilce = (s.ilce || '').trim()
+      const ilIlce = [ilce, il].filter(Boolean).join(' / ')
+      if (ilIlce) parts.push(ilIlce)
+      return parts.join(', ')
+    }
+    setForm(prev => {
+      const yeni = olusturAdres(prev)
+      // Mevcut adres ya boş ya da bizim son otomatik ürettiğimizse → güncelle
+      if (prev.adres && prev.adres !== sonOtoAdresRef.current) return prev
+      if (yeni === prev.adres) return prev
+      sonOtoAdresRef.current = yeni
+      return { ...prev, adres: yeni }
+    })
+  }, [form.il, form.ilce, form.mahalle, form.ada_parsel])
+
+  // Yeni proje + tip seçilince → /sonraki-no çağır ve proje_no öner
+  // (Sadece yeni proje + proje_no boş veya AUTO-prefiks ise; kullanıcının elle girdiğini ezme)
+  const sonOnerilenRef = useRef('')
+  useEffect(() => {
+    if (duzenleModu) return
+    if (!form.proje_tipi) return
+    const mevcut = (form.proje_no || '').trim()
+    // Eğer kullanıcı manuel bir numara yazdıysa (ve bu önerilen değilse) dokunma
+    if (mevcut && mevcut !== sonOnerilenRef.current) return
+    let iptal = false
+    api.get('/projeler/sonraki-no', { params: { tip: form.proje_tipi } })
+      .then(r => {
+        const yeni = r?.data?.proje_no || r?.proje_no
+        if (iptal || !yeni) return
+        sonOnerilenRef.current = yeni
+        setForm(prev => ({ ...prev, proje_no: yeni }))
+      })
+      .catch(() => { /* öneri yapılamadı, manuel girilir */ })
+    return () => { iptal = true }
+  }, [form.proje_tipi, duzenleModu])
 
   // Türkçe karakter uyumlu normalizasyon
   const normTR = (s) => (s || '').toUpperCase()
@@ -658,7 +735,10 @@ export default function ProjeForm() {
         </h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
+        {/* Tarayıcı autofill'ini engellemek için tuzak alanlar (görünmez) */}
+        <input type="text" name="prevent_autofill" autoComplete="off" style={{ display: 'none' }} tabIndex={-1} />
+        <input type="password" name="prevent_autofill_pwd" autoComplete="new-password" style={{ display: 'none' }} tabIndex={-1} />
         {/* Temel Bilgiler */}
         <div className="rounded-lg border border-border bg-card p-6">
           <div className="mb-4 flex items-center justify-between">
@@ -725,16 +805,74 @@ export default function ProjeForm() {
               )}
             </div>
 
+            {/* İhale */}
+            <div>
+              <label className="mb-1 block text-sm font-medium">İhale</label>
+              <select
+                value={form.ihale_id}
+                onChange={(e) => handleChange('ihale_id', e.target.value)}
+                className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">— İhale yok —</option>
+                {(ihaleler || []).filter(i => i.durum === 'aktif').map(i => (
+                  <option key={i.id} value={i.id}>{i.ihale_adi}</option>
+                ))}
+              </select>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">İlgili ihaleyi seçin (opsiyonel)</p>
+            </div>
+
             {/* Proje Adi */}
             <div>
               <label className="mb-1 block text-sm font-medium">Proje Adi</label>
               <input
                 type="text"
+                name="proje_musteri_adi"
+                autoComplete="new-password"
                 value={form.musteri_adi}
                 onChange={(e) => handleChange('musteri_adi', e.target.value)}
-                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className={cn(
+                  "w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30",
+                  adKontrol.tam.length > 0 ? "border-red-400 bg-red-50/40"
+                  : adKontrol.benzer.length > 0 ? "border-amber-400 bg-amber-50/40"
+                  : "border-input"
+                )}
                 placeholder="Proje adi / Musteri adi"
               />
+              {adKontrol.tam.length > 0 && (
+                <p className="mt-1 flex items-start gap-1 text-xs text-red-600">
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Bu isimde proje zaten var:&nbsp;
+                    {adKontrol.tam.map((p, i) => (
+                      <span key={p.id}>
+                        {i > 0 && ', '}
+                        <a href={`/projeler/${p.id}`} target="_blank" rel="noopener noreferrer"
+                           className="font-medium underline hover:text-red-800">
+                          {p.proje_no}
+                        </a>
+                        <span className="text-red-500/80"> ({p.proje_tipi})</span>
+                      </span>
+                    ))}
+                  </span>
+                </p>
+              )}
+              {adKontrol.tam.length === 0 && adKontrol.benzer.length > 0 && (
+                <p className="mt-1 flex items-start gap-1 text-xs text-amber-700">
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Benzer ad taşıyan proje(ler):&nbsp;
+                    {adKontrol.benzer.slice(0, 3).map((p, i) => (
+                      <span key={p.id}>
+                        {i > 0 && ', '}
+                        <a href={`/projeler/${p.id}`} target="_blank" rel="noopener noreferrer"
+                           className="font-medium underline hover:text-amber-900">
+                          {p.proje_no}
+                        </a>
+                      </span>
+                    ))}
+                  </span>
+                </p>
+              )}
             </div>
 
             {/* Bolge */}
@@ -884,6 +1022,8 @@ export default function ProjeForm() {
               <label className="mb-1 block text-sm font-medium">Il</label>
               <input
                 type="text"
+                name="proje_il"
+                autoComplete="new-password"
                 value={form.il}
                 onChange={(e) => handleChange('il', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -894,6 +1034,8 @@ export default function ProjeForm() {
               <label className="mb-1 block text-sm font-medium">Ilce</label>
               <input
                 type="text"
+                name="proje_ilce"
+                autoComplete="new-password"
                 value={form.ilce}
                 onChange={(e) => handleChange('ilce', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -904,6 +1046,8 @@ export default function ProjeForm() {
               <label className="mb-1 block text-sm font-medium">Mahalle</label>
               <input
                 type="text"
+                name="proje_mahalle"
+                autoComplete="new-password"
                 value={form.mahalle}
                 onChange={(e) => handleChange('mahalle', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -914,6 +1058,8 @@ export default function ProjeForm() {
               <label className="mb-1 block text-sm font-medium">Ada / Parsel</label>
               <input
                 type="text"
+                name="proje_ada_parsel"
+                autoComplete="off"
                 value={form.ada_parsel}
                 onChange={(e) => handleChange('ada_parsel', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -923,6 +1069,8 @@ export default function ProjeForm() {
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-medium">Adres</label>
               <textarea
+                name="proje_adres"
+                autoComplete="new-password"
                 value={form.adres}
                 onChange={(e) => handleChange('adres', e.target.value)}
                 rows={3}
@@ -941,6 +1089,8 @@ export default function ProjeForm() {
               <label className="mb-1 block text-sm font-medium">Basvuru No</label>
               <input
                 type="text"
+                name="proje_basvuru_no"
+                autoComplete="off"
                 value={form.basvuru_no}
                 onChange={(e) => handleChange('basvuru_no', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -951,6 +1101,8 @@ export default function ProjeForm() {
               <label className="mb-1 block text-sm font-medium">Telefon</label>
               <input
                 type="text"
+                name="proje_telefon"
+                autoComplete="new-password"
                 value={form.telefon}
                 onChange={(e) => handleChange('telefon', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -961,6 +1113,8 @@ export default function ProjeForm() {
               <label className="mb-1 block text-sm font-medium">Tesis</label>
               <input
                 type="text"
+                name="proje_tesis"
+                autoComplete="off"
                 value={form.tesis}
                 onChange={(e) => handleChange('tesis', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -968,9 +1122,23 @@ export default function ProjeForm() {
               />
             </div>
             <div>
+              <label className="mb-1 block text-sm font-medium">Teknik Birim</label>
+              <input
+                type="text"
+                name="proje_teknik_birim"
+                autoComplete="off"
+                value={form.teknik_birim}
+                onChange={(e) => handleChange('teknik_birim', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Örn: Bafra Teknik Birimi"
+              />
+            </div>
+            <div>
               <label className="mb-1 block text-sm font-medium">Enerji Alinan Direk No</label>
               <input
                 type="text"
+                name="proje_enerji_direk_no"
+                autoComplete="off"
                 value={form.enerji_alinan_direk_no}
                 onChange={(e) => handleChange('enerji_alinan_direk_no', e.target.value)}
                 className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -1009,6 +1177,19 @@ export default function ProjeForm() {
                 <option value="1">Evet</option>
                 <option value="0">Hayir</option>
               </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Kesinti Süresi (saat)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={form.kesinti_suresi}
+                onChange={(e) => handleChange('kesinti_suresi', e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Saat cinsinden (örn. 2.5)"
+                disabled={form.kesinti_ihtiyaci === false}
+              />
             </div>
           </div>
 

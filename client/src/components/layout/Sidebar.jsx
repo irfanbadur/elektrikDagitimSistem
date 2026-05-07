@@ -18,6 +18,7 @@ import {
   Network,
   Database,
   ChevronRight,
+  Briefcase,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 
@@ -31,6 +32,7 @@ const navGroups = [
   {
     label: 'Yonetim',
     items: [
+      { label: 'İhaleler', icon: Briefcase, path: '/ihaleler', herZaman: true },
       { label: 'Projeler', icon: FolderKanban, path: '/projeler', modul: 'projeler', aksiyon: 'okuma' },
       { label: 'Ekipler', icon: Users, path: '/ekipler', modul: 'ekipler', aksiyon: 'okuma' },
       { label: 'Personel', icon: UserCircle, path: '/personel', modul: 'personel', aksiyon: 'okuma' },

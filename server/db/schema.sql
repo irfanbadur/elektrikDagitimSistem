@@ -14,7 +14,9 @@ INSERT OR IGNORE INTO firma_ayarlari (anahtar, deger, aciklama) VALUES
 ('dagitim_sirketi', 'EDAŞ', 'Çalışılan elektrik dağıtım şirketi adı'),
 ('para_birimi', 'TRY', 'Para birimi'),
 ('calisan_proje_tipleri', 'YB,KET,Tesis', 'Virgülle ayrılmış iş tipleri'),
-('gorev_tipleri', 'Montaj,Kontrol,Bakım,Denetim,Keşif,Proje Sorumlusu', 'Virgülle ayrılmış görev tipleri');
+('gorev_tipleri', 'Montaj,Kontrol,Bakım,Denetim,Keşif,Proje Sorumlusu', 'Virgülle ayrılmış görev tipleri'),
+('ihale_adi', '', 'Aktif ihalenin adı (dashboard ve raporlarda kullanılır)'),
+('ihale_toplam_tutar', '0', 'İhale sözleşme bedeli (₺) — dashboard yüzde hesabı için');
 
 -- BÖLGELER
 CREATE TABLE IF NOT EXISTS bolgeler (

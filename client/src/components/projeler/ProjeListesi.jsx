@@ -1,10 +1,13 @@
 import { useMemo, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Eye, Pencil, Trash2, X, CheckSquare, FileSpreadsheet, AlertTriangle, Clock, Check } from 'lucide-react'
-import { useProjeler, useProjeSil, useTopluProjeSil } from '@/hooks/useProjeler'
+import { Plus, Eye, Pencil, Trash2, X, CheckSquare, FileSpreadsheet, AlertTriangle, Clock, Check, Lock, Unlock, Loader2 } from 'lucide-react'
+import { useProjeler, useProjeSil, useTopluProjeSil, useProjeGuncelle, useProjeKismiGuncelle } from '@/hooks/useProjeler'
 import { useIsTipleri } from '@/hooks/useIsTipleri'
 import { useBolgeler } from '@/hooks/useBolgeler'
+import { useEkipler } from '@/hooks/useEkipler'
+import { useIhaleler } from '@/hooks/useIhaleler'
 import { useDonguSablonlari } from '@/hooks/useDongu'
+import { ONCELIK_LABELS } from '@/utils/constants'
 import { useAuth } from '@/context/AuthContext'
 import DataTable from '@/components/shared/DataTable'
 import { OncelikBadge } from '@/components/shared/StatusBadge'
@@ -35,6 +38,45 @@ function projeDurumu(proje) {
   if (bas && bit && bas <= bugun && bugun <= bit) return 'devam'
   if (bas && bas > bugun) return 'beklemede'
   return 'belirsiz'
+}
+
+// Proje (çizim/kurum süreci) aşamaları — sıraya göre rengi de değişir
+const PROJE_ASAMA_SECENEKLERI = [
+  { kod: 'eksik_bilgi',       etiket: 'Eksik Bilgi-Sorulacak', renk: 'bg-yellow-50 text-yellow-800 border-yellow-400' },
+  { kod: 'cizilecek',         etiket: 'Çizilecek',             renk: 'bg-slate-100 text-slate-700 border-slate-300' },
+  { kod: 'cizildi',           etiket: 'Çizildi',               renk: 'bg-blue-50 text-blue-700 border-blue-300' },
+  { kod: 'yuklendi',          etiket: 'Yüklendi-Sistemde',     renk: 'bg-indigo-50 text-indigo-700 border-indigo-300' },
+  { kod: 'ret_oldu',          etiket: 'Ret Oldu',              renk: 'bg-red-50 text-red-700 border-red-300' },
+  { kod: 'revize_edilecek',   etiket: 'Revize Edilecek',       renk: 'bg-orange-50 text-orange-700 border-orange-300' },
+  { kod: 'revize_yuklendi',   etiket: 'Revize Yüklendi',       renk: 'bg-amber-50 text-amber-800 border-amber-300' },
+  { kod: 'onaylandi',         etiket: 'Onaylandı',             renk: 'bg-emerald-50 text-emerald-700 border-emerald-300' },
+]
+
+// Saha (yapım süreci) aşamaları
+const SAHA_ASAMA_SECENEKLERI = [
+  { kod: 'malzeme_verildi',   etiket: 'Malzeme Verildi',   renk: 'bg-slate-100 text-slate-700 border-slate-300' },
+  { kod: 'baslandi',          etiket: 'Başlandı',          renk: 'bg-blue-50 text-blue-700 border-blue-300' },
+  { kod: 'kuyular_acildi',    etiket: 'Kuyular Açıldı',    renk: 'bg-cyan-50 text-cyan-700 border-cyan-300' },
+  { kod: 'direk_dikimi',      etiket: 'Direk Dikimi',      renk: 'bg-violet-50 text-violet-700 border-violet-300' },
+  { kod: 'beton_dokumu',      etiket: 'Beton Dökümü',      renk: 'bg-stone-100 text-stone-800 border-stone-400' },
+  { kod: 'iletken_cekimi',    etiket: 'İletken Çekimi',    renk: 'bg-amber-50 text-amber-800 border-amber-300' },
+  { kod: 'enerji_verildi',    etiket: 'Enerji Verildi',    renk: 'bg-lime-50 text-lime-700 border-lime-300' },
+  { kod: 'tamamlandi',        etiket: 'Tamamlandı',        renk: 'bg-emerald-50 text-emerald-700 border-emerald-400 font-semibold' },
+]
+
+const _asamaLookup = (liste) => Object.fromEntries(liste.map(s => [s.kod, s]))
+const PROJE_ASAMA_MAP = _asamaLookup(PROJE_ASAMA_SECENEKLERI)
+const SAHA_ASAMA_MAP = _asamaLookup(SAHA_ASAMA_SECENEKLERI)
+
+function AsamaBadge({ kod, map }) {
+  if (!kod) return <span className="text-muted-foreground">-</span>
+  const s = map[kod]
+  if (!s) return <span className="text-xs text-muted-foreground">{kod}</span>
+  return (
+    <span className={cn('inline-block rounded border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap', s.renk)}>
+      {s.etiket}
+    </span>
+  )
 }
 
 // Durum sütunu yerine bu adımlar için ayrı sütunlar — her hücre o adıma yüklenmiş dosya sayısını gösterir
@@ -109,7 +151,7 @@ export default function ProjeListesi() {
   const { izinVar } = useAuth()
   const silmeYetkisi = izinVar('projeler', 'silme')
 
-  const [filtreler, setFiltreler] = useState({ durum: '', bolge_id: '', tip: '', yer_teslim: '' })
+  const [filtreler, setFiltreler] = useState({ durum: '', bolge_id: '', tip: '', yer_teslim: '', ihale_id: '' })
   // Artırım yüzdesi (Excel KET-YB özet sayfasındaki %10 markup'ı taklit eder)
   // Sözleşme keşfi etkilenmez; sadece fiyat ve ilerleme değerleri çarpılır.
   const [artirimYuzdesi, setArtirimYuzdesi] = useState(() => {
@@ -129,18 +171,169 @@ export default function ProjeListesi() {
     return i || 0
   }
   const { data: rawProjeler, isLoading } = useProjeler(filtreler)
-  // Yer teslim client-side filtre
+  // Yer teslim + İhale client-side filtre
   const projeler = useMemo(() => {
-    if (!rawProjeler || !filtreler.yer_teslim) return rawProjeler
-    if (filtreler.yer_teslim === 'var') return rawProjeler.filter(p => !!p.teslim_tarihi)
-    if (filtreler.yer_teslim === 'yok') return rawProjeler.filter(p => !p.teslim_tarihi)
-    return rawProjeler
-  }, [rawProjeler, filtreler.yer_teslim])
+    if (!rawProjeler) return rawProjeler
+    let liste = rawProjeler
+    if (filtreler.yer_teslim === 'var') liste = liste.filter(p => !!p.teslim_tarihi)
+    else if (filtreler.yer_teslim === 'yok') liste = liste.filter(p => !p.teslim_tarihi)
+    if (filtreler.ihale_id) {
+      const ihaleFid = parseInt(filtreler.ihale_id)
+      if (filtreler.ihale_id === 'yok') liste = liste.filter(p => !p.ihale_id)
+      else liste = liste.filter(p => p.ihale_id === ihaleFid)
+    }
+    return liste
+  }, [rawProjeler, filtreler.yer_teslim, filtreler.ihale_id])
   const { data: bolgeler } = useBolgeler()
   const { data: isTipleri } = useIsTipleri()
+  const { data: ekipler } = useEkipler()
+  const { data: ihaleler } = useIhaleler()
   const { data: sablonlar } = useDonguSablonlari()
   const projeSil = useProjeSil()
   const topluSil = useTopluProjeSil()
+  const projeGuncelle = useProjeGuncelle()
+  const projeKismiGuncelle = useProjeKismiGuncelle()
+
+  // ── Satır + Sütun kilit/düzenleme modları ──
+  // Aynı anda yalnızca bir kilit açık olabilir. Kilit açıkken diğer aksiyonlar engellenir.
+  const [kilitliId, setKilitliId] = useState(null)         // Satır kilidi
+  const [kilitliKolon, setKilitliKolon] = useState(null)   // Sütun kilidi (alan adı)
+  const [duzenleForm, setDuzenleForm] = useState({})
+  const [kaydediliyor, setKaydediliyor] = useState(false)
+
+  const kilitAcikMi = (id) => kilitliId === id
+  const kolonAcikMi = (alan) => kilitliKolon === alan
+  // Başka aksiyonların yutulması — kilit açıkken bunu çağır
+  const engelTetik = useCallback((e) => {
+    if (kilitliId === null && kilitliKolon === null) return false
+    e?.stopPropagation?.()
+    e?.preventDefault?.()
+    alert('Önce açık olan kilidi kapatın (satır veya sütun kilidi).')
+    return true
+  }, [kilitliId, kilitliKolon])
+
+  const kilitAc = (proje) => {
+    setKilitliId(proje.id)
+    setDuzenleForm({
+      proje_no: proje.proje_no || '',
+      proje_tipi: proje.proje_tipi || '',
+      bolge_id: proje.bolge_id != null ? String(proje.bolge_id) : '',
+      musteri_adi: proje.musteri_adi || '',
+      ekip_id: proje.ekip_id != null ? String(proje.ekip_id) : '',
+      oncelik: proje.oncelik || 'normal',
+      teslim_tarihi: (proje.teslim_tarihi || '').slice(0, 10),
+      baslama_tarihi: (proje.baslama_tarihi || '').slice(0, 10),
+      bitis_tarihi: (proje.bitis_tarihi || '').slice(0, 10),
+      proje_asama: proje.proje_asama || '',
+      saha_asama: proje.saha_asama || '',
+    })
+  }
+
+  const duzenleAlanGuncelle = (alan, deger) => {
+    setDuzenleForm(prev => ({ ...prev, [alan]: deger }))
+  }
+
+  const kilitKapat = async () => {
+    if (kilitliId == null) return
+    setKaydediliyor(true)
+    try {
+      // Yapım süresi (gün) — başla ve bitiş tarihlerinden hesapla
+      const bas = duzenleForm.baslama_tarihi
+      const bit = duzenleForm.bitis_tarihi
+      let tahmini_sure_gun = null
+      if (bas && bit) {
+        const fark = Math.round((new Date(bit) - new Date(bas)) / 86400000)
+        if (fark > 0) tahmini_sure_gun = fark
+      }
+      await projeKismiGuncelle.mutateAsync({
+        id: kilitliId,
+        proje_no: duzenleForm.proje_no,
+        proje_tipi: duzenleForm.proje_tipi,
+        bolge_id: duzenleForm.bolge_id ? parseInt(duzenleForm.bolge_id) : null,
+        musteri_adi: duzenleForm.musteri_adi || null,
+        ekip_id: duzenleForm.ekip_id ? parseInt(duzenleForm.ekip_id) : null,
+        oncelik: duzenleForm.oncelik || 'normal',
+        teslim_tarihi: duzenleForm.teslim_tarihi || null,
+        baslama_tarihi: duzenleForm.baslama_tarihi || null,
+        bitis_tarihi: duzenleForm.bitis_tarihi || null,
+        proje_asama: duzenleForm.proje_asama || null,
+        saha_asama: duzenleForm.saha_asama || null,
+        tahmini_sure_gun,
+      })
+      setKilitliId(null)
+      setDuzenleForm({})
+    } catch (e) {
+      alert('Kaydedilemedi: ' + (e.message || ''))
+    } finally {
+      setKaydediliyor(false)
+    }
+  }
+
+  const kilitIptal = () => {
+    if (kilitliId == null) return
+    setKilitliId(null)
+    setDuzenleForm({})
+  }
+
+  // Sütun kilidi: aç/kapat
+  const kolonKilitToggle = (alan) => {
+    if (kilitliId !== null) {
+      alert('Önce açık satır kilidini kapatın.')
+      return
+    }
+    if (kilitliKolon === alan) {
+      setKilitliKolon(null) // kapat
+    } else if (kilitliKolon !== null) {
+      alert('Önce açık olan sütunu kilitleyin.')
+    } else {
+      setKilitliKolon(alan)
+    }
+  }
+
+  // Sütun kilidi açıkken bir hücreyi anında günceller (debounce yok — onChange/onBlur ile çağrılır)
+  const kolonHucreGuncelle = useCallback(async (proje, alan, yeniDeger) => {
+    const payload = { id: proje.id }
+    let val = yeniDeger
+    if (val === '') val = null
+    if ((alan === 'bolge_id' || alan === 'ekip_id') && val != null) {
+      val = parseInt(val) || null
+    }
+    payload[alan] = val
+    // Tarih değişikliklerinde tahmini_sure_gun yeniden hesapla
+    if (alan === 'baslama_tarihi' || alan === 'bitis_tarihi') {
+      const bas = alan === 'baslama_tarihi' ? val : (proje.baslama_tarihi || '').slice(0, 10) || null
+      const bit = alan === 'bitis_tarihi' ? val : (proje.bitis_tarihi || '').slice(0, 10) || null
+      if (bas && bit) {
+        const fark = Math.round((new Date(bit) - new Date(bas)) / 86400000)
+        payload.tahmini_sure_gun = fark > 0 ? fark : null
+      }
+    }
+    try { await projeKismiGuncelle.mutateAsync(payload) }
+    catch (e) { alert('Güncellenemedi: ' + (e.message || '')) }
+  }, [projeKismiGuncelle])
+
+  // Sütun başlığında kilit ikonu
+  const KolonBaslik = ({ baslik, alan }) => {
+    const acik = kolonAcikMi(alan)
+    return (
+      <div className="flex items-center gap-1 whitespace-nowrap">
+        <span>{baslik}</span>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); kolonKilitToggle(alan) }}
+          className={cn(
+            'p-0.5 rounded transition-colors',
+            acik
+              ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+              : 'text-muted-foreground/40 hover:text-amber-700 hover:bg-amber-50'
+          )}
+          title={acik ? `${baslik} sütununu kilitle` : `${baslik} sütununu düzenlemek için aç`}
+        >
+          {acik ? <Unlock className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+        </button>
+      </div>
+    )
+  }
 
   const [silmeDialogAcik, setSilmeDialogAcik] = useState(false)
   const [silinecekProje, setSilinecekProje] = useState(null)
@@ -242,20 +435,63 @@ export default function ProjeListesi() {
                   className="h-4 w-4 rounded border-gray-300 text-primary accent-primary cursor-pointer"
                 />
               ),
-              cell: ({ row }) => (
-                <input
-                  type="checkbox"
-                  checked={seciliIdler.has(row.original.id)}
-                  onChange={(e) => {
-                    e.stopPropagation()
-                    secimDegistir(row.original.id)
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="h-4 w-4 rounded border-gray-300 text-primary accent-primary cursor-pointer"
-                />
-              ),
+              cell: ({ row }) => {
+                const p = row.original
+                const isLocked = kilitliId === p.id
+                return (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={seciliIdler.has(p.id)}
+                      disabled={kilitliId !== null && kilitliId !== p.id}
+                      onChange={(e) => {
+                        e.stopPropagation()
+                        if (engelTetik(e)) return
+                        secimDegistir(p.id)
+                      }}
+                      onClick={(e) => { e.stopPropagation(); if (engelTetik(e)) return }}
+                      className="h-4 w-4 rounded border-gray-300 text-primary accent-primary cursor-pointer disabled:opacity-30"
+                    />
+                    {isLocked ? (
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); kilitKapat() }}
+                          disabled={kaydediliyor}
+                          title="Kaydet ve kilitle"
+                          className="p-1 rounded hover:bg-emerald-100 text-emerald-600 disabled:opacity-50"
+                        >
+                          {kaydediliyor ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlock className="h-3.5 w-3.5" />}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); kilitIptal() }}
+                          disabled={kaydediliyor}
+                          title="İptal"
+                          className="p-1 rounded hover:bg-red-100 text-red-600 disabled:opacity-50"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (kilitliId !== null && kilitliId !== p.id) {
+                            engelTetik(e)
+                            return
+                          }
+                          kilitAc(p)
+                        }}
+                        title="Satırı düzenle"
+                        className="p-1 rounded hover:bg-amber-100 text-muted-foreground hover:text-amber-700"
+                      >
+                        <Lock className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )
+              },
               enableSorting: false,
-              size: 40,
+              size: 80,
             },
           ],
       {
@@ -271,41 +507,146 @@ export default function ProjeListesi() {
       },
       {
         accessorKey: 'proje_no',
-        header: 'Proje No',
-        cell: ({ row }) => (
-          <button
-            onClick={() => navigate(`/projeler/${row.original.id}`)}
-            className="font-medium text-primary hover:underline"
-          >
-            {row.original.proje_no}
-          </button>
-        ),
+        header: () => <KolonBaslik baslik="Proje No" alan="proje_no" />,
+        cell: ({ row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <input type="text" value={duzenleForm.proje_no || ''}
+                onChange={(e) => duzenleAlanGuncelle('proje_no', e.target.value)}
+                className="w-28 rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-400" />
+            )
+          }
+          if (kolonAcikMi('proje_no')) {
+            return (
+              <input type="text" defaultValue={p.proje_no || ''}
+                onBlur={(e) => { if (e.target.value !== (p.proje_no || '')) kolonHucreGuncelle(p, 'proje_no', e.target.value) }}
+                className="w-28 rounded border border-emerald-400 bg-emerald-50 px-1.5 py-0.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+            )
+          }
+          return (
+            <button
+              onClick={(e) => { if (engelTetik(e)) return; navigate(`/projeler/${p.id}`) }}
+              className="font-medium text-primary hover:underline"
+            >
+              {p.proje_no}
+            </button>
+          )
+        },
       },
       {
         accessorKey: 'proje_tipi',
-        header: 'Tür',
-        cell: ({ getValue }) => (
-          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium">
-            {getValue()}
-          </span>
-        ),
+        header: () => <KolonBaslik baslik="Tür" alan="proje_tipi" />,
+        cell: ({ getValue, row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <select value={duzenleForm.proje_tipi || ''}
+                onChange={(e) => duzenleAlanGuncelle('proje_tipi', e.target.value)}
+                className="rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400">
+                <option value="">-</option>
+                {(isTipleri || []).map(t => <option key={t.id} value={t.kod}>{t.kod}</option>)}
+              </select>
+            )
+          }
+          if (kolonAcikMi('proje_tipi')) {
+            return (
+              <select value={p.proje_tipi || ''}
+                onChange={(e) => kolonHucreGuncelle(p, 'proje_tipi', e.target.value)}
+                className="rounded border border-emerald-400 bg-emerald-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                <option value="">-</option>
+                {(isTipleri || []).map(t => <option key={t.id} value={t.kod}>{t.kod}</option>)}
+              </select>
+            )
+          }
+          return (
+            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium">
+              {getValue()}
+            </span>
+          )
+        },
       },
       {
         accessorKey: 'bolge_adi',
-        header: 'Bolge',
-        cell: ({ row }) => row.original.bolge_adi || '-',
+        header: () => <KolonBaslik baslik="Bolge" alan="bolge_id" />,
+        cell: ({ row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <select value={duzenleForm.bolge_id || ''}
+                onChange={(e) => duzenleAlanGuncelle('bolge_id', e.target.value)}
+                className="rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400">
+                <option value="">-</option>
+                {(bolgeler || []).map(b => <option key={b.id} value={b.id}>{b.bolge_adi}</option>)}
+              </select>
+            )
+          }
+          if (kolonAcikMi('bolge_id')) {
+            return (
+              <select value={p.bolge_id != null ? String(p.bolge_id) : ''}
+                onChange={(e) => kolonHucreGuncelle(p, 'bolge_id', e.target.value)}
+                className="rounded border border-emerald-400 bg-emerald-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                <option value="">-</option>
+                {(bolgeler || []).map(b => <option key={b.id} value={b.id}>{b.bolge_adi}</option>)}
+              </select>
+            )
+          }
+          return p.bolge_adi || '-'
+        },
       },
       {
         accessorKey: 'musteri_adi',
-        header: 'Proje Adı',
-        cell: ({ row }) => row.original.musteri_adi || '-',
+        header: () => <KolonBaslik baslik="Proje Adı" alan="musteri_adi" />,
+        cell: ({ row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <input type="text" value={duzenleForm.musteri_adi || ''}
+                onChange={(e) => duzenleAlanGuncelle('musteri_adi', e.target.value)}
+                autoComplete="off"
+                className="w-48 rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400" />
+            )
+          }
+          if (kolonAcikMi('musteri_adi')) {
+            return (
+              <input type="text" defaultValue={p.musteri_adi || ''}
+                autoComplete="off"
+                onBlur={(e) => { if (e.target.value !== (p.musteri_adi || '')) kolonHucreGuncelle(p, 'musteri_adi', e.target.value) }}
+                className="w-48 rounded border border-emerald-400 bg-emerald-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+            )
+          }
+          return p.musteri_adi || '-'
+        },
       },
       {
         accessorKey: 'ekip_adi',
-        header: 'Ekip',
-        cell: ({ row }) => row.original.ekip_adi
-          ? <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{row.original.ekip_adi}</span>
-          : <span className="text-muted-foreground">-</span>,
+        header: () => <KolonBaslik baslik="Ekip" alan="ekip_id" />,
+        cell: ({ row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <select value={duzenleForm.ekip_id || ''}
+                onChange={(e) => duzenleAlanGuncelle('ekip_id', e.target.value)}
+                className="rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400">
+                <option value="">-</option>
+                {(ekipler || []).map(e => <option key={e.id} value={e.id}>{e.ekip_adi}</option>)}
+              </select>
+            )
+          }
+          if (kolonAcikMi('ekip_id')) {
+            return (
+              <select value={p.ekip_id != null ? String(p.ekip_id) : ''}
+                onChange={(e) => kolonHucreGuncelle(p, 'ekip_id', e.target.value)}
+                className="rounded border border-emerald-400 bg-emerald-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                <option value="">-</option>
+                {(ekipler || []).map(e => <option key={e.id} value={e.id}>{e.ekip_adi}</option>)}
+              </select>
+            )
+          }
+          return p.ekip_adi
+            ? <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{p.ekip_adi}</span>
+            : <span className="text-muted-foreground">-</span>
+        },
       },
       {
         accessorKey: 'kesif_ilerleme_tutar',
@@ -373,26 +714,164 @@ export default function ProjeListesi() {
       })),
       {
         accessorKey: 'teslim_tarihi',
-        header: 'Yer Teslim',
-        cell: ({ getValue }) => {
+        header: () => <KolonBaslik baslik="Yer Teslim" alan="teslim_tarihi" />,
+        cell: ({ getValue, row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <input type="date" value={duzenleForm.teslim_tarihi || ''}
+                onChange={(e) => duzenleAlanGuncelle('teslim_tarihi', e.target.value)}
+                className="rounded border border-amber-400 bg-amber-50 px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400" />
+            )
+          }
+          if (kolonAcikMi('teslim_tarihi')) {
+            return (
+              <input type="date" value={(p.teslim_tarihi || '').slice(0, 10)}
+                onChange={(e) => kolonHucreGuncelle(p, 'teslim_tarihi', e.target.value)}
+                className="rounded border border-emerald-400 bg-emerald-50 px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+            )
+          }
           const v = getValue()
           return v ? <span className="text-xs">{v.slice(0, 10)}</span> : <span className="text-muted-foreground">-</span>
         },
       },
       {
         accessorKey: 'baslama_tarihi',
-        header: 'Başlangıç',
-        cell: ({ row }) => <TarihHucresi proje={row.original} alan="baslama" />,
+        header: () => <KolonBaslik baslik="Başlangıç" alan="baslama_tarihi" />,
+        cell: ({ row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <input type="date" value={duzenleForm.baslama_tarihi || ''}
+                onChange={(e) => duzenleAlanGuncelle('baslama_tarihi', e.target.value)}
+                className="rounded border border-amber-400 bg-amber-50 px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400" />
+            )
+          }
+          if (kolonAcikMi('baslama_tarihi')) {
+            return (
+              <input type="date" value={(p.baslama_tarihi || '').slice(0, 10)}
+                onChange={(e) => kolonHucreGuncelle(p, 'baslama_tarihi', e.target.value)}
+                className="rounded border border-emerald-400 bg-emerald-50 px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+            )
+          }
+          return <TarihHucresi proje={p} alan="baslama" />
+        },
       },
       {
         accessorKey: 'bitis_tarihi',
-        header: 'Bitiş',
-        cell: ({ row }) => <TarihHucresi proje={row.original} alan="bitis" />,
+        header: () => <KolonBaslik baslik="Bitiş" alan="bitis_tarihi" />,
+        cell: ({ row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            const bas = duzenleForm.baslama_tarihi
+            const bit = duzenleForm.bitis_tarihi
+            const fark = bas && bit ? Math.round((new Date(bit) - new Date(bas)) / 86400000) : null
+            return (
+              <div className="flex flex-col gap-0.5">
+                <input type="date" value={bit || ''}
+                  onChange={(e) => duzenleAlanGuncelle('bitis_tarihi', e.target.value)}
+                  className="rounded border border-amber-400 bg-amber-50 px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                {fark != null && fark > 0 && (
+                  <span className="text-[9px] text-amber-700/80">Süre: {fark} gün</span>
+                )}
+              </div>
+            )
+          }
+          if (kolonAcikMi('bitis_tarihi')) {
+            return (
+              <input type="date" value={(p.bitis_tarihi || '').slice(0, 10)}
+                onChange={(e) => kolonHucreGuncelle(p, 'bitis_tarihi', e.target.value)}
+                className="rounded border border-emerald-400 bg-emerald-50 px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+            )
+          }
+          return <TarihHucresi proje={p} alan="bitis" />
+        },
+      },
+      {
+        accessorKey: 'proje_asama',
+        header: () => <KolonBaslik baslik="Proje" alan="proje_asama" />,
+        cell: ({ row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <select value={duzenleForm.proje_asama || ''}
+                onChange={(e) => duzenleAlanGuncelle('proje_asama', e.target.value)}
+                className="rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400">
+                <option value="">-</option>
+                {PROJE_ASAMA_SECENEKLERI.map(s => <option key={s.kod} value={s.kod}>{s.etiket}</option>)}
+              </select>
+            )
+          }
+          if (kolonAcikMi('proje_asama')) {
+            return (
+              <select value={p.proje_asama || ''}
+                onChange={(e) => kolonHucreGuncelle(p, 'proje_asama', e.target.value)}
+                className="rounded border border-emerald-400 bg-emerald-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                <option value="">-</option>
+                {PROJE_ASAMA_SECENEKLERI.map(s => <option key={s.kod} value={s.kod}>{s.etiket}</option>)}
+              </select>
+            )
+          }
+          return <AsamaBadge kod={p.proje_asama} map={PROJE_ASAMA_MAP} />
+        },
+      },
+      {
+        accessorKey: 'saha_asama',
+        header: () => <KolonBaslik baslik="Saha" alan="saha_asama" />,
+        cell: ({ row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <select value={duzenleForm.saha_asama || ''}
+                onChange={(e) => duzenleAlanGuncelle('saha_asama', e.target.value)}
+                className="rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400">
+                <option value="">-</option>
+                {SAHA_ASAMA_SECENEKLERI.map(s => <option key={s.kod} value={s.kod}>{s.etiket}</option>)}
+              </select>
+            )
+          }
+          if (kolonAcikMi('saha_asama')) {
+            return (
+              <select value={p.saha_asama || ''}
+                onChange={(e) => kolonHucreGuncelle(p, 'saha_asama', e.target.value)}
+                className="rounded border border-emerald-400 bg-emerald-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                <option value="">-</option>
+                {SAHA_ASAMA_SECENEKLERI.map(s => <option key={s.kod} value={s.kod}>{s.etiket}</option>)}
+              </select>
+            )
+          }
+          return <AsamaBadge kod={p.saha_asama} map={SAHA_ASAMA_MAP} />
+        },
       },
       {
         accessorKey: 'oncelik',
-        header: 'Oncelik',
-        cell: ({ getValue }) => <OncelikBadge oncelik={getValue()} />,
+        header: () => <KolonBaslik baslik="Oncelik" alan="oncelik" />,
+        cell: ({ getValue, row }) => {
+          const p = row.original
+          if (kilitAcikMi(p.id)) {
+            return (
+              <select value={duzenleForm.oncelik || 'normal'}
+                onChange={(e) => duzenleAlanGuncelle('oncelik', e.target.value)}
+                className="rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400">
+                {Object.entries(ONCELIK_LABELS || { dusuk:'Düşük', normal:'Normal', yuksek:'Yüksek', acil:'Acil' }).map(([k, l]) => (
+                  <option key={k} value={k}>{l}</option>
+                ))}
+              </select>
+            )
+          }
+          if (kolonAcikMi('oncelik')) {
+            return (
+              <select value={p.oncelik || 'normal'}
+                onChange={(e) => kolonHucreGuncelle(p, 'oncelik', e.target.value)}
+                className="rounded border border-emerald-400 bg-emerald-50 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                {Object.entries(ONCELIK_LABELS || { dusuk:'Düşük', normal:'Normal', yuksek:'Yüksek', acil:'Acil' }).map(([k, l]) => (
+                  <option key={k} value={k}>{l}</option>
+                ))}
+              </select>
+            )
+          }
+          return <OncelikBadge oncelik={getValue()} />
+        },
       },
       {
         id: 'actions',
@@ -403,6 +882,7 @@ export default function ProjeListesi() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                if (engelTetik(e)) return
                 navigate(`/projeler/${row.original.id}`)
               }}
               className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -413,6 +893,7 @@ export default function ProjeListesi() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                if (engelTetik(e)) return
                 navigate(`/projeler/${row.original.id}/duzenle`)
               }}
               className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -423,6 +904,7 @@ export default function ProjeListesi() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                if (engelTetik(e)) return
                 setSilinecekProje(row.original)
                 setSilmeDialogAcik(true)
               }}
@@ -435,7 +917,9 @@ export default function ProjeListesi() {
         ),
       },
     ],
-    [navigate, silmeYetkisi, projeler, seciliIdler, tumunuSec, secimDegistir, carpan, isExcel10]
+    [navigate, silmeYetkisi, projeler, seciliIdler, tumunuSec, secimDegistir, carpan, isExcel10,
+     kilitliId, kilitliKolon, duzenleForm, kaydediliyor, isTipleri, bolgeler, ekipler, engelTetik,
+     kolonHucreGuncelle]
   )
 
   if (isLoading) {
@@ -577,6 +1061,17 @@ export default function ProjeListesi() {
           <option value="">Yer Teslim (Hepsi)</option>
           <option value="var">Yer Teslimi Var</option>
           <option value="yok">Yer Teslimi Yok</option>
+        </select>
+        <select
+          value={filtreler.ihale_id}
+          onChange={(e) => handleFiltreChange('ihale_id', e.target.value)}
+          className="rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <option value="">Tüm İhaleler</option>
+          {(ihaleler || []).map(i => (
+            <option key={i.id} value={i.id}>{i.ihale_adi}</option>
+          ))}
+          <option value="yok">— İhalesi Olmayanlar —</option>
         </select>
       </div>
 

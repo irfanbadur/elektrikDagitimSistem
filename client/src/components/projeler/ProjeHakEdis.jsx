@@ -236,13 +236,85 @@ function IletkenSatirDuzenle({ iletken, onTipDegistir, onGrupKalemEkle, onKisaIs
 }
 
 // ── Tek malzeme satırı: ad tıkla→arama, miktar düzenle, sil ──
-function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMiktarDegistir, onGorunurDegistir, onSil }) {
+// Bilinen grup adları (case-insensitive Türkçe normalize ile)
+const GRUP_ADLARI = ['KORUMA', 'ISLETME', 'İŞLETME', 'ISLETME TOP.', 'KORUMA TOP.', 'ARMATUR', 'ARMATÜR', 'MAKARA']
+const trUst = (s) => String(s || '')
+  .replace(/ı/g, 'I').replace(/İ/g, 'I')
+  .replace(/ğ/g, 'G').replace(/Ğ/g, 'G')
+  .replace(/ü/g, 'U').replace(/Ü/g, 'U')
+  .replace(/ş/g, 'S').replace(/Ş/g, 'S')
+  .replace(/ö/g, 'O').replace(/Ö/g, 'O')
+  .replace(/ç/g, 'C').replace(/Ç/g, 'C')
+  .toUpperCase().trim()
+const isGrupAdi = (ad) => {
+  const u = trUst(ad)
+  return ['KORUMA', 'ISLETME', 'ARMATUR', 'MAKARA'].includes(u)
+}
+
+function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMiktarDegistir, onGorunurDegistir, onSil, onPatlat }) {
   const [duzenle, setDuzenle] = useState(false)
   const [aramaVal, setAramaVal] = useState('')
   const [sonuclar, setSonuclar] = useState([])
   const [araniyor, setAraniyor] = useState(false)
   const [secIdx, setSecIdx] = useState(-1)
+  const [acik, setAcik] = useState(false)
+  const [grupKalemleri, setGrupKalemleri] = useState(null)
+  const [grupYukleniyor, setGrupYukleniyor] = useState(false)
+  const [duzenleModu, setDuzenleModu] = useState(false)
+  const [yerelKalemler, setYerelKalemler] = useState([])  // edit modunda override miktarlar
   const timerRef = useRef(null)
+  const grupMu = isGrupAdi(malzeme.kisaIsim) || isGrupAdi(malzeme.adi)
+
+  const grupKalemleriniGetir = async () => {
+    if (grupKalemleri) return grupKalemleri
+    setGrupYukleniyor(true)
+    try {
+      const ad = isGrupAdi(malzeme.kisaIsim) ? malzeme.kisaIsim : malzeme.adi
+      const r = await api.get(`/malzeme-gruplari/by-kisa-ad/${encodeURIComponent(ad)}`)
+      const data = r?.data || r
+      const kalemler = data?.kalemler || []
+      setGrupKalemleri(kalemler)
+      return kalemler
+    } catch { setGrupKalemleri([]); return [] }
+    finally { setGrupYukleniyor(false) }
+  }
+  const toggleAcik = async () => {
+    if (!acik) await grupKalemleriniGetir()
+    setAcik(!acik)
+    if (acik) { setDuzenleModu(false); setYerelKalemler([]) }
+  }
+  const duzenleyeBasla = async () => {
+    const kalemler = grupKalemleri ?? await grupKalemleriniGetir()
+    if (!kalemler.length) { alert('Grup kalemleri yüklenemedi.'); return }
+    // Her kalem için varsayılan miktar = (grup_kalem.miktar × parent.miktar)
+    setYerelKalemler(kalemler.map(k => ({
+      adi: k.malzeme_adi,
+      kisaIsim: k.kisa_isim || k.malzeme_adi,
+      miktar: (Number(k.miktar) || 1) * (Number(malzeme.miktar) || 1),
+      gorunur: false,
+    })))
+    setDuzenleModu(true)
+  }
+  const handleVazgec = () => {
+    setDuzenleModu(false)
+    setYerelKalemler([])
+  }
+  const handleTamam = () => {
+    if (!yerelKalemler.length) { handleVazgec(); return }
+    onPatlat?.(yerelKalemler)
+    setDuzenleModu(false)
+    setYerelKalemler([])
+  }
+  const yerelKalemMiktarDegis = (idx, deger) => {
+    setYerelKalemler(prev => {
+      const yeni = [...prev]
+      yeni[idx] = { ...yeni[idx], miktar: Number(deger) || 0 }
+      return yeni
+    })
+  }
+  const yerelKalemSil = (idx) => {
+    setYerelKalemler(prev => prev.filter((_, i) => i !== idx))
+  }
 
   const araFunc = (text) => {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -301,20 +373,102 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMik
   }
 
   return (
-    <div className={cn("flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10", malzeme.gorunur === false && "opacity-50")}>
-      <input type="checkbox" checked={malzeme.gorunur !== false}
-        onChange={e => onGorunurDegistir(e.target.checked)}
-        title="Sahnede göster" className="h-3 w-3 accent-primary cursor-pointer shrink-0" />
-      <input value={malzeme.kisaIsim || ''} onChange={e => onKisaIsimDegistir(e.target.value)}
-        placeholder="kısa isim" title="Kısa isim (sprite text'te görünür)"
-        className="w-28 rounded border border-input bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-700 focus:outline-none focus:border-amber-400" />
-      <span className="flex-1 truncate cursor-pointer hover:text-primary hover:underline" title={`${malzeme.adi} — tıkla değiştir`}
-        onClick={() => { setDuzenle(true); setAramaVal(malzeme.adi) }}>{malzeme.adi}</span>
-      <input type="number" value={malzeme.miktar} min={1}
-        onChange={e => onMiktarDegistir(Number(e.target.value) || 1)}
-        className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
-      <button onClick={onSil} className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
-    </div>
+    <>
+      <div className={cn("flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10", malzeme.gorunur === false && "opacity-50")}>
+        <input type="checkbox" checked={malzeme.gorunur !== false}
+          onChange={e => onGorunurDegistir(e.target.checked)}
+          title="Sahnede göster" className="h-3 w-3 accent-primary cursor-pointer shrink-0" />
+        {grupMu ? (
+          <button onClick={toggleAcik} title={acik ? "Detayları kapat" : "Grup detaylarını aç"}
+            className="shrink-0 p-0.5 text-amber-600 hover:bg-amber-100 rounded">
+            {acik ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </button>
+        ) : <span className="w-4 shrink-0" />}
+        <input value={malzeme.kisaIsim || ''} onChange={e => onKisaIsimDegistir(e.target.value)}
+          placeholder="kısa isim" title="Kısa isim (sprite text'te görünür)"
+          className={cn("w-28 rounded border border-input px-1 py-0.5 text-[10px] font-medium focus:outline-none focus:border-amber-400",
+            grupMu ? "bg-amber-100 text-amber-800 font-bold" : "bg-amber-50 text-amber-700")} />
+        <span className="flex-1 truncate cursor-pointer hover:text-primary hover:underline" title={`${malzeme.adi} — tıkla değiştir`}
+          onClick={() => { setDuzenle(true); setAramaVal(malzeme.adi) }}>{malzeme.adi}</span>
+        <input type="number" value={malzeme.miktar} min={1}
+          onChange={e => onMiktarDegistir(Number(e.target.value) || 1)}
+          className="w-10 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
+        <button onClick={onSil} className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
+      </div>
+      {grupMu && acik && (
+        <div className="ml-6 mb-1 rounded border border-amber-200 bg-amber-50/40 px-2 py-1.5">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[9px] font-bold uppercase tracking-wide text-amber-700">
+              {malzeme.kisaIsim || malzeme.adi} Grubu Kalemleri{duzenleModu ? ' — Düzenleme' : ''}
+            </span>
+            {!duzenleModu && onPatlat && (
+              <button onClick={duzenleyeBasla}
+                className="rounded bg-amber-500 px-1.5 py-0.5 text-[9px] font-medium text-white hover:bg-amber-600">
+                Detayları Düzenle (Grubu Aç)
+              </button>
+            )}
+            {duzenleModu && (
+              <div className="flex items-center gap-1">
+                <button onClick={handleTamam}
+                  className="rounded bg-emerald-500 px-2 py-0.5 text-[9px] font-medium text-white hover:bg-emerald-600">
+                  Tamam
+                </button>
+                <button onClick={handleVazgec}
+                  className="rounded border border-input bg-white px-2 py-0.5 text-[9px] font-medium text-muted-foreground hover:bg-muted">
+                  Vazgeç
+                </button>
+              </div>
+            )}
+          </div>
+          {grupYukleniyor ? (
+            <div className="text-[10px] text-muted-foreground py-1">
+              <Loader2 className="inline h-2.5 w-2.5 animate-spin mr-1" />Yükleniyor...
+            </div>
+          ) : duzenleModu ? (
+            // Düzenleme modu: her kalem için input + sil
+            <div className="space-y-0.5">
+              {yerelKalemler.length === 0 ? (
+                <div className="text-[10px] text-muted-foreground italic">Tüm kalemler silindi — "Vazgeç" ile geri al</div>
+              ) : yerelKalemler.map((k, i) => (
+                <div key={i} className="flex items-center gap-1 text-[10px]">
+                  <span className="w-3 text-center text-amber-700">·</span>
+                  <span className="flex-1 truncate text-amber-900">{k.adi}</span>
+                  <input type="number" value={k.miktar} min={0}
+                    onChange={e => yerelKalemMiktarDegis(i, e.target.value)}
+                    className="w-12 rounded border border-amber-300 bg-white px-1 py-0.5 text-center text-[10px]" />
+                  <button onClick={() => yerelKalemSil(i)}
+                    className="text-red-400 hover:text-red-600 p-0.5 shrink-0"
+                    title="Bu kalemi gruptan çıkar">
+                    <Trash2 className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+              <div className="mt-1 pt-1 border-t border-amber-200/60 text-[9px] text-amber-700/80 italic">
+                "Tamam" → grup açılır, alt kalemler bu direğin malzemelerine eklenir. "Vazgeç" → değişiklik yapılmaz.
+              </div>
+            </div>
+          ) : grupKalemleri && grupKalemleri.length > 0 ? (
+            // Salt-okur görünüm
+            <div className="space-y-0.5">
+              {grupKalemleri.map((k, i) => (
+                <div key={i} className="flex items-center gap-1 text-[10px] text-amber-900/80">
+                  <span className="w-3 text-center">·</span>
+                  <span className="flex-1 truncate">{k.malzeme_adi}</span>
+                  <span className="tabular-nums w-12 text-right">
+                    {(Number(k.miktar) || 1) * (Number(malzeme.miktar) || 1)} {k.birim || 'Ad'}
+                  </span>
+                  <span className="text-[9px] text-amber-700/60 w-12 text-right">
+                    ({Number(k.miktar) || 1}/{malzeme.kisaIsim || 'grup'})
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[10px] text-muted-foreground italic">Grup tanımı bulunamadı.</div>
+          )}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -388,10 +542,12 @@ function analizDirek(rawTip, sembol, komsular) {
   const potans = /\(P\)/.test(tipUst)
   // Çift apostrof: '' veya " (DXF kaynağına göre değişebilir)
   const ciftApos = /''/.test(tip) || /[A-Z0-9]"/.test(tip)
-  const isKtipi = /\bG-?K\d/i.test(tip)
-  const isItipi = /\bG-?(8|10|12)\s*I/i.test(tip) || /^(8|10|12)\s*I/i.test(tip)
+  const isKtipi = /\bG-?K\d/i.test(tip) || /\bK\d/.test(tip)              // K-tipi (kafes)
+  const isItipi = /\bG-?(8|10|12)\s*I/i.test(tip) || /^(8|10|12)\s*I/i.test(tip) // 8I/10I/12I
   const isE = /^E$/i.test(tip.trim())
-  const isBeton = /^\d+\s*\/\s*\d+/.test(tip)  // "11/5"
+  const isBeton = /^\d+\s*\/\s*\d+/.test(tip)                             // "11/5"
+  const isHsta = /\(S\)\s*$/i.test(tip)                                    // G-N-14(S) gibi
+  const isAgac = /\b\d+\s*-\s*O\b/i.test(tip) || /^\d+\s*-\s*O$/i.test(tip) // 9-O, 12-O ahşap direk
 
   // Sembol durumu (Yeni/Mevcut/DMM) — DXF parser kuralları
   const SEMBOL_DURUM = {
@@ -401,114 +557,107 @@ function analizDirek(rawTip, sembol, komsular) {
   }
   const direkDurum = SEMBOL_DURUM[sembol] || 'Yeni'
 
-  // İletken — komşulardan ilkine bak (en yakın hat)
+  // AG konsol tipi: K-direkte 6,5U-100, A-tipi I-direkte 6,5U-80
+  // Diğer direklerde (E, beton vb.) varsayılan 6,5U-80
+  const agKonsolTipi = isKtipi ? '6,5U-100' : '6,5U-80'
+
+  // İletken — komşulardan ilkine bak (en yakın hat). DİKKAT: hat durumu (Mevcut/DMM)
+  // konsol seçimini ETKİLEMEZ; direk yeniyse konsol da yeni eklenir.
   const komsuList = komsular || []
   const ilkIletken = komsuList[0]?.iletken || ''
   const { agIletken, ogIletken } = parseIletken(ilkIletken)
 
-  // Konum tahmini — komşu sayısı + iletken durumu
-  const aktifKomsuSay = komsuList.filter(k => k.iletken && k.hatDurum !== 'Mevcut').length
-  let konum = 'DUZ'
-  if (aktifKomsuSay <= 1) konum = 'HAT_SONU'
-  else if (aktifKomsuSay >= 3) konum = 'KUVVET'
-
   return {
-    tip, potans, ciftApos, isKtipi, isItipi, isE, isBeton,
-    direkDurum, agIletken, ogIletken, konum,
+    tip, potans, ciftApos, isKtipi, isItipi, isE, isBeton, isHsta,
+    direkDurum, agKonsolTipi, agIletken, ogIletken,
   }
 }
 
 // ── Otomatik malzeme kuralları (KARAR AĞACI) ──
 // Bkz: doc/hakediş/kroki-analizi/DIREK-DONANIM-KURALLARI.md §7
+//
+// KURAL ÖZETİ:
+//  - Direk YENİ ise üzerindeki konsoller de YENİ. Hat MEVCUT/DMM olsa bile konsol seçilir.
+//  - AG konsol tipi: K-tipi (kafes) direkte 6,5U-100; A-tipi (I-direk) ve diğerlerinde 6,5U-80
+//  - AER → 1 konsol + 1 MAKARA
+//  - Açık iletken → ceil(tel/2) konsol + tel sayısı kadar N95 (1 konsole 2 iletken)
+//  - OG çift apostroflu I-direk: T-200 + 3 VHD;  K-direk: D-250 + 6 TG+40KN + 3 VHD
+//  - HSTA direği (G-*(S)): + 1 HSTA
+//  - Potans (P) direkleri: konsol yerine D-AG-3 / T-AG-5 traversi
 function hesaplaOtoMalzemeler(tip, yakinlar, komsular, sembol) {
   const a = analizDirek(tip, sembol, komsular)
   const oto = []
   const ekle = (adi, miktar = 1) => oto.push({ adi, miktar, birim: 'Ad', gorunur: false })
 
-  // A) Mevcut direk — yeni malzeme yok, sadece işaret
+  // A) MEVCUT direk → boş liste (hat durumu fark etmez; sadece direk yeniyse devam)
   if (a.direkDurum === 'Mevcut') {
-    return oto  // Boş liste — kullanıcı manuel ekler
+    return oto
   }
 
-  // B) Potans direkleri (yön değişimi/kuvvet) → travers
+  // B) HSTA direği (S sonlu): ek olarak harici sigortalı ayırıcı
+  if (a.isHsta) {
+    ekle('HSTA (Harici Sigortalı Ayırıcı)', 1)
+  }
+
+  // C) Potans direği — konsol kullanılmaz, AG traversi
   if (a.potans) {
-    if (a.isKtipi)        ekle('D-AG-3 (3 telli AG düz travers)', 1)
-    else if (a.isItipi)   ekle('T-AG-5(L3=150cm)', 1)
-    else                  ekle('T-AG-5(L3=150cm)', 1)
+    if (a.isKtipi)         ekle('D-AG-3', 1)
+    else /*A-tipi/diğer*/  ekle('T-AG-5', 1)
   }
-  // C) AG+OG geçiş direği (çift apostrof — '' ya da ")
+  // D) AG+OG geçiş direği (çift apostrof) — iki katmanlı donanım
   else if (a.ciftApos) {
-    if (a.isKtipi) ekle('MD-2 (montaj traversi K-direk)', 1)
-    else           ekle('MT-2 (montaj traversi 12I)', 1)
-    ekle('36 KV VHD 35 (20 mm/kV) Normal Tip', 3)            // OG faz izolatörü
-    ekle('Taş.Mak.İzolatör Sapı TK TS 205', 1)               // T-250 yerine kataloglu
-    ekle('D 80 ( Deve Boynu )', 1)                            // 6,5U-80 yerine kataloglu AG konsol
-    ekle('Makara İzolator TK MI 85', 1)                      // AG kablo gergi
-  }
-  // D) Trafo altı E direği — AG kablo geliyor, OG havadan iniyor
-  else if (yakinlar?.trafoAlti && a.agIletken?.tip === 'AER') {
-    ekle('TAG-5(L3=150cm)', 1)
-    ekle('Makara İzolator TK MI 85', 1)
-  }
-  // E) Normal direkler — iletken tipine göre konsol+izolatör
-  else {
-    // E.1) AG AER kablo (askılı)
-    if (a.agIletken?.tip === 'AER') {
-      if (a.konum === 'HAT_SONU') {
-        ekle('D 95 ( Deve Boynu )', 3)                        // 6,5U-100 muadili
-        ekle('Makara İzolator TK MI 85', 3)
-      } else if (a.konum === 'KUVVET') {
-        ekle('D 95 ( Deve Boynu )', 2)
-        ekle('Makara İzolator TK MI 85', 2)
-      } else {
-        ekle('D 80 ( Deve Boynu )', 1)
-        ekle('Makara İzolator TK MI 85', 1)
-      }
+    // OG katmanı
+    if (a.isKtipi) {
+      ekle('D-250', 1)
+      ekle('TG+40 KN', 6)
+      ekle('VHD', 3)
+    } else {
+      ekle('T-200', 1)
+      ekle('VHD', 3)
     }
-    // E.2) AG çıplak iletken (4P+R, 3A+P/R, çıplak Al)
+    // AG katmanı (mevcut OG direğine yeni AG ankrajı)
+    ekle('T-250', 1)
+    ekle(a.agKonsolTipi, 1)
+    ekle('MAKARA', 1)
+  }
+  // E) Trafo altı E direği — AG kablo + OG havadan iniyor (TAG-5)
+  else if (yakinlar?.trafoAlti && a.agIletken?.tip === 'AER') {
+    ekle('TAG-5', 1)
+    ekle('MAKARA', 1)
+  }
+  // F) Normal direkler — iletken tipine göre konsol+izolatör
+  else {
+    // F.1) AG AER kablo (askılı): 1 konsol + 1 MAKARA
+    if (a.agIletken?.tip === 'AER') {
+      ekle(a.agKonsolTipi, 1)
+      ekle('MAKARA', 1)
+    }
+    // F.2) AG açık iletken (P, R, A …): 1 konsole 2 iletken
     else if (a.agIletken?.tip === 'CIPLAK' || a.agIletken?.tip === 'CIPLAK_AL') {
       const tel = a.agIletken.tel_sayisi || 5
-      if (a.konum === 'HAT_SONU') {
-        ekle('D 95 ( Deve Boynu )', 3)
-        ekle('1 KV N 95', tel * 2)                            // çift askı izolatör (her uçtan)
-        ekle('Makara İzolator TK MI 85', 3)
-      } else if (a.konum === 'KUVVET') {
-        ekle('D 95 ( Deve Boynu )', 2)
-        ekle('1 KV N 95', tel * 2)
-        ekle('Makara İzolator TK MI 85', 2)
-      } else {
-        ekle('D 80 ( Deve Boynu )', 1)
-        ekle('1 KV N 95', tel)                                // tek askı (her tel için 1)
-      }
+      const konsolAdedi = Math.max(1, Math.ceil(tel / 2))
+      ekle(a.agKonsolTipi, konsolAdedi)
+      ekle('N95', tel)            // her iletken için 1 izolatör
     }
-    // E.3) OG çıplak iletken (3SW, 3xPIGEON vb.)
+
+    // F.3) OG çıplak iletken (3SW, 3xPIGEON vb.) — direk tipine göre
     if (a.ogIletken?.tip === 'CIPLAK') {
       const fazSay = a.ogIletken.faz_sayisi || 3
-      if (a.konum === 'HAT_SONU') {
-        ekle('ÇİFT GERGİ Swallow - Raven - Pigeon (K2)', fazSay)
-        ekle('36 KV VHD 35 (20 mm/kV) Normal Tip', fazSay)
-      } else if (a.konum === 'KUVVET') {
-        ekle('TEK GERGİ Swallow - Raven - Pigeon (K1)', fazSay)
-        ekle('36 KV VHD 35 (20 mm/kV) Normal Tip', fazSay)
+      if (a.isKtipi) {
+        ekle('D-250', 1)
+        ekle('TG+40 KN', fazSay * 2)   // 3 faz × 2 yön
+        ekle('VHD', fazSay)
       } else {
-        ekle('TEK ASKI Swallow - Raven - Pigeon (K1)', fazSay)
-        ekle('36 KV VHD 35 (20 mm/kV) Normal Tip', fazSay)
+        ekle('T-200', 1)
+        ekle('VHD', fazSay)
       }
     }
   }
 
-  // F) Topraklama (sembol bazlı yakınlık)
-  if (yakinlar?.koruma) {
-    ekle('2m Galvanizli 65x65x7 Kosebent', 1)
-    oto.push({ adi: '95 mm2 Galvanizli Celik Iletken ve gomulmesi', miktar: 5, birim: 'm', gorunur: false })
-  }
-  if (yakinlar?.isletme) {
-    ekle('2m Galvanizli 65x65x7 Kosebent', 1)
-    oto.push({ adi: '95 mm2 NAYY kablo ve gomulmesi', miktar: 30, birim: 'm', gorunur: false })
-  }
-  if (yakinlar?.armatur) {
-    ekle('ARM. LED KOR. SINIF 1 S15/8/1', 1)
-  }
+  // G) Topraklama — grup adı olarak tek kelime (malzeme özetinde alt kalemlerine patlatılır)
+  if (yakinlar?.koruma) ekle('KORUMA', 1)
+  if (yakinlar?.isletme) ekle('İŞLETME', 1)
+  if (yakinlar?.armatur) ekle('ARMATÜR', 1)
 
   return oto
 }
@@ -623,22 +772,13 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
 
   const handleMalzemeEkle = async (item) => {
     if (item._tip === 'grup') {
-      try {
-        const r = await api.get(`/malzeme-gruplari/${item.id}`)
-        const detay = r?.data
-        if (detay?.kalemler?.length) {
-          const yeniMalz = [
-            ...malzemeSatirlari,
-            ...detay.kalemler.map(k => ({
-              miktar: k.miktar || 1,
-              kisaIsim: k.kisa_isim || k.malzeme_adi,
-              adi: k.malzeme_adi,
-              gorunur: true,
-            })),
-          ]
-          notlariKaydet(yeniMalz, iletkenSatirlari)
-        }
-      } catch (err) { alert('Grup yüklenemedi: ' + err.message) }
+      // Grup → tek bir PARENT satır olarak ekle (kısa adı KORUMA / MAKARA / İŞLETME …)
+      // Akordeyon ile detayları açıp düzenleyebilir; özet listesinde alt kalemlere otomatik patlatılır.
+      const yeniMalz = [
+        ...malzemeSatirlari,
+        { miktar: 1, kisaIsim: item.kisa_ad, adi: item.kisa_ad, gorunur: false },
+      ]
+      notlariKaydet(yeniMalz, iletkenSatirlari)
     } else {
       const tamAdi = item.malzeme_cinsi || item.malzeme_tanimi_sap || ''
       const yeniMalz = [...malzemeSatirlari, { miktar: 1, kisaIsim: tamAdi, adi: tamAdi, gorunur: true }]
@@ -692,36 +832,28 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
     if (!t && !ogeGrup) return
     setMontajYukleniyor(true)
     try {
-      // 1) Grup seçildiyse direkt kalemleri al
+      // 1) Grup seçildiyse → PARENT satır olarak ekle (akordeyon ile alt kalemler açılır)
       if (ogeGrup) {
-        const r = await api.get(`/malzeme-gruplari/${secim.id}`)
+        const r = await api.get(`/malzeme-gruplari/${secim.id}`).catch(() => null)
         const detay = r?.data
-        if (detay?.kalemler?.length) {
+        const ad = detay?.kisa_ad || secim.deger
+        if (ad) {
           const yeniMalz = [
             ...malzemeSatirlari,
-            ...detay.kalemler.map(k => ({
-              miktar: k.miktar || 1,
-              kisaIsim: k.kisa_isim || k.malzeme_adi,
-              adi: k.malzeme_adi,
-              gorunur: true,
-            })),
+            { miktar: 1, kisaIsim: ad, adi: ad, gorunur: false },
           ]
           notlariKaydet(yeniMalz, iletkenSatirlari)
         }
         return
       }
-      // 2) Metin — önce kısa ad grup kontrolü
+      // 2) Metin — önce kısa ad grup kontrolü → bulunduysa PARENT satır
       const grupR = await api.get(`/malzeme-gruplari/by-kisa-ad/${encodeURIComponent(t)}`).catch(() => null)
       const grup = grupR?.data
-      if (grup?.kalemler?.length) {
+      if (grup) {
+        const ad = grup.kisa_ad
         const yeniMalz = [
           ...malzemeSatirlari,
-          ...grup.kalemler.map(k => ({
-            miktar: k.miktar || 1,
-            kisaIsim: k.kisa_isim || k.malzeme_adi,
-            adi: k.malzeme_adi,
-            gorunur: true,
-          })),
+          { miktar: 1, kisaIsim: ad, adi: ad, gorunur: false },
         ]
         notlariKaydet(yeniMalz, iletkenSatirlari)
         return
@@ -869,6 +1001,12 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
                     onMiktarDegistir={(yeniMiktar) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, miktar: yeniMiktar }; notlariKaydet(yeni, iletkenSatirlari) }}
                     onGorunurDegistir={(g) => { const yeni = [...malzemeSatirlari]; yeni[i] = { ...m, gorunur: g }; notlariKaydet(yeni, iletkenSatirlari) }}
                     onSil={() => notlariKaydet(malzemeSatirlari.filter((_, j) => j !== i), iletkenSatirlari)}
+                    onPatlat={(altKalemler) => {
+                      // Grup satırı çıkar, alt kalemler aynı yere eklensin
+                      const yeni = [...malzemeSatirlari]
+                      yeni.splice(i, 1, ...altKalemler)
+                      notlariKaydet(yeni, iletkenSatirlari)
+                    }}
                   />
                 ))
               )}
@@ -1085,7 +1223,9 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
         return
       }
       const elemanRes = await api.get(`/dosya/${kaynakDxf.id}/dxf-elemanlar`)
-      const elemanlar = (elemanRes?.data || elemanRes)?.elemanlar || []
+      const elemanData = elemanRes?.data || elemanRes
+      const elemanlar = elemanData?.elemanlar || []
+      const trafolarServer = elemanData?.trafolar || []
 
       // Diagnostic: hangi sembol karakterleri mevcut?
       const sembolSayimi = {}
@@ -1123,15 +1263,23 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
 
       let guncelSatirlar = [...(satirlar || [])]
       let eklenen = 0
+      // Trafo elemanları — server'dan TRAFO_* katmanındakilerle birlikte gelir
+      const trafolar = trafolarServer
+      console.info('[OtoTespit] Trafo eleman sayısı:', trafolar.length)
       for (let i = 0; i < anaDirekler.length; i++) {
         const d = anaDirekler[i]
         setOtoTaraIlerleme({ yapilan: i + 1, toplam: anaDirekler.length })
-        const yakinlar = { armatur: false, koruma: false, isletme: false }
+        const yakinlar = { armatur: false, koruma: false, isletme: false, trafoAlti: false }
         for (const el of elemanlar) {
           if (el.numara !== d.numara || el === d) continue
           if (el.sembol === 'C') yakinlar.armatur = true
           if (el.sembol === '4') yakinlar.koruma = true
           if (el.sembol === '5') yakinlar.isletme = true
+        }
+        // Trafo altı tespiti — direğe en yakın trafo < 25m mesafede ise
+        for (const t of trafolar) {
+          const dx = (t.x || 0) - (d.x || 0), dy = (t.y || 0) - (d.y || 0)
+          if (Math.sqrt(dx * dx + dy * dy) < 25) { yakinlar.trafoAlti = true; break }
         }
         const durum = SEMBOL_DURUM[d.sembol] || 'Yeni'
         const bilgi = {

@@ -28,6 +28,7 @@ app.use('/api/bolgeler', require('./routes/bolgeler'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/ekipler', require('./routes/ekipler'));
 app.use('/api/projeler', require('./routes/projeler'));
+app.use('/api/ihaleler', require('./routes/ihaleler'));
 app.use('/api/malzemeler', require('./routes/malzeme'));
 app.use('/api/malzeme-gruplari', require('./routes/malzemeGruplari'));
 app.use('/api/malzeme-hareketleri', require('./routes/malzemeHareketleri'));

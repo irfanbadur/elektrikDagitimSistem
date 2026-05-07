@@ -24,3 +24,11 @@ export function useEkipDurumlari() {
     select: (res) => res.data,
   })
 }
+
+export function useIhaleOzet() {
+  return useQuery({
+    queryKey: ['dashboard', 'ihale-ozet'],
+    queryFn: () => api.get('/dashboard/ihale-ozet'),
+    select: (res) => res.data,
+  })
+}

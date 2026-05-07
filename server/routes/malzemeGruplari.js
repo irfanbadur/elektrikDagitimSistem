@@ -41,9 +41,20 @@ router.get('/:id', (req, res) => {
 router.get('/by-kisa-ad/:ad', (req, res) => {
   try {
     const db = getDb();
-    const ad = (req.params.ad || '').trim().toLowerCase();
+    const ad = (req.params.ad || '').trim();
     if (!ad) return res.json({ success: true, data: null });
-    const grup = db.prepare('SELECT * FROM malzeme_gruplari WHERE LOWER(kisa_ad) = ?').get(ad);
+    // Türkçe normalize (İŞLETME / İşletme / işletme / ISLETME → ISLETME)
+    const trUst = (s) => String(s || '')
+      .replace(/ı/g, 'I').replace(/İ/g, 'I')
+      .replace(/ğ/g, 'G').replace(/Ğ/g, 'G')
+      .replace(/ü/g, 'U').replace(/Ü/g, 'U')
+      .replace(/ş/g, 'S').replace(/Ş/g, 'S')
+      .replace(/ö/g, 'O').replace(/Ö/g, 'O')
+      .replace(/ç/g, 'C').replace(/Ç/g, 'C')
+      .toUpperCase().trim();
+    const adNorm = trUst(ad);
+    const adaylar = db.prepare('SELECT * FROM malzeme_gruplari').all();
+    const grup = adaylar.find(g => trUst(g.kisa_ad) === adNorm);
     if (!grup) return res.json({ success: true, data: null });
     const kalemler = db.prepare(`
       SELECT k.*, c.malzeme_cinsi AS katalog_cinsi, c.malzeme_tanimi_sap AS katalog_sap

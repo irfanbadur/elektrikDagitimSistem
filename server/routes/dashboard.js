@@ -34,6 +34,54 @@ router.get('/ozet', (req, res) => {
   }
 });
 
+// GET /api/dashboard/ihale-ozet — Tüm ihalelerin KPI özeti (çoklu ihale)
+router.get('/ihale-ozet', (req, res) => {
+  try {
+    const db = getDb();
+    const liste = db.prepare(`
+      SELECT
+        i.id, i.ihale_adi, i.is_adi, i.sozlesme_no, i.yuklenici, i.durum, i.sozlesme_bedeli,
+        (SELECT GROUP_CONCAT(it.kod, ',')
+           FROM ihale_is_tipleri iit JOIN is_tipleri it ON it.id = iit.is_tipi_id
+          WHERE iit.ihale_id = i.id) AS is_tipi_kodlari,
+        (SELECT COUNT(*) FROM projeler p WHERE p.ihale_id = i.id) AS proje_sayisi,
+        (SELECT COALESCE(SUM(CAST(p.kesif_tutari AS REAL)), 0)
+           FROM projeler p WHERE p.ihale_id = i.id) AS toplam_kesif,
+        (SELECT COALESCE(SUM(CAST(p.ilerleme_miktari AS REAL)), 0)
+           FROM projeler p WHERE p.ihale_id = i.id) AS toplam_ilerleme,
+        (SELECT COALESCE(SUM(CAST(p.sozlesme_kesfi AS REAL)), 0)
+           FROM projeler p WHERE p.ihale_id = i.id) AS toplam_sozlesme
+      FROM ihaleler i
+      ORDER BY i.durum = 'aktif' DESC, i.id DESC
+    `).all();
+
+    const ihaleler = liste.map(i => {
+      const tutar = Number(i.sozlesme_bedeli) || 0;
+      return {
+        ...i,
+        is_tipi_kodlari: (i.is_tipi_kodlari || '').split(',').filter(Boolean),
+        kesif_yuzdesi: tutar > 0 ? (i.toplam_kesif / tutar) * 100 : 0,
+        ilerleme_yuzdesi: tutar > 0 ? (i.toplam_ilerleme / tutar) * 100 : 0,
+        kalan_tutar: Math.max(0, tutar - i.toplam_ilerleme),
+      };
+    });
+
+    // Toplamlar (tüm aktif ihalelerin)
+    const aktifler = ihaleler.filter(i => i.durum === 'aktif');
+    const toplam = {
+      ihale_sayisi: ihaleler.length,
+      aktif_ihale: aktifler.length,
+      toplam_bedel: aktifler.reduce((s, i) => s + (Number(i.sozlesme_bedeli) || 0), 0),
+      toplam_kesif: aktifler.reduce((s, i) => s + (Number(i.toplam_kesif) || 0), 0),
+      toplam_ilerleme: aktifler.reduce((s, i) => s + (Number(i.toplam_ilerleme) || 0), 0),
+    };
+
+    basarili(res, { ihaleler, toplam });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
 // GET /api/dashboard/aktiviteler
 router.get('/aktiviteler', (req, res) => {
   try {

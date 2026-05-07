@@ -64,6 +64,24 @@ function childBul(db, ad) {
     if (r) return r;
   }
 
+  // 2b) Tire ↔ boşluk varyasyonları — katalog tutarsız: "6,5U 80" boşluklu, "6,5U-100" tireli
+  // Hem "6,5U-80" → "6,5U 80" hem "6,5U 100" → "6,5U-100" denenir
+  const variants = new Set();
+  if (/[-\s]/.test(ad)) {
+    variants.add(ad.replace(/[-\s]+/g, ' ').trim());
+    variants.add(ad.replace(/[-\s]+/g, '-').trim());
+    variants.add(ad.replace(/-/g, ' ').trim());
+    variants.add(ad.replace(/\s+/g, '-').trim());
+  }
+  variants.delete(ad);
+  for (const v of variants) {
+    if (!v) continue;
+    r = enIyi(adaylariSec(
+      `SELECT ${SUTUNLAR} FROM depo_malzeme_katalogu WHERE malzeme_cinsi = ? COLLATE NOCASE`, [v]
+    ));
+    if (r) return r;
+  }
+
   // 3) Parantezsiz prefix
   const cikarParans = ad.replace(/\([^)]*\)/g, '').trim();
   if (cikarParans.length >= 3) {
@@ -107,6 +125,33 @@ function parentBul(db, childPoz) {
   return null;
 }
 
+// Türkçe normalize (KORUMA / Koruma / koruma → KORUMA)
+function trUst(s) {
+  return String(s || '')
+    .replace(/ı/g, 'I').replace(/İ/g, 'I')
+    .replace(/ğ/g, 'G').replace(/Ğ/g, 'G')
+    .replace(/ü/g, 'U').replace(/Ü/g, 'U')
+    .replace(/ş/g, 'S').replace(/Ş/g, 'S')
+    .replace(/ö/g, 'O').replace(/Ö/g, 'O')
+    .replace(/ç/g, 'C').replace(/Ç/g, 'C')
+    .toUpperCase().trim();
+}
+
+// Malzeme grupları haritası: kısa_ad (normalize) → kalem listesi
+// Her grup birden çok katalog kalemine patlatılır (örn. "MAKARA" → 1 ad
+// Makara İzolator + 1 ad Özengi Demiri + 1 ad Halkalı Saplama + …)
+function grupHaritasiHaz(db) {
+  const gruplar = db.prepare('SELECT id, kisa_ad FROM malzeme_gruplari').all();
+  const map = new Map();
+  for (const g of gruplar) {
+    const kalemler = db.prepare(
+      `SELECT malzeme_adi, malzeme_kodu, miktar, birim FROM malzeme_grup_kalemleri WHERE grup_id = ? ORDER BY sira`
+    ).all(g.id);
+    map.set(trUst(g.kisa_ad), { kisa_ad: g.kisa_ad, kalemler });
+  }
+  return map;
+}
+
 // proje_kesif tablosundan ilerleme değerlerini poz_no üzerinden eşleştir
 // (Excel-truth sync sonucunda doldurulmuş olur)
 function ilerlemeMapHaz(db, projeId) {
@@ -127,8 +172,9 @@ function malzemeOzetiUret(tabloAdi, projeId) {
     `SELECT direk_tip, ag_iletken, og_iletken, ara_mesafe, notlar FROM ${tabloAdi} WHERE proje_id = ?`
   ).all(projeId);
   const ilerlemeMap = ilerlemeMapHaz(db, projeId);
+  const malzemeGrupMap = grupHaritasiHaz(db);
 
-  // 1) Ham agrega
+  // 1) Ham agrega — KORUMA / İŞLETME / MAKARA gibi grup adları alt kalemlerine patlatılır
   const direkler = new Map();    // tip → adet
   const malzemeler = new Map();  // adi → miktar
   const iletkenler = new Map();  // tip → mesafe
@@ -143,7 +189,18 @@ function malzemeOzetiUret(tabloAdi, projeId) {
           if (tip) iletkenler.set(tip, (iletkenler.get(tip) || 0) + mesafe);
         } else {
           const { adi, miktar } = malzemeNotuParse(line);
-          if (adi) malzemeler.set(adi, (malzemeler.get(adi) || 0) + miktar);
+          if (!adi) continue;
+          // Grup adı mı? (örn. "KORUMA" → 95mm² ÇLK + 2m köşebent)
+          const grup = malzemeGrupMap.get(trUst(adi));
+          if (grup && grup.kalemler.length > 0) {
+            for (const k of grup.kalemler) {
+              const ad = k.malzeme_adi;
+              const m = (Number(k.miktar) || 1) * miktar;
+              malzemeler.set(ad, (malzemeler.get(ad) || 0) + m);
+            }
+          } else {
+            malzemeler.set(adi, (malzemeler.get(adi) || 0) + miktar);
+          }
         }
       }
     }
@@ -162,13 +219,22 @@ function malzemeOzetiUret(tabloAdi, projeId) {
   for (const [tip, mes] of iletkenler) ekle('iletken', tip, mes);
 
   // 3) Parent'a göre grupla. Parent'ı olmayan kalemler bağımsız listeye gider.
-  const grupMap = new Map(); // parent_poz → { parent, cocuklar: [] }
+  // Aynı child.poz_birlesik'e düşen kalemler (örn. "6,5U 80" ve "6,5U-80")
+  // tek satıra birleştirilir.
+  const grupMap = new Map(); // parent_poz → { parent, cocuklar: [], cocukIdx: Map<poz, idx> }
   const bagimsiz = [];
   for (const h of haziraza) {
     if (h.parent && h.child) {
       const key = h.parent.poz_birlesik;
-      const g = grupMap.get(key) || { parent: h.parent, cocuklar: [] };
-      g.cocuklar.push(h);
+      const g = grupMap.get(key) || { parent: h.parent, cocuklar: [], cocukIdx: new Map() };
+      const childPoz = h.child.poz_birlesik;
+      const mevcutIdx = g.cocukIdx.get(childPoz);
+      if (mevcutIdx != null) {
+        g.cocuklar[mevcutIdx].miktar += h.miktar;
+      } else {
+        g.cocukIdx.set(childPoz, g.cocuklar.length);
+        g.cocuklar.push(h);
+      }
       grupMap.set(key, g);
     } else {
       bagimsiz.push(h);

@@ -10,6 +10,8 @@ const AdminPage = lazy(() => import('@/pages/AdminPage'))
 import DashboardPage from '@/pages/DashboardPage'
 import EkiplerPage from '@/pages/EkiplerPage'
 import ProjelerPage from '@/pages/ProjelerPage'
+import IhalelerListePage from '@/pages/IhalelerListePage'
+import IhaleDetayPage from '@/pages/IhaleDetayPage'
 import MalzemePage from '@/pages/MalzemePage'
 import PersonelPage from '@/pages/PersonelPage'
 import PuantajPage from '@/pages/PuantajPage'
@@ -62,6 +64,8 @@ function AppRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/ekipler/*" element={<EkiplerPage />} />
         <Route path="/projeler/*" element={<ProjelerPage />} />
+        <Route path="/ihaleler" element={<IhalelerListePage />} />
+        <Route path="/ihaleler/:id" element={<IhaleDetayPage />} />
         <Route path="/depo/*" element={<MalzemePage />} />
         <Route path="/personel/*" element={<PersonelPage />} />
         <Route path="/puantaj/*" element={<PuantajPage />} />

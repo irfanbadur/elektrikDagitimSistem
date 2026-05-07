@@ -667,6 +667,105 @@ function _initSingleDb() {
     }
   }
 
+  // projeler.teknik_birim — Bağlantı/Tesis Bilgileri altına eklenen teknik birim alanı
+  try {
+    database.prepare('SELECT teknik_birim FROM projeler LIMIT 1').get();
+  } catch {
+    try { database.prepare('ALTER TABLE projeler ADD COLUMN teknik_birim TEXT').run(); } catch {}
+  }
+
+  // projeler.kesinti_suresi — Kesinti süresi (saat cinsinden)
+  try {
+    database.prepare('SELECT kesinti_suresi FROM projeler LIMIT 1').get();
+  } catch {
+    try { database.prepare('ALTER TABLE projeler ADD COLUMN kesinti_suresi REAL').run(); } catch {}
+  }
+
+  // projeler.proje_asama — Çizim/kurum süreci aşaması (çizilecek, çizildi, yüklendi, ret_oldu,
+  // revize_edilecek, revize_yuklendi, onaylandi)
+  try {
+    database.prepare('SELECT proje_asama FROM projeler LIMIT 1').get();
+  } catch {
+    try { database.prepare('ALTER TABLE projeler ADD COLUMN proje_asama TEXT').run(); } catch {}
+  }
+  // projeler.saha_asama — Saha yapım aşaması (malzeme_verildi, baslandi, kuyular_acildi,
+  // direk_dikimi, beton_dokumu, iletken_cekimi, enerji_verildi)
+  try {
+    database.prepare('SELECT saha_asama FROM projeler LIMIT 1').get();
+  } catch {
+    try { database.prepare('ALTER TABLE projeler ADD COLUMN saha_asama TEXT').run(); } catch {}
+  }
+
+  // ihaleler — Çoklu ihale takibi
+  try {
+    database.prepare(`
+      CREATE TABLE IF NOT EXISTS ihaleler (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ihale_adi TEXT NOT NULL,
+        is_adi TEXT,
+        sozlesme_no TEXT,
+        il TEXT,
+        ilce TEXT,
+        yuklenici TEXT,
+        sozlesme_bedeli REAL DEFAULT 0,
+        artirim_orani REAL DEFAULT 10,
+        baslangic_tarihi TEXT,
+        bitis_tarihi TEXT,
+        durum TEXT DEFAULT 'aktif',
+        notlar TEXT,
+        olusturma_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP,
+        guncelleme_tarihi DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    database.prepare(`
+      CREATE TABLE IF NOT EXISTS ihale_is_tipleri (
+        ihale_id INTEGER NOT NULL,
+        is_tipi_id INTEGER NOT NULL,
+        PRIMARY KEY (ihale_id, is_tipi_id),
+        FOREIGN KEY (ihale_id) REFERENCES ihaleler(id) ON DELETE CASCADE,
+        FOREIGN KEY (is_tipi_id) REFERENCES is_tipleri(id) ON DELETE CASCADE
+      )
+    `).run();
+    // projeler.ihale_id kolonu
+    try {
+      database.prepare('SELECT ihale_id FROM projeler LIMIT 1').get();
+    } catch {
+      try { database.prepare('ALTER TABLE projeler ADD COLUMN ihale_id INTEGER REFERENCES ihaleler(id)').run(); } catch {}
+    }
+    database.prepare('CREATE INDEX IF NOT EXISTS idx_projeler_ihale ON projeler(ihale_id)').run();
+
+    // Default KET-YB ihalesini oluştur (varsa atla); mevcut firma_ayarlari değerlerinden veriyi al
+    const ihaleSayisi = database.prepare('SELECT COUNT(*) AS c FROM ihaleler').get().c;
+    if (ihaleSayisi === 0) {
+      const ayarMap = {};
+      database.prepare("SELECT anahtar, deger FROM firma_ayarlari WHERE anahtar LIKE 'ihale_%'").all()
+        .forEach(a => { ayarMap[a.anahtar] = a.deger; });
+      const adi = ayarMap.ihale_adi || 'SAMSUN BATI KET YAPI BAĞLANTI YAPIM İŞİ';
+      const tutar = parseFloat(ayarMap.ihale_toplam_tutar) || 0;
+      const yuklenici = (database.prepare("SELECT deger FROM firma_ayarlari WHERE anahtar='firma_adi'").get() || {}).deger || '';
+
+      const ins = database.prepare(`
+        INSERT INTO ihaleler (ihale_adi, sozlesme_bedeli, artirim_orani, yuklenici, durum)
+        VALUES (?, ?, ?, ?, 'aktif')
+      `).run(adi, tutar, 10, yuklenici);
+      const ihaleId = ins.lastInsertRowid;
+
+      // YB ve KET iş tiplerini bağla
+      const isTipleri = database.prepare("SELECT id FROM is_tipleri WHERE kod IN ('YB', 'KET')").all();
+      const baglaStmt = database.prepare('INSERT OR IGNORE INTO ihale_is_tipleri (ihale_id, is_tipi_id) VALUES (?, ?)');
+      for (const t of isTipleri) baglaStmt.run(ihaleId, t.id);
+
+      // Mevcut YB ve KET projelerini bu ihaleye bağla
+      const r = database.prepare(`
+        UPDATE projeler SET ihale_id = ?
+        WHERE ihale_id IS NULL AND proje_tipi IN ('YB','KET')
+      `).run(ihaleId);
+      console.log(`İhale tablo migration: 1 ihale oluşturuldu, ${r.changes} proje bağlandı.`);
+    }
+  } catch (err) {
+    console.error('ihaleler tablo hatası:', err.message);
+  }
+
   // metraj_islem_gecmisi — Undo/Redo için operasyon log'u
   // hak_edis_metraj ve proje_kesif_metraj tabloları için ekle/güncelle/sil işlemleri kaydedilir.
   // Aynı kullanıcı işlemi birden fazla satıra yazıyorsa (Otomatik Tespit) batch_id ile gruplanır.

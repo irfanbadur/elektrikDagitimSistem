@@ -39,6 +39,9 @@ export default function FirmaBilgileri() {
     { key: 'dagitim_sirketi', label: 'Dağıtım Şirketi', type: 'text' },
     { key: 'para_birimi', label: 'Para Birimi', type: 'text' },
     { key: 'calisan_proje_tipleri', label: 'İş Tipleri (virgülle ayırın)', type: 'text' },
+    { __ayrac: true, label: 'İhale Bilgileri' },
+    { key: 'ihale_adi', label: 'İhale Adı', type: 'text', placeholder: 'Örn: 2026 BATI KET-YB' },
+    { key: 'ihale_toplam_tutar', label: 'İhale Toplam Bedeli (₺)', type: 'number', placeholder: 'Örn: 79000000', help: 'Dashboard yüzde hesabı bu değere göre yapılır' },
   ]
 
   if (isLoading) return <div className="space-y-4">{Array.from({length:5}).map((_,i) => <div key={i} className="skeleton h-12 w-full" />)}</div>
@@ -50,14 +53,21 @@ export default function FirmaBilgileri() {
         <h2 className="text-xl font-semibold">Firma Bilgileri</h2>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-border bg-card p-6">
-        {alanlar.map(alan => (
+        {alanlar.map((alan, i) => alan.__ayrac ? (
+          <div key={`ayrac-${i}`} className="pt-3 border-t border-border/60">
+            <h3 className="text-sm font-semibold text-muted-foreground tracking-wide">{alan.label}</h3>
+          </div>
+        ) : (
           <div key={alan.key}>
             <label className="mb-1 block text-sm font-medium">{alan.label}</label>
             {alan.type === 'textarea' ? (
               <textarea value={form[alan.key] || ''} onChange={e => setForm(f => ({...f, [alan.key]: e.target.value}))} rows={3} className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
             ) : (
-              <input type="text" value={form[alan.key] || ''} onChange={e => setForm(f => ({...f, [alan.key]: e.target.value}))} className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+              <input type={alan.type || 'text'} value={form[alan.key] || ''} placeholder={alan.placeholder}
+                onChange={e => setForm(f => ({...f, [alan.key]: e.target.value}))}
+                className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
             )}
+            {alan.help && <p className="mt-0.5 text-[11px] text-muted-foreground">{alan.help}</p>}
           </div>
         ))}
         <div className="flex items-center gap-3 pt-2">

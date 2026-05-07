@@ -34,6 +34,15 @@ export function useProjeGuncelle() {
   })
 }
 
+// Kısmi güncelleme — sadece gönderilen alanları yazar (inline edit / sütun-bazlı kilit için)
+export function useProjeKismiGuncelle() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.patch(`/projeler/${id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projeler'] }),
+  })
+}
+
 export function useProjeSil() {
   const qc = useQueryClient()
   return useMutation({

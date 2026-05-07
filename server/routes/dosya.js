@@ -785,7 +785,17 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
     }
 
 
-    res.json({ success: true, data: { elemanlar: sonuc, toplamDirek: direkler.length, toplamEtiket: etiketler.length } });
+    // Trafo elemanları — TRAFO_* katmanındaki TEXT'ler (T_GBOX_1, T_PBOX_1 vb.)
+    // Otomatik Tespit'te "trafo altı E direği" tespiti için kullanılır.
+    const trafolar = etiketler
+      .filter(et =>
+        ((et.katman || '').toUpperCase().startsWith('TRAFO_')) ||
+        (/T_[GP]BOX/i.test(et.text || '')) ||
+        (/^TRAFO/i.test(et.text || ''))
+      )
+      .map(et => ({ x: et.x, y: et.y, katman: et.katman, text: et.text }));
+
+    res.json({ success: true, data: { elemanlar: sonuc, trafolar, toplamDirek: direkler.length, toplamEtiket: etiketler.length } });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 

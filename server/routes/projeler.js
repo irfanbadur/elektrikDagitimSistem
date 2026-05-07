@@ -100,24 +100,131 @@ router.get('/', (req, res) => {
   }
 });
 
-// GET /api/projeler/sonraki-no?tip=KET - Otomatik proje no üret
+// PATCH /:id — Kısmi güncelleme (yalnızca gönderilen alanları yazar)
+// Sütun-bazlı / inline edit için kullanılır; PUT'taki "tüm alanlar zorunlu" davranışından kaçınır.
+router.patch('/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id);
+    const mevcut = db.prepare('SELECT id FROM projeler WHERE id = ?').get(id);
+    if (!mevcut) return hata(res, 'Proje bulunamadı', 404);
+
+    const ALANLAR = new Set([
+      'proje_no', 'proje_tipi', 'musteri_adi', 'bolge_id', 'mahalle', 'adres',
+      'durum', 'oncelik', 'ekip_id', 'tahmini_sure_gun',
+      'baslama_tarihi', 'bitis_tarihi', 'teslim_tarihi', 'gerceklesen_bitis',
+      'tamamlanma_yuzdesi', 'notlar',
+      'basvuru_no', 'il', 'ilce', 'ada_parsel', 'telefon', 'tesis', 'teknik_birim',
+      'abone_kablosu', 'abone_kablosu_metre', 'enerji_alinan_direk_no',
+      'kesinti_ihtiyaci', 'kesinti_suresi', 'izinler',
+      'yil', 'pyp', 'ihale_no', 'ihale_adi', 'yuklenici', 'tur',
+      'cbs_id', 'cbs_durum', 'is_durumu', 'demontaj_teslim_durumu',
+      'sozlesme_kesfi', 'kesif_tutari', 'hakedis_miktari', 'hakedis_yuzdesi',
+      'ilerleme_miktari', 'ilerleme_yuzdesi', 'proje_onay_durumu', 'is_grubu',
+      'proje_baslangic_tarihi', 'enerjilenme_tarihi',
+      'proje_asama', 'saha_asama', 'ihale_id',
+    ]);
+    // NOT NULL alanlar — boş gönderildiyse atla (mevcut değer korunsun)
+    const NOT_NULL_ALANLAR = new Set(['proje_no', 'proje_tipi']);
+
+    const setler = [];
+    const degerler = [];
+    for (const [alan, deger] of Object.entries(req.body)) {
+      if (!ALANLAR.has(alan)) continue;
+      const bos = deger === '' || deger === null || deger === undefined;
+      if (bos && NOT_NULL_ALANLAR.has(alan)) continue;
+      let v = bos ? null : deger;
+      if (alan === 'kesinti_ihtiyaci' && v != null) v = v ? 1 : 0;
+      if (alan === 'izinler' && v != null && typeof v !== 'string') v = JSON.stringify(v);
+      setler.push(`${alan} = ?`);
+      degerler.push(v);
+    }
+    if (setler.length === 0) {
+      const yok = db.prepare(PROJE_SELECT + ' WHERE p.id = ?').get(id);
+      return basarili(res, yok);
+    }
+    setler.push("guncelleme_tarihi = CURRENT_TIMESTAMP");
+    degerler.push(id);
+
+    db.prepare(`UPDATE projeler SET ${setler.join(', ')} WHERE id = ?`).run(...degerler);
+    const yeni = db.prepare(PROJE_SELECT + ' WHERE p.id = ?').get(id);
+    basarili(res, yeni);
+  } catch (err) {
+    if (err.message.includes('UNIQUE')) return hata(res, 'Bu proje numarası zaten kullanımda');
+    hata(res, err.message, 500);
+  }
+});
+
+// GET /api/projeler/ad-kontrol?ad=...&hariç_id=... — Aynı ad ile başka proje var mı?
+// Türkçe karakter normalize ederek case-insensitive arar.
+router.get('/ad-kontrol', (req, res) => {
+  try {
+    const db = getDb();
+    const ad = (req.query.ad || '').trim();
+    if (ad.length < 3) return basarili(res, { tam: [], benzer: [] });
+    const haricId = parseInt(req.query.haric_id) || 0;
+
+    // SQLite'da Türkçe normalize için iki ayrı pattern: ı/i, ğ/g, ş/s, ö/o, ü/u, ç/c
+    // Pratik: hem orijinal hem normalize edilmiş karşılaştır.
+    const tr = (s) => String(s || '').toUpperCase()
+      .replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ş/g, 'S')
+      .replace(/I/g, 'I').replace(/İ/g, 'I').replace(/Ö/g, 'O').replace(/Ç/g, 'C');
+    const adNorm = tr(ad);
+
+    // Aday listesi (yaklaşık LIKE) — sonra JS'de tam normalize karşılaştırma
+    const adayLike = `%${ad.toUpperCase().replace(/_/g, '\\_').replace(/%/g, '\\%')}%`;
+    const adaylar = db.prepare(`
+      SELECT id, proje_no, proje_tipi, musteri_adi, durum
+      FROM projeler
+      WHERE id != ?
+      LIMIT 1000
+    `).all(haricId);
+
+    const tam = [];
+    const benzer = [];
+    for (const p of adaylar) {
+      const mNorm = tr(p.musteri_adi || '');
+      if (!mNorm) continue;
+      if (mNorm === adNorm) {
+        tam.push(p);
+      } else if (mNorm.includes(adNorm) || adNorm.includes(mNorm)) {
+        benzer.push(p);
+      }
+    }
+    basarili(res, { tam, benzer: benzer.slice(0, 5) });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// GET /api/projeler/sonraki-no?tip=KET&bolge=1 — Otomatik proje no öner
+// Format: {YIL2}.{TIP}.{BOLGE}.{SIRA3}  → ör. 26.KET.1.064
+// `BEKLEYEN-…` ve suffix'li (`26.KET.1.026-33`) numaralar hariç tutulur.
 router.get('/sonraki-no', (req, res) => {
   try {
     const db = getDb();
-    const tip = (req.query.tip || 'PRJ').toUpperCase();
-    const yil = new Date().getFullYear();
-    const prefix = `${tip}-${yil}-`;
-    // Aynı prefix ile başlayan en büyük numarayı bul
-    const son = db.prepare(
-      `SELECT proje_no FROM projeler WHERE proje_no LIKE ? ORDER BY proje_no DESC LIMIT 1`
-    ).get(`${prefix}%`);
-    let sira = 1;
-    if (son) {
-      const sonSira = parseInt(son.proje_no.replace(prefix, ''), 10);
-      if (!isNaN(sonSira)) sira = sonSira + 1;
+    const tip = (req.query.tip || '').toUpperCase().trim();
+    if (!tip) return hata(res, 'tip parametresi gerekli', 400);
+    const yil2 = String(new Date().getFullYear()).slice(-2);
+    const bolge = String(req.query.bolge || '1').trim();
+    const prefix = `${yil2}.${tip}.${bolge}.`;
+
+    const kayitlar = db.prepare(
+      `SELECT proje_no FROM projeler WHERE proje_no LIKE ?`
+    ).all(`${prefix}%`);
+
+    const desen = new RegExp(`^${prefix.replace(/\./g, '\\.')}(\\d{3})$`);
+    let maxSira = 0;
+    for (const k of kayitlar) {
+      const m = (k.proje_no || '').match(desen);
+      if (m) {
+        const s = parseInt(m[1], 10);
+        if (!isNaN(s) && s > maxSira) maxSira = s;
+      }
     }
-    const projeNo = `${prefix}${String(sira).padStart(2, '0')}`;
-    basarili(res, { proje_no: projeNo });
+    const yeni = maxSira + 1;
+    const projeNo = `${prefix}${String(yeni).padStart(3, '0')}`;
+    basarili(res, { proje_no: projeNo, son_sira: maxSira });
   } catch (err) {
     hata(res, err.message, 500);
   }
@@ -152,10 +259,10 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   try {
     const db = getDb();
-    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler, teslim_eden_unvan, teslim_eden_kurum, yil, pyp, ihale_no, ihale_adi, yuklenici, tur, cbs_id, cbs_durum, is_durumu, demontaj_teslim_durumu, sozlesme_kesfi, kesif_tutari, hakedis_miktari, hakedis_yuzdesi, ilerleme_miktari, ilerleme_yuzdesi, proje_onay_durumu, is_grubu, proje_baslangic_tarihi, enerjilenme_tarihi } = req.body;
+    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, teknik_birim, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, kesinti_suresi, izinler, teslim_eden_unvan, teslim_eden_kurum, yil, pyp, ihale_no, ihale_adi, yuklenici, tur, cbs_id, cbs_durum, is_durumu, demontaj_teslim_durumu, sozlesme_kesfi, kesif_tutari, hakedis_miktari, hakedis_yuzdesi, ilerleme_miktari, ilerleme_yuzdesi, proje_onay_durumu, is_grubu, proje_baslangic_tarihi, enerjilenme_tarihi, proje_asama, saha_asama, ihale_id } = req.body;
     if (!proje_no || !proje_tipi) return hata(res, 'Proje no ve tipi zorunludur');
     const teslimEdenId = ensureDisKisi(db, teslim_eden, teslim_eden_unvan, teslim_eden_kurum);
-    const result = db.prepare(`INSERT INTO projeler (proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, teslim_eden_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler, yil, pyp, ihale_no, ihale_adi, yuklenici, tur, cbs_id, cbs_durum, is_durumu, demontaj_teslim_durumu, sozlesme_kesfi, kesif_tutari, hakedis_miktari, hakedis_yuzdesi, ilerleme_miktari, ilerleme_yuzdesi, proje_onay_durumu, is_grubu, proje_baslangic_tarihi, enerjilenme_tarihi) VALUES (${Array(49).fill('?').join(',')})`).run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum||'teslim_alindi', oncelik||'normal', ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi||0, notlar, teslim_eden||null, teslim_alan_id||null, teslimEdenId, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, izinler?JSON.stringify(izinler):null, yil||null, pyp||null, ihale_no||null, ihale_adi||null, yuklenici||null, tur||null, cbs_id||null, cbs_durum||null, is_durumu||null, demontaj_teslim_durumu||null, sozlesme_kesfi||null, kesif_tutari||null, hakedis_miktari||null, hakedis_yuzdesi||null, ilerleme_miktari||null, ilerleme_yuzdesi||null, proje_onay_durumu||null, is_grubu||null, proje_baslangic_tarihi||null, enerjilenme_tarihi||null);
+    const result = db.prepare(`INSERT INTO projeler (proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, teslim_eden_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, teknik_birim, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, kesinti_suresi, izinler, yil, pyp, ihale_no, ihale_adi, yuklenici, tur, cbs_id, cbs_durum, is_durumu, demontaj_teslim_durumu, sozlesme_kesfi, kesif_tutari, hakedis_miktari, hakedis_yuzdesi, ilerleme_miktari, ilerleme_yuzdesi, proje_onay_durumu, is_grubu, proje_baslangic_tarihi, enerjilenme_tarihi, proje_asama, saha_asama, ihale_id) VALUES (${Array(54).fill('?').join(',')})`).run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum||'teslim_alindi', oncelik||'normal', ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, tamamlanma_yuzdesi||0, notlar, teslim_eden||null, teslim_alan_id||null, teslimEdenId, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, teknik_birim||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, kesinti_suresi||null, izinler?JSON.stringify(izinler):null, yil||null, pyp||null, ihale_no||null, ihale_adi||null, yuklenici||null, tur||null, cbs_id||null, cbs_durum||null, is_durumu||null, demontaj_teslim_durumu||null, sozlesme_kesfi||null, kesif_tutari||null, hakedis_miktari||null, hakedis_yuzdesi||null, ilerleme_miktari||null, ilerleme_yuzdesi||null, proje_onay_durumu||null, is_grubu||null, proje_baslangic_tarihi||null, enerjilenme_tarihi||null, proje_asama||null, saha_asama||null, ihale_id ? parseInt(ihale_id) : null);
     const projeId = result.lastInsertRowid;
 
     // Yeni faz sistemi: İş tipine uygun faz/adım şablonu ata
@@ -208,9 +315,9 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const db = getDb();
-    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, izinler, teslim_eden_unvan, teslim_eden_kurum, yil, pyp, ihale_no, ihale_adi, yuklenici, tur, cbs_id, cbs_durum, is_durumu, demontaj_teslim_durumu, sozlesme_kesfi, kesif_tutari, hakedis_miktari, hakedis_yuzdesi, ilerleme_miktari, ilerleme_yuzdesi, proje_onay_durumu, is_grubu, proje_baslangic_tarihi, enerjilenme_tarihi } = req.body;
+    const { proje_no, proje_tipi, musteri_adi, bolge_id, mahalle, adres, durum, oncelik, ekip_id, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden, teslim_alan_id, basvuru_no, il, ilce, ada_parsel, telefon, tesis, teknik_birim, abone_kablosu, abone_kablosu_metre, enerji_alinan_direk_no, kesinti_ihtiyaci, kesinti_suresi, izinler, teslim_eden_unvan, teslim_eden_kurum, yil, pyp, ihale_no, ihale_adi, yuklenici, tur, cbs_id, cbs_durum, is_durumu, demontaj_teslim_durumu, sozlesme_kesfi, kesif_tutari, hakedis_miktari, hakedis_yuzdesi, ilerleme_miktari, ilerleme_yuzdesi, proje_onay_durumu, is_grubu, proje_baslangic_tarihi, enerjilenme_tarihi, proje_asama, saha_asama, ihale_id } = req.body;
     const teslimEdenId = ensureDisKisi(db, teslim_eden, teslim_eden_unvan, teslim_eden_kurum);
-    db.prepare(`UPDATE projeler SET proje_no=?, proje_tipi=?, musteri_adi=?, bolge_id=?, mahalle=?, adres=?, durum=?, oncelik=?, ekip_id=?, tahmini_sure_gun=?, baslama_tarihi=?, bitis_tarihi=?, teslim_tarihi=?, gerceklesen_bitis=?, tamamlanma_yuzdesi=?, notlar=?, teslim_eden=?, teslim_alan_id=?, teslim_eden_id=?, basvuru_no=?, il=?, ilce=?, ada_parsel=?, telefon=?, tesis=?, abone_kablosu=?, abone_kablosu_metre=?, enerji_alinan_direk_no=?, kesinti_ihtiyaci=?, izinler=?, yil=?, pyp=?, ihale_no=?, ihale_adi=?, yuklenici=?, tur=?, cbs_id=?, cbs_durum=?, is_durumu=?, demontaj_teslim_durumu=?, sozlesme_kesfi=?, kesif_tutari=?, hakedis_miktari=?, hakedis_yuzdesi=?, ilerleme_miktari=?, ilerleme_yuzdesi=?, proje_onay_durumu=?, is_grubu=?, proje_baslangic_tarihi=?, enerjilenme_tarihi=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?`).run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum, oncelik, ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden||null, teslim_alan_id||null, teslimEdenId, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, izinler?JSON.stringify(izinler):null, yil||null, pyp||null, ihale_no||null, ihale_adi||null, yuklenici||null, tur||null, cbs_id||null, cbs_durum||null, is_durumu||null, demontaj_teslim_durumu||null, sozlesme_kesfi||null, kesif_tutari||null, hakedis_miktari||null, hakedis_yuzdesi||null, ilerleme_miktari||null, ilerleme_yuzdesi||null, proje_onay_durumu||null, is_grubu||null, proje_baslangic_tarihi||null, enerjilenme_tarihi||null, req.params.id);
+    db.prepare(`UPDATE projeler SET proje_no=?, proje_tipi=?, musteri_adi=?, bolge_id=?, mahalle=?, adres=?, durum=?, oncelik=?, ekip_id=?, tahmini_sure_gun=?, baslama_tarihi=?, bitis_tarihi=?, teslim_tarihi=?, gerceklesen_bitis=?, tamamlanma_yuzdesi=?, notlar=?, teslim_eden=?, teslim_alan_id=?, teslim_eden_id=?, basvuru_no=?, il=?, ilce=?, ada_parsel=?, telefon=?, tesis=?, teknik_birim=?, abone_kablosu=?, abone_kablosu_metre=?, enerji_alinan_direk_no=?, kesinti_ihtiyaci=?, kesinti_suresi=?, izinler=?, yil=?, pyp=?, ihale_no=?, ihale_adi=?, yuklenici=?, tur=?, cbs_id=?, cbs_durum=?, is_durumu=?, demontaj_teslim_durumu=?, sozlesme_kesfi=?, kesif_tutari=?, hakedis_miktari=?, hakedis_yuzdesi=?, ilerleme_miktari=?, ilerleme_yuzdesi=?, proje_onay_durumu=?, is_grubu=?, proje_baslangic_tarihi=?, enerjilenme_tarihi=?, proje_asama=?, saha_asama=?, ihale_id=?, guncelleme_tarihi=CURRENT_TIMESTAMP WHERE id=?`).run(proje_no, proje_tipi, musteri_adi, bolge_id||null, mahalle, adres, durum, oncelik, ekip_id||null, tahmini_sure_gun, baslama_tarihi, bitis_tarihi, teslim_tarihi, gerceklesen_bitis, tamamlanma_yuzdesi, notlar, teslim_eden||null, teslim_alan_id||null, teslimEdenId, basvuru_no||null, il||null, ilce||null, ada_parsel||null, telefon||null, tesis||null, teknik_birim||null, abone_kablosu||null, abone_kablosu_metre||null, enerji_alinan_direk_no||null, kesinti_ihtiyaci!=null?kesinti_ihtiyaci?1:0:null, kesinti_suresi||null, izinler?JSON.stringify(izinler):null, yil||null, pyp||null, ihale_no||null, ihale_adi||null, yuklenici||null, tur||null, cbs_id||null, cbs_durum||null, is_durumu||null, demontaj_teslim_durumu||null, sozlesme_kesfi||null, kesif_tutari||null, hakedis_miktari||null, hakedis_yuzdesi||null, ilerleme_miktari||null, ilerleme_yuzdesi||null, proje_onay_durumu||null, is_grubu||null, proje_baslangic_tarihi||null, enerjilenme_tarihi||null, proje_asama||null, saha_asama||null, ihale_id ? parseInt(ihale_id) : null, req.params.id);
     const guncellenen = db.prepare('SELECT * FROM projeler WHERE id = ?').get(req.params.id);
     aktiviteLogla('proje', 'guncelleme', guncellenen.id, `Proje güncellendi: ${proje_no}`);
     basarili(res, guncellenen);
