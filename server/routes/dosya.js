@@ -645,11 +645,19 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
 
     // Direk numarası pattern: A01, B02, O-01, O-N02, B-A04 vb.
     //   1-2 harf + opsiyonel (-[harf?]) + 1-3 rakam
-    const NUMARA_RE = /^[A-Z]{1,2}(-[A-Z]?)?\d{1,3}$/i;
+    // Direk numarası: en az 2 haneli sayı (A01, A04, B12 vb.). Tip kodları (K1, K2, K3, I1)
+    // tek haneli olduğu için bu regex onları yakalamaz.
+    const NUMARA_RE = /^[A-Z]{1,2}(-[A-Z]?)?\d{2,3}$/i;
+    // Bilinen tip/sembol kodları — numara olarak değerlendirilmez (ek güvenlik)
+    const TIP_KODU_OLMAZ = new Set(['K1','K2','K3','K4','K5','K6','I1','I2','U1','U2','D1','D2','D3','T1','T2','T3','E1','M1']);
     // Direk tipi pattern: G-10I, G-K1, G-12I(P) vb.
-    const TIP_RE = /^G-/i;
-    // İletken pattern: 3x70, AER, ROSE, PANSY, SWALLOW vb.
-    const ILETKEN_RE = /(\d+x\d+|AER|ROSE|PANSY|ASTER|SWALLOW|RAVEN|PIGEON|HAWK|SW\b)/i;
+    // Direk tipi: G- önekli (G-10I, G-K1...) veya bilinen kısa kodlar (K1-K6, 8I/10I/12I, 10U,
+    // beton boy/kuvvet "11/5" gibi). Standalone "K1" gibi de yakalansın ki tip atanabilsin.
+    const TIP_RE = /^G-|^K\d|^\d{1,2}I'?'?$|^\d{1,2}U'?'?$|^K\d'?'?$|^\d+\s*\/\s*\d+$/i;
+    // İletken pattern: kablo (3x70/16+95 AER), açık hat tertibi (4P+R, 4xR, 1xP, 3A+R/P),
+    // OG hat tertibi (3xSW, 1/0, 3x0, 3x266, 3x477) ve eski isim formatları (PIGEON, HAWK...).
+    // Müşterek hat tek text içinde olabilir: "3xSW + 4P+R".
+    const ILETKEN_RE = /(\d+x\d+|AER|ROSE|PANSY|ASTER|SWALLOW|RAVEN|PIGEON|HAWK|PARTRIDGE|\d+[PA]\+R(?:\/[PR])?|\d+x[PAR]|\d+xSW|1\/0|SW\b)/i;
 
     // Direk + yakınındaki etiketleri eşleştir — EN YAKIN olanı seç
     const sonuc = direkler.map(d => {
@@ -662,8 +670,8 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
         const dx = (et.x||0) - (d.x||0), dy = (et.y||0) - (d.y||0);
         const mesafe = Math.sqrt(dx*dx + dy*dy);
         if (mesafe > 25) continue;
-        // Direk numarası (A01, B02...) — en yakın olanı seç
-        if (NUMARA_RE.test(et.text) && mesafe < numaraMesafe) {
+        // Direk numarası (A01, B02...) — en yakın olanı seç. Bilinen tip kodları (K1, K2 vb.) hariç.
+        if (NUMARA_RE.test(et.text) && !TIP_KODU_OLMAZ.has(et.text.toUpperCase()) && mesafe < numaraMesafe) {
           numara = et.text;
           numaraMesafe = mesafe;
         }
@@ -1208,14 +1216,38 @@ router.post('/:id/dxf-sprite-kaydet', (req, res) => {
     const nl = Buffer.from(NL, 'latin1');
     const addLine = (str) => { textBufParts.push(Buffer.from(str, 'latin1'), nl); };
 
+    // Hex renk → DXF true color (420 group code, decimal RGB)
+    const hexToRgbDecimal = (hex) => {
+      if (!hex || typeof hex !== 'string') return null;
+      const s = hex.replace('#', '');
+      if (!/^[0-9a-fA-F]{6}$/.test(s)) return null;
+      return parseInt(s, 16);
+    };
+    // En yakın AutoCAD ACI rengi (fallback için)
+    const hexToAciYakin = (hex) => {
+      const dec = hexToRgbDecimal(hex);
+      if (dec == null) return 3;
+      const r = (dec >> 16) & 0xff, g = (dec >> 8) & 0xff, b = dec & 0xff;
+      // Yeşil/lime/emerald aralığı için 3 (yeşil) veya 92 (lime) kullan
+      if (g > r && g > b) return 3;
+      if (r > g && r > b) return 1;
+      if (b > r && b > g) return 5;
+      return 7;
+    };
+
     for (const not of notlar) {
-      const { x, y, yukseklik, satirlar } = not;
+      const { x, y, yukseklik, satirlar, renk, satir_spacing } = not;
       if (!satirlar?.length || x == null || y == null) continue;
       const h = yukseklik || 3.5;
+      const spacing = satir_spacing || 1.2;
+      const trueColor = hexToRgbDecimal(renk);
+      const aci = hexToAciYakin(renk);
       satirlar.forEach((satir, i) => {
         const handle = (handleSeed++).toString(16).toUpperCase();
-        // Satır pozisyonu — sol-alt referans, sprite ile uyumlu
-        const py = (y - i * h * 1.3).toFixed(6);
+        // Sprite anchor (0,1) = top-left; canvas'ta first line baseline = sprite_top - h*spacing.
+        // DXF TEXT 73=0 (baseline), 72=0 (left) → x/y noktası baseline-left.
+        // O yüzden y: sprite_top - (i+1)*h*spacing  (her satır bir h*spacing aşağıda)
+        const py = (y - (i + 1) * h * spacing).toFixed(6);
         const xStr = x.toFixed(6);
         addLine('0'); addLine('TEXT');
         addLine('5'); addLine(handle);
@@ -1223,7 +1255,10 @@ router.post('/:id/dxf-sprite-kaydet', (req, res) => {
         addLine('100'); addLine('AcDbEntity');
         addLine('67'); addLine('0');
         addLine('8'); addLine('METRAJ_SPRITE');
-        addLine('62'); addLine('3'); // yeşil
+        addLine('62'); addLine(String(aci));
+        if (trueColor != null) {
+          addLine('420'); addLine(String(trueColor));
+        }
         addLine('6'); addLine('ByLayer');
         addLine('370'); addLine('-1');
         addLine('48'); addLine('1.0');

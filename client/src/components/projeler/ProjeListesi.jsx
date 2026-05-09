@@ -170,8 +170,11 @@ export default function ProjeListesi() {
     const i = isExcel10 ? Number(p.kesif_ilerleme_tutar_artirimli) : (Number(p.kesif_ilerleme_tutar) || 0) * carpan
     return i || 0
   }
-  const { data: rawProjeler, isLoading } = useProjeler(filtreler)
-  // Yer teslim + İhale client-side filtre
+  // Durum filtresi server'a göndermiyoruz (DB'de p.durum çoğunlukla 'baslama')
+  // → client-side projeDurumu() veya aktif adım kodu üzerinden filtreleme
+  const { durum: durumFiltresi, ...serverFiltreler } = filtreler
+  const { data: rawProjeler, isLoading } = useProjeler(serverFiltreler)
+  // Yer teslim + İhale + Durum client-side filtre
   const projeler = useMemo(() => {
     if (!rawProjeler) return rawProjeler
     let liste = rawProjeler
@@ -182,8 +185,24 @@ export default function ProjeListesi() {
       if (filtreler.ihale_id === 'yok') liste = liste.filter(p => !p.ihale_id)
       else liste = liste.filter(p => p.ihale_id === ihaleFid)
     }
+    // Durum filtresi:
+    //   "_PROJE_<kod>" → p.proje_asama === kod  (cizildi, cizilecek, revize_edilecek...)
+    //   "_SAHA_<kod>"  → p.saha_asama === kod   (baslandi, direk_dikimi, tamamlandi...)
+    //   "_DURUM_<x>"   → projeDurumu() === x    (devam/gecikti/tamamlandi/beklemede)
+    if (durumFiltresi) {
+      if (durumFiltresi.startsWith('_PROJE_')) {
+        const hedef = durumFiltresi.slice(7)
+        liste = liste.filter(p => p.proje_asama === hedef)
+      } else if (durumFiltresi.startsWith('_SAHA_')) {
+        const hedef = durumFiltresi.slice(6)
+        liste = liste.filter(p => p.saha_asama === hedef)
+      } else if (durumFiltresi.startsWith('_DURUM_')) {
+        const hedef = durumFiltresi.slice(7)
+        liste = liste.filter(p => projeDurumu(p) === hedef)
+      }
+    }
     return liste
-  }, [rawProjeler, filtreler.yer_teslim, filtreler.ihale_id])
+  }, [rawProjeler, filtreler.yer_teslim, filtreler.ihale_id, durumFiltresi])
   const { data: bolgeler } = useBolgeler()
   const { data: isTipleri } = useIsTipleri()
   const { data: ekipler } = useEkipler()
@@ -1028,18 +1047,23 @@ export default function ProjeListesi() {
           onChange={(e) => handleFiltreChange('durum', e.target.value)}
           className="rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         >
-          <option value="">Tum Durumlar</option>
-          {tumAsamalar
-            ? tumAsamalar.map((a) => (
-                <option key={a.kod} value={a.kod}>
-                  {a.ikon} {a.adi}
-                </option>
-              ))
-            : Object.entries(PROJE_DURUMLARI).map(([key, val]) => (
-                <option key={key} value={key}>
-                  {val.label}
-                </option>
-              ))}
+          <option value="">Tüm Durumlar</option>
+          <optgroup label="Proje Aşaması">
+            {PROJE_ASAMA_SECENEKLERI.map(s => (
+              <option key={s.kod} value={`_PROJE_${s.kod}`}>{s.etiket}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Saha Aşaması">
+            {SAHA_ASAMA_SECENEKLERI.map(s => (
+              <option key={s.kod} value={`_SAHA_${s.kod}`}>{s.etiket}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Genel">
+            <option value="_DURUM_devam">⏱️ Devam Eden</option>
+            <option value="_DURUM_gecikti">⚠️ Gecikti</option>
+            <option value="_DURUM_tamamlandi">✅ Tamamlandı</option>
+            <option value="_DURUM_beklemede">⏸️ Beklemede</option>
+          </optgroup>
         </select>
         <select
           value={filtreler.bolge_id}

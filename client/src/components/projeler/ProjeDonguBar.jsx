@@ -9,7 +9,7 @@ import {
   FileText, Image, File, Upload, MapPin, Zap, X, Navigation, Clock,
   CheckCircle2, ExternalLink, CalendarDays, FolderOpen, Plus, Sparkles,
   ZoomIn, ZoomOut, RotateCcw, Loader2, Trash2, Save, Layers, Eye, EyeOff,
-  Crosshair, CheckCheck, Ban
+  Crosshair, CheckCheck, Ban, Download
 } from 'lucide-react'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
@@ -957,9 +957,9 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
             if (!enYakin || enYakinMesafe >= 15) return
             // Tıklanan eleman ana direk değilse (C, 4, 5), aynı numaralı ana direği (E, A, 2) bul
             let anadirek = enYakin
-            if (enYakin.numara && !['E', 'A', '2'].includes(enYakin.sembol)) {
+            if (enYakin.numara && !['A', 'R', 'P', '8', 'E', 'M', 'T', 'B', 'S'].includes(enYakin.sembol)) {
               const adaylar = direklerRef.current.filter(d =>
-                d.numara === enYakin.numara && ['E', 'A', '2'].includes(d.sembol)
+                d.numara === enYakin.numara && ['A', 'R', 'P', '8', 'E', 'M', 'T', 'B', 'S'].includes(d.sembol)
               )
               if (adaylar.length > 0) anadirek = adaylar[0]
             }
@@ -1364,9 +1364,14 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
   useEffect(() => {
     const viewer = viewerRef.current
     const three = threeRef.current
-    if (!viewer || !three || yukleniyor) return
+    console.log('[Sprite-Render] useEffect tetiklendi. viewer:', !!viewer, 'three:', !!three, 'yukleniyor:', yukleniyor, 'direkNotlari keys:', Object.keys(direkNotlari || {}))
+    if (!viewer || !three || yukleniyor) {
+      console.warn('[Sprite-Render] iptal — viewer/three eksik veya yukleniyor=true')
+      return
+    }
     const scene = viewer.GetScene?.() || viewer.scene
-    if (!scene) return
+    console.log('[Sprite-Render] scene:', !!scene, 'children:', scene?.children?.length)
+    if (!scene) { console.warn('[Sprite-Render] scene bulunamadı'); return }
 
     const mevcutKeyler = new Set(Object.keys(direkNotlari || {}))
     // Silinmesi gereken sprite'lar
@@ -1394,6 +1399,7 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
         eski.material.dispose()
       }
       const sprite = _notSpriteOlustur(three, key, not.malzemeler, not.x, not.y, viewer.origin, katman.punto, katman.renk)
+      console.log('[Sprite-Render] sprite oluşturuldu:', key, 'pos:', sprite.position.x, sprite.position.y, 'visible:', katman.gorunur, 'origin:', viewer.origin)
       sprite.userData.katman = katman.id
       // Katman görünürlüğü
       sprite.visible = katman.gorunur
@@ -1407,8 +1413,10 @@ function DxfOnizleme({ src, dosyaId, projeId, onDirekTikla, direkNotlari, onNotS
       scene.add(sprite)
       if (sprite.userData.line) scene.add(sprite.userData.line)
       spritelerRef.current[key] = sprite
+      console.log('[Sprite-Render] scene\'e eklendi:', key, 'scene children:', scene.children.length)
     }
     viewer.Render()
+    console.log('[Sprite-Render] viewer.Render() çağrıldı')
   }, [direkNotlari, katmanlar, yukleniyor])
 
   // Sprite sürükleme (drag) - mouse event'leri
@@ -2263,6 +2271,26 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
   const [seciliDirek, setSeciliDirek] = useState(null)
   const [direkNotlari, setDirekNotlari] = useState({})
   const [direkListesi, setDirekListesi] = useState([])
+  const direkListesiRef = useRef([])
+  useEffect(() => { direkListesiRef.current = direkListesi }, [direkListesi])
+  // direkListesi yüklendiğinde, eksik direkX/Y'leri olan direkNotlari kayıtlarını doldur
+  useEffect(() => {
+    if (!direkListesi.length) return
+    setDirekNotlari(prev => {
+      let degisti = false
+      const yeni = { ...prev }
+      const SET = new Set(['A','R','P','8','E','M','T','B','S'])
+      for (const [key, not] of Object.entries(prev)) {
+        if (not.direkX != null && not.direkY != null) continue
+        const el = direkListesi.find(d => d.numara === key && SET.has(d.sembol))
+        if (el) {
+          yeni[key] = { ...not, direkX: el.x, direkY: el.y }
+          degisti = true
+        }
+      }
+      return degisti ? yeni : prev
+    })
+  }, [direkListesi])
   useEffect(() => { setDirekNotlari({}); setSeciliDirek(null) }, [seciliDosya?.id])
 
   // Sprite güncelleme fonksiyonunu dışarıya expose et
@@ -2279,13 +2307,19 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
             return yeni
           }
           const mevcut = prev[nokta1] || {}
-          const direkEl = direkListesi.find(d => d.numara === nokta1 && ['E', 'A', '2'].includes(d.sembol))
+          const direkEl = direkListesi.find(d => d.numara === nokta1 && ['A', 'R', 'P', '8', 'E', 'M', 'T', 'B', 'S'].includes(d.sembol))
+          // direkX/Y = direğin sabit dünya koordinatı (line ucu için)
+          // x/y = sprite metnin konumu (sürüklenince değişir, ilk başta direk pozisyonu)
+          const direkX = mevcut.direkX != null ? mevcut.direkX : (direkEl?.x || 0)
+          const direkY = mevcut.direkY != null ? mevcut.direkY : (direkEl?.y || 0)
+          // İlk yerleştirme: direkten +5 birim sağ-üste yerleştir (sonradan sürüklenirse korunur)
           return {
             ...prev,
             [nokta1]: {
               ...mevcut,
-              x: mevcut.x || direkEl?.x || 0,
-              y: mevcut.y || direkEl?.y || 0,
+              direkX, direkY,
+              x: mevcut.x != null ? mevcut.x : direkX + 5,
+              y: mevcut.y != null ? mevcut.y : direkY + 5,
               yukseklik: 3.5,
               katman: 'metraj',
               malzemeler: satirlar.map(s => {
@@ -2300,25 +2334,63 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
   }, [onSpriteGuncelleRef, direkListesi])
 
   // Kaydedilmiş sprite text'leri metraj verilerinden yükle
+  // Yeni Durum DXF → proje-kesif-metraj, Hak Ediş Krokisi → hak-edis-metraj
   useEffect(() => {
     if (!seciliDosya?.dxf || !projeId) return
+    const tabloEndpoint = seciliDosya.adimKodu === 'yeni_durum_proje'
+      ? `/proje-kesif-metraj/${projeId}`
+      : `/hak-edis-metraj/${projeId}`
     const yukle = async () => {
       try {
-        const res = await api.get(`/hak-edis-metraj/${projeId}`)
+        const res = await api.get(tabloEndpoint)
         const satirlar = res.data || []
         const notlar = {}
         for (const s of satirlar) {
           if (!s.sprite_veri) continue
           const sv = typeof s.sprite_veri === 'string' ? JSON.parse(s.sprite_veri) : s.sprite_veri
-          if (!sv.satirlar?.length) continue
+          // Aktif değilse sprite'ı yükleme (Eye butonu kapalı)
+          if (sv.aktif === false) continue
+          // Sprite verisi yoksa notlar'dan satır türet (yeni format: aktif flag + notlar'dan canlı)
+          let satirListesi = sv.satirlar
+          if ((!satirListesi || !satirListesi.length) && sv.aktif === true && s.notlar) {
+            // notlar'dan satırları üret
+            const lines = s.notlar.split('\n').filter(Boolean)
+            satirListesi = []
+            for (const line of lines) {
+              if (/^Iletken:/i.test(line)) {
+                const raw = line.replace(/^Iletken:\s*/, '')
+                const parts = raw.split('|')
+                const tip = parts[0] || raw
+                const mesafe = parts[1] ? Number(parts[1]) : 0
+                const kisa = parts[2] !== undefined ? parts[2] : tip
+                satirListesi.push(`${mesafe}m ${kisa || tip}`)
+              } else {
+                const parts = line.split('|')
+                const miktar = Number(parts[0]) || 1
+                const kisa = parts[1] || ''
+                const adi = parts[2] || parts[1] || line
+                satirListesi.push(`${miktar}x ${kisa || adi}`)
+              }
+            }
+          }
+          if (!satirListesi?.length) continue
           const key = s.nokta1 || `direk_${s.id}`
+          // direkX/Y direğin sabit konumu — line ucunun direkten kopmaması için.
+          // Önce sprite_veri'den oku, yoksa direkler listesinden bul.
+          let direkX = sv.direkX, direkY = sv.direkY
+          if (direkX == null || direkY == null) {
+            const direkEl = direkListesiRef.current.find(d =>
+              d.numara === s.nokta1 && ['A','R','P','8','E','M','T','B','S'].includes(d.sembol))
+            if (direkEl) { direkX = direkEl.x; direkY = direkEl.y }
+          }
           notlar[key] = {
             x: sv.x, y: sv.y,
+            direkX, direkY,
             yukseklik: sv.yukseklik || sv.punto || 3.5,
             katman: sv.katman || 'metraj',
             punto: sv.punto || 3.5,
             renk: sv.renk || '#4ade80',
-            malzemeler: sv.satirlar.map(satir => {
+            malzemeler: satirListesi.map(satir => {
               const m = satir.match(/^(\d+)x\s*(.+)$/)
               return m ? { adi: m[2], miktar: Number(m[1]) } : { adi: satir, miktar: 1 }
             }),
@@ -2328,7 +2400,7 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
       } catch {}
     }
     yukle()
-  }, [seciliDosya?.id, projeId])
+  }, [seciliDosya?.id, seciliDosya?.adimKodu, projeId])
   const dragState = useRef({ startX: 0, scrollLeft: 0 })
 
   // Demontaj Krokisi — mevcut/yeni durum DXF dosya bilgilerini al
@@ -2460,9 +2532,78 @@ export default function ProjeDonguBar({ projeId, previewPortalRef, onSekmeGit, o
           <PanZoomResim src={`/api/dosya/${seciliDosya.id}/dosya`} alt={seciliDosya.adi} />
         ) : seciliDosya.dxf ? (
           <div className="relative flex-1 flex flex-col min-h-0">
+            {/* Sprite konumlarını kaydet ve DXF'e işle/indir butonları */}
+            {(seciliDosya.adimKodu === 'yeni_durum_proje' || seciliDosya.adimKodu === 'hak_edis_krokisi') && (
+              <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+                <button
+                  onClick={async () => {
+                    const tabloEndpoint = seciliDosya.adimKodu === 'yeni_durum_proje'
+                      ? `/proje-kesif-metraj/${projeId}` : `/hak-edis-metraj/${projeId}`
+                    try {
+                      const r = await api.get(tabloEndpoint)
+                      const satirlar = r?.data || []
+                      let kaydedilen = 0
+                      for (const [key, not] of Object.entries(direkNotlari || {})) {
+                        const sat = satirlar.find(x => x.nokta1 === key)
+                        if (!sat) continue
+                        let mevcutSv = {}
+                        try { mevcutSv = sat.sprite_veri ? (typeof sat.sprite_veri === 'string' ? JSON.parse(sat.sprite_veri) : sat.sprite_veri) : {} } catch {}
+                        const yeniSv = {
+                          ...mevcutSv,
+                          aktif: true,
+                          x: not.x, y: not.y,
+                          direkX: not.direkX, direkY: not.direkY,
+                          satirlar: not.malzemeler.map(m => `${m.miktar}x ${m.adi}`),
+                        }
+                        await api.put(`${tabloEndpoint}/${sat.id}`, { sprite_veri: JSON.stringify(yeniSv) })
+                        kaydedilen++
+                      }
+                      alert(`${kaydedilen} sprite konumu kaydedildi.`)
+                    } catch (err) { alert('Kaydetme hatası: ' + (err.message || '')) }
+                  }}
+                  className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-blue-700"
+                  title="Sprite konumlarını DB'ye kaydet"
+                >
+                  <Save className="h-3 w-3" /> Sprite Kaydet ({Object.keys(direkNotlari || {}).length})
+                </button>
+                <button
+                  onClick={async () => {
+                    const notlar = Object.entries(direkNotlari || {}).map(([, not]) => ({
+                      x: not.x, y: not.y,
+                      direkX: not.direkX, direkY: not.direkY,
+                      yukseklik: not.yukseklik || not.punto || 3.5,
+                      renk: not.renk || '#4ade80',
+                      satir_spacing: 1.2,
+                      satirlar: (not.malzemeler || []).map(m => `${m.miktar}x ${m.adi}`),
+                    })).filter(n => n.x != null && n.y != null && n.satirlar.length > 0)
+                    if (!notlar.length) { alert('İndirilecek sprite yok.'); return }
+                    try {
+                      // Önce sprite'ları DXF dosyasına işle (server-side)
+                      await api.post(`/dosya/${seciliDosya.id}/dxf-sprite-kaydet`, { notlar })
+                      // Sonra dosyayı indir
+                      const a = document.createElement('a')
+                      a.href = `/api/dosya/${seciliDosya.id}/dosya?t=${Date.now()}`
+                      a.download = seciliDosya.adi
+                      document.body.appendChild(a)
+                      a.click()
+                      a.remove()
+                    } catch (err) { alert('DXF indirme hatası: ' + (err.message || '')) }
+                  }}
+                  className="flex items-center gap-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-emerald-700"
+                  title="Sprite text'lerini DXF dosyasına yaz ve indir"
+                >
+                  <Download className="h-3 w-3" /> Spriteli İndir
+                </button>
+              </div>
+            )}
             <DxfSahne
               src={`/api/dosya/${seciliDosya.id}/dosya`}
               dosyaId={seciliDosya.id}
+              direkNotlari={direkNotlari}
+              onSpriteKonumDegis={(key, x, y) => {
+                // Sprite sürüklendi → konumu state'te güncelle (sonraki render'da kullanılır)
+                setDirekNotlari(prev => prev[key] ? { ...prev, [key]: { ...prev[key], x, y } } : prev)
+              }}
               onDirekTikla={(d) => {
                 // Hak Ediş Krokisi → Hak Ediş sekmesinde direk satırını aç
                 // Yeni Durum Proje  → Proje-Keşif sekmesinde direk satırını aç

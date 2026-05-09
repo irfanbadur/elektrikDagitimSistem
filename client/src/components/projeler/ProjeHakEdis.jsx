@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
-import { Plus, Trash2, BarChart3, Ruler, MapPin, FileSpreadsheet, Upload, Loader2, ExternalLink, ChevronDown, ChevronRight, Search, Wand2, Package, Undo2, Redo2 } from 'lucide-react'
+import { Plus, Trash2, BarChart3, Ruler, MapPin, FileSpreadsheet, Upload, Loader2, ExternalLink, ChevronDown, ChevronRight, Search, Wand2, Package, Undo2, Redo2, Eye, EyeOff, Save, Check } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useHakEdisMetraj, useHakEdisMetrajOzet, useHakEdisMetrajMalzemeOzeti, useHakEdisMetrajEkle, useHakEdisMetrajGuncelle, useHakEdisMetrajSil,
@@ -48,10 +48,11 @@ export const KESIF_KONFIGI = {
 }
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
+import { tertibiParseTekil } from '@/utils/iletkenTertibi'
 
 // ── Sabitler (popup'tan taşındı) ──
-const DURUM_SECENEKLERI = ['Yeni', 'Mevcut', 'Demontaj']
-const DURUM_RENK = { Yeni: 'text-emerald-600', Mevcut: 'text-blue-600', Demontaj: 'text-red-600' }
+const DURUM_SECENEKLERI = ['Yeni', 'Mevcut', 'DMM']
+const DURUM_RENK = { Yeni: 'text-emerald-600', Mevcut: 'text-blue-600', DMM: 'text-orange-600', Demontaj: 'text-red-600' }
 
 // Excel S/T sütunlarındaki iletken tipleri
 const ILETKEN_TIPLERI = [
@@ -112,14 +113,20 @@ const TIP_TUR_MAP = {
 const BILINEN_TIPLER = Object.keys(TIP_TUR_MAP)
 
 // ── Tek iletken satırı: tip tıkla→arama (tip + grup + katalog), mesafe düzenle, sil ──
-function IletkenSatirDuzenle({ iletken, onTipDegistir, onGrupKalemEkle, onKisaIsimDegistir, onMesafeDegistir, onGorunurDegistir, onSil }) {
+function IletkenSatirDuzenle({ iletken, onTipDegistir, onGrupKalemEkle, onKisaIsimDegistir, onMesafeDegistir, onDurumDegistir, onGorunurDegistir, onSil }) {
   const [duzenle, setDuzenle] = useState(false)
   const [aramaVal, setAramaVal] = useState('')
   const [katalogSonuclar, setKatalogSonuclar] = useState([])
   const [grupSonuclar, setGrupSonuclar] = useState([])
   const [araniyor, setAraniyor] = useState(false)
   const [secIdx, setSecIdx] = useState(-1)
+  // Akordyon (Pansy/Rose alt kalemler) — hook'lar her render'da aynı sırada çağrılmalı
+  const [acik, setAcik] = useState(false)
+  const [katalogKalemler, setKatalogKalemler] = useState(null)
+  const [yukleniyor, setYukleniyor] = useState(false)
   const timerRef = useRef(null)
+  // Mesafe/tip/durum değişince akordyon verisini sıfırla
+  useEffect(() => { setKatalogKalemler(null) }, [iletken.tip, iletken.mesafe, iletken.durum])
 
   // İletken tipi önerileri (statik liste)
   const statikOneriler = aramaVal
@@ -215,29 +222,110 @@ function IletkenSatirDuzenle({ iletken, onTipDegistir, onGrupKalemEkle, onKisaIs
     )
   }
 
+  // Tertibi parse — açık hat veya OG mı?
+  const tertibi = tertibiParseTekil(iletken.tip)
+  const takimMi = tertibi && (tertibi.tip === 'ag-acik' || tertibi.tip === 'og')
+
+  const yukle = async () => {
+    if (katalogKalemler) return
+    setYukleniyor(true)
+    try {
+      const r = await api.get('/iletken-tertibi/expand', {
+        params: { tertibi: iletken.tip, mesafe: iletken.mesafe || 0, durum: iletken.durum || 'Yeni' },
+      })
+      setKatalogKalemler((r?.data?.kalemler) || [])
+    } catch { setKatalogKalemler([]) }
+    finally { setYukleniyor(false) }
+  }
+
+  const toggleAcik = async () => {
+    if (!acik && takimMi) await yukle()
+    setAcik(!acik)
+  }
+
   return (
-    <div className={cn('flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10', iletken.gorunur === false && 'opacity-50')}>
-      <input type="checkbox" checked={iletken.gorunur !== false}
-        onChange={e => onGorunurDegistir(e.target.checked)}
-        title="Sahnede göster" className="h-3 w-3 accent-primary cursor-pointer shrink-0" />
-      <input value={iletken.kisaIsim || ''} onChange={e => onKisaIsimDegistir(e.target.value)}
-        placeholder="kısa isim" title="Kısa isim (sprite text'te görünür)"
-        className="w-28 rounded border border-input bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-700 focus:outline-none focus:border-amber-400" />
-      <span className="flex-1 truncate cursor-pointer text-blue-700 font-medium hover:text-blue-500 hover:underline"
-        title={`${iletken.tip} — tıkla değiştir`}
-        onClick={() => { setDuzenle(true); setAramaVal(iletken.tip) }}>{iletken.tip}</span>
-      <input type="number" value={iletken.mesafe || ''} placeholder="0" min={0}
-        onChange={e => onMesafeDegistir(Number(e.target.value) || 0)}
-        className="w-14 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
-      <span className="text-[9px] text-muted-foreground">m</span>
-      <button onClick={onSil} className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
+    <div className="border-b border-border/10 py-0.5">
+      <div className="flex items-center gap-1 text-[10px]">
+        {takimMi ? (
+          <button onClick={toggleAcik} title={acik ? 'Alt kalemleri kapat' : 'Alt kalemleri aç'}
+            className="shrink-0 p-0.5 text-blue-600 hover:bg-blue-100 rounded">
+            {acik ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </button>
+        ) : <span className="w-4 shrink-0" />}
+        <input value={iletken.kisaIsim || ''} onChange={e => onKisaIsimDegistir(e.target.value)}
+          placeholder="kısa isim" title="Kısa isim (sprite text'te görünür — örn. 4P+R)"
+          className="w-28 rounded border border-input bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-700 focus:outline-none focus:border-amber-400" />
+        <span className="flex-1 truncate cursor-pointer text-blue-700 font-medium hover:text-blue-500 hover:underline"
+          title={`${iletken.tip} — tıkla değiştir`}
+          onClick={() => { setDuzenle(true); setAramaVal(iletken.tip) }}>{iletken.tip}</span>
+        <input type="number" value={iletken.mesafe || ''} placeholder="0" min={0}
+          onChange={e => onMesafeDegistir(Number(e.target.value) || 0)}
+          className="w-14 rounded border border-input px-0.5 py-0.5 text-center text-[10px]" />
+        <span className="text-[9px] text-muted-foreground">m</span>
+        <select value={iletken.durum || 'Yeni'}
+          onChange={e => onDurumDegistir?.(e.target.value)}
+          title="İletken durumu (özet hesabında bu kullanılır)"
+          className={cn(
+            'rounded border px-1 py-0.5 text-[10px] font-medium focus:outline-none',
+            (iletken.durum === 'DMM') && 'border-orange-300 bg-orange-50 text-orange-700',
+            (iletken.durum === 'Mevcut') && 'border-blue-300 bg-blue-50 text-blue-700',
+            (!iletken.durum || iletken.durum === 'Yeni') && 'border-emerald-300 bg-emerald-50 text-emerald-700'
+          )}>
+          <option value="Yeni">Yeni</option>
+          <option value="Mevcut">Mevcut</option>
+          <option value="DMM">DMM</option>
+        </select>
+        <button onClick={onSil} className="text-red-400 hover:text-red-600 p-0.5 shrink-0"><Trash2 className="h-2.5 w-2.5" /></button>
+      </div>
+      {takimMi && acik && (
+        <div className="ml-6 mb-1 rounded border border-blue-200 bg-blue-50/40 px-2 py-1.5">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[9px] font-bold uppercase tracking-wide text-blue-700">
+              {iletken.tip} Tertibi — Katalog Kalemleri
+            </span>
+            {tertibi.sokakSecenekleri && (
+              <span className="text-[9px] text-blue-700/70">sokak: {tertibi.sokakSecenekleri.join('/')}</span>
+            )}
+          </div>
+          {yukleniyor ? (
+            <div className="text-[10px] text-muted-foreground py-1">
+              <Loader2 className="inline h-2.5 w-2.5 animate-spin mr-1" />Yükleniyor...
+            </div>
+          ) : (katalogKalemler && katalogKalemler.length > 0) ? (
+            <div className="space-y-0.5">
+              {katalogKalemler.map((k, i) => (
+                <div key={i} className="flex items-center gap-1 text-[10px] text-blue-900/80">
+                  <span className="w-3 text-center">·</span>
+                  <span className="flex-1 truncate" title={k.katalog_adi || k.cins}>
+                    {k.katalog_adi || k.cins}
+                    {k.sokak && <span className="ml-1 text-[8px] text-blue-600">(sokak)</span>}
+                  </span>
+                  <span className="tabular-nums w-16 text-right text-foreground/80">{k.mesafe} m</span>
+                  <span className="tabular-nums w-16 text-right text-foreground/70">{k.kg ? `${k.kg.toFixed(2)} kg` : '—'}</span>
+                  {k.carpan > 1 && <span className="text-[9px] text-blue-700/60 w-8 text-right">({k.carpan}×)</span>}
+                </div>
+              ))}
+              {katalogKalemler.some(k => k.tutar > 0) && (
+                <div className="mt-1 pt-1 border-t border-blue-200/60 flex items-center justify-end gap-2 text-[9px] text-blue-700">
+                  <span>Toplam:</span>
+                  <span className="font-bold tabular-nums">
+                    {katalogKalemler.reduce((s, k) => s + (k.tutar || 0), 0).toFixed(2)} ₺
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-[10px] text-muted-foreground italic">Katalog eşleşmesi bulunamadı.</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 // ── Tek malzeme satırı: ad tıkla→arama, miktar düzenle, sil ──
 // Bilinen grup adları (case-insensitive Türkçe normalize ile)
-const GRUP_ADLARI = ['KORUMA', 'ISLETME', 'İŞLETME', 'ISLETME TOP.', 'KORUMA TOP.', 'ARMATUR', 'ARMATÜR', 'MAKARA']
+const GRUP_ADLARI = ['KORUMA', 'ISLETME', 'İŞLETME', 'ISLETME TOP.', 'KORUMA TOP.', 'ARMATUR', 'ARMATÜR', 'MAKARA', 'HSTA']
 const trUst = (s) => String(s || '')
   .replace(/ı/g, 'I').replace(/İ/g, 'I')
   .replace(/ğ/g, 'G').replace(/Ğ/g, 'G')
@@ -248,7 +336,7 @@ const trUst = (s) => String(s || '')
   .toUpperCase().trim()
 const isGrupAdi = (ad) => {
   const u = trUst(ad)
-  return ['KORUMA', 'ISLETME', 'ARMATUR', 'MAKARA'].includes(u)
+  return ['KORUMA', 'ISLETME', 'ARMATUR', 'MAKARA', 'HSTA'].includes(u)
 }
 
 function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMiktarDegistir, onGorunurDegistir, onSil, onPatlat }) {
@@ -374,16 +462,21 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMik
 
   return (
     <>
-      <div className={cn("flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10", malzeme.gorunur === false && "opacity-50")}>
-        <input type="checkbox" checked={malzeme.gorunur !== false}
-          onChange={e => onGorunurDegistir(e.target.checked)}
-          title="Sahnede göster" className="h-3 w-3 accent-primary cursor-pointer shrink-0" />
+      <div className={cn("flex items-center gap-1 text-[10px] py-0.5 border-b border-border/10", malzeme.gorunur === false && "opacity-60")}>
         {grupMu ? (
           <button onClick={toggleAcik} title={acik ? "Detayları kapat" : "Grup detaylarını aç"}
             className="shrink-0 p-0.5 text-amber-600 hover:bg-amber-100 rounded">
             {acik ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </button>
         ) : <span className="w-4 shrink-0" />}
+        <button onClick={() => onGorunurDegistir(malzeme.gorunur === false)}
+          title={malzeme.gorunur === false ? "Sprite text'te göster" : "Sprite text'te gizle"}
+          className={cn("shrink-0 p-0.5 rounded transition-colors",
+            malzeme.gorunur === false
+              ? "text-muted-foreground/40 hover:bg-muted hover:text-muted-foreground"
+              : "text-emerald-600 hover:bg-emerald-50")}>
+          {malzeme.gorunur === false ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+        </button>
         <input value={malzeme.kisaIsim || ''} onChange={e => onKisaIsimDegistir(e.target.value)}
           placeholder="kısa isim" title="Kısa isim (sprite text'te görünür)"
           className={cn("w-28 rounded border border-input px-1 py-0.5 text-[10px] font-medium focus:outline-none focus:border-amber-400",
@@ -470,6 +563,35 @@ function MalzemeSatirDuzenle({ malzeme, onAdiDegistir, onKisaIsimDegistir, onMik
       )}
     </>
   )
+}
+
+// Müşterek hat text'ini AG ve OG metinlerine ayır.
+// Dış parantez korunur (durum belirleyici): "[3xSW + 4P+R]" → ["[4P+R]","[3xSW]"]
+function tertibiTextleriAyir(text) {
+  if (!text) return { agText: null, ogText: null }
+  const raw = String(text).trim()
+  let disDurum = ''
+  let ic = raw
+  const disPar = raw.match(/^\((.*)\)$/) || raw.match(/^\[(.*)\]$/)
+  if (disPar && !/[\(\)\[\]]/.test(disPar[1])) {
+    disDurum = raw[0] === '[' ? '[]' : '()'
+    ic = disPar[1].trim()
+  }
+  const ogTokenRe = /(\[?\(?\s*\d*x?(?:SW|SWALLOW|266|477|1\/0|PIGEON|RAVEN|HAWK|PARTRIDGE)\s*\]?\)?|\[?\(?\s*3x0\s*\]?\)?)/i
+  const ogMatch = ic.match(ogTokenRe)
+  const sarmala = (s) => {
+    if (!s) return s
+    if (disDurum === '[]') return `[${s}]`
+    if (disDurum === '()') return `(${s})`
+    return s
+  }
+  if (ogMatch) {
+    const ogText = ogMatch[0].trim()
+    const kalan = ic.replace(ogMatch[0], '').replace(/^\s*\+\s*|\s*\+\s*$/g, '').trim()
+    const agText = kalan.length > 0 ? kalan : null
+    return { agText: sarmala(agText), ogText: sarmala(ogText) }
+  }
+  return { agText: sarmala(ic), ogText: null }
 }
 
 // ── İletken metnini ayrıştır ──
@@ -594,9 +716,11 @@ function hesaplaOtoMalzemeler(tip, yakinlar, komsular, sembol) {
     return oto
   }
 
-  // B) HSTA direği (S sonlu): ek olarak harici sigortalı ayırıcı
+  // B) HSTA direği (S sonlu, ör. G-N-14(S)): HSTA grubu eklenir.
+  // "HSTA" kısa adıyla grup tanınır → akordyon açıldığında 5 alt kalem (ayırıcı,
+  // topraklama 95mm² 20m, köşebent, 6× VHD 35, 6× B 95) gösterilir/patlatılır.
   if (a.isHsta) {
-    ekle('HSTA (Harici Sigortalı Ayırıcı)', 1)
+    oto.push({ adi: 'HSTA', kisaIsim: 'HSTA', miktar: 1, birim: 'Ad', gorunur: false })
   }
 
   // C) Potans direği — konsol kullanılmaz, AG traversi
@@ -677,12 +801,17 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
     })
     const iltk = satirlar.filter(n => n.startsWith('Iletken:')).map(n => {
       const raw = n.replace('Iletken: ', ''), parts = raw.split('|')
-      // Yeni format: tip|mesafe|kisaIsim|gorunur   (geriye uyumlu: tip|mesafe)
+      // Format: tip|mesafe|kisaIsim|gorunur|durum   (geriye uyumlu: eksik parçalar fallback)
+      const tip = parts[0] || raw
+      // Durum fallback: notlarda yoksa, OG iletkense og_iletken_durum, değilse ag_iletken_durum
+      const isOg = /SW|SWALLOW|PIGEON|RAVEN|HAWK|PARTRIDGE/i.test(tip)
+      const fallbackDurum = isOg ? (s.og_iletken_durum || 'Yeni') : (s.ag_iletken_durum || 'Yeni')
       return {
-        tip: parts[0] || raw,
+        tip,
         mesafe: parts[1] ? Number(parts[1]) : 0,
         kisaIsim: parts[2] !== undefined ? parts[2] : (parts[0] || raw),
         gorunur: parts[3] !== undefined ? parts[3] !== '0' : true,
+        durum: parts[4] || fallbackDurum,
       }
     })
     return { malz, iltk }
@@ -690,6 +819,14 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
 
   const [localMalz, setLocalMalz] = useState(() => parseNotlar(s.notlar).malz)
   const [localIltk, setLocalIltk] = useState(() => parseNotlar(s.notlar).iltk)
+  // DXF üzerindeki sprite text görünürlüğü — direk başına bir flag.
+  // sprite_veri.aktif kayıtlıysa onu kullan, yoksa default false (kullanıcı Eye ile açar).
+  const [spriteAktif, setSpriteAktif] = useState(() => {
+    try {
+      const sv = typeof s.sprite_veri === 'string' ? JSON.parse(s.sprite_veri) : s.sprite_veri
+      return sv?.aktif === true
+    } catch { return false }
+  })
   // DB'den gelen notlar değişince local state güncelle (başka oturumdan değişiklik)
   const sonNotlarRef = useRef(s.notlar)
   useEffect(() => {
@@ -703,26 +840,90 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
   const malzemeSatirlari = localMalz
   const iletkenSatirlari = localIltk
 
+  // Sprite text güncelleme yardımcısı:
+  //  - aktif=false  → sprite kaldırılır (boş satırlar)
+  //  - aktif=true   → SADECE gorunur !== false olan MALZEMELER yazılır.
+  //    İletkenler sprite text'te GÖSTERİLMEZ.
+  const spriteSenkronize = (malzList, _iltkList, aktif) => {
+    if (!aktif) {
+      onSpriteGuncelle?.(s.nokta1, [])
+      return
+    }
+    const satirlar = malzList
+      .filter(m => m.gorunur !== false)
+      .map(m => `${m.miktar}x ${m.kisaIsim || m.adi}`)
+    onSpriteGuncelle?.(s.nokta1, satirlar)
+  }
+
+  // Eye butonu tıklayınca sprite görünürlüğünü toggle et
+  const spriteToggle = () => {
+    const yeni = !spriteAktif
+    setSpriteAktif(yeni)
+    spriteSenkronize(localMalz, localIltk, yeni)
+    // sprite_veri.aktif flag'ini DB'ye yaz (kalıcılık)
+    try {
+      const mevcutSv = typeof s.sprite_veri === 'string' ? JSON.parse(s.sprite_veri || '{}') : (s.sprite_veri || {})
+      const yeniSv = { ...mevcutSv, aktif: yeni }
+      onGuncelle('sprite_veri', JSON.stringify(yeniSv))
+    } catch { onGuncelle('sprite_veri', JSON.stringify({ aktif: yeni })) }
+  }
+
   // Notları kaydet — local state anında güncellenir, DB debounce ile
   const kaydetTimerRef = useRef(null)
+  const bekleyenNotlarRef = useRef(null)
+  const [kaydedildi, setKaydedildi] = useState(false)
+  // Anında kaydet — debounce'u atlar, "Kaydet" butonu için
+  const hemenKaydet = () => {
+    if (kaydetTimerRef.current) {
+      clearTimeout(kaydetTimerRef.current)
+      kaydetTimerRef.current = null
+    }
+    if (bekleyenNotlarRef.current != null) {
+      onGuncelle('notlar', bekleyenNotlarRef.current)
+      bekleyenNotlarRef.current = null
+    }
+    setKaydedildi(true)
+    setTimeout(() => setKaydedildi(false), 1500)
+  }
+  // Global "Tümünü Kaydet" event'i — header butonu tüm direkleri flush eder
+  useEffect(() => {
+    const handler = (e) => {
+      const proje = e.detail?.projeId
+      if (proje && proje !== s.proje_id) return
+      hemenKaydet()
+    }
+    window.addEventListener('metraj-flush-all', handler)
+    return () => window.removeEventListener('metraj-flush-all', handler)
+  }, [s.proje_id])
   const notlariKaydet = (malzList, iltkList) => {
     // Local state anında güncelle (UI hızlı)
     setLocalMalz(malzList)
     setLocalIltk(iltkList)
-    // Sprite anında güncelle — hem görünür malzemeler hem görünür iletkenler
-    const spriteSatirlari = [
-      ...malzList.filter(m => m.gorunur !== false).map(m => `${m.miktar}x ${m.kisaIsim || m.adi}`),
-      ...iltkList.filter(il => il.gorunur !== false).map(il => `${il.mesafe || 0}m ${il.kisaIsim || il.tip}`),
-    ]
-    onSpriteGuncelle?.(s.nokta1, spriteSatirlari)
+    // Sprite anında güncelle — direk-bazlı `spriteAktif` flag'i true ise tüm kalemler
+    // çizimdeki text nesnesine yazılır; false ise boş satırlar (sprite kaldırılır).
+    spriteSenkronize(malzList, iltkList, spriteAktif)
     // DB kaydetmeyi debounce et
     const yeniNotlar = [
       ...malzList.map(m => `${m.miktar}|${m.kisaIsim || ''}|${m.adi}|${m.gorunur === false ? '0' : '1'}`),
-      ...iltkList.map(il => `Iletken: ${il.tip}|${il.mesafe || 0}|${il.kisaIsim || ''}|${il.gorunur === false ? '0' : '1'}`),
+      ...iltkList.map(il => `Iletken: ${il.tip}|${il.mesafe || 0}|${il.kisaIsim || ''}|${il.gorunur === false ? '0' : '1'}|${il.durum || 'Yeni'}`),
     ].join('\n')
     sonNotlarRef.current = yeniNotlar
+    bekleyenNotlarRef.current = yeniNotlar
     if (kaydetTimerRef.current) clearTimeout(kaydetTimerRef.current)
-    kaydetTimerRef.current = setTimeout(() => onGuncelle('notlar', yeniNotlar), 600)
+    kaydetTimerRef.current = setTimeout(() => {
+      onGuncelle('notlar', yeniNotlar)
+      bekleyenNotlarRef.current = null
+      kaydetTimerRef.current = null
+    }, 600)
+
+    // Hat uzunluğunu (ara_mesafe) iletken mesafelerinden otomatik senkronize
+    // Tek iletken varsa onun mesafesi; birden fazla varsa en uzun olanı; yoksa 0.
+    const yeniMesafe = iltkList.length === 0
+      ? 0
+      : Math.max(...iltkList.map(il => Number(il.mesafe) || 0))
+    if (Number(s.ara_mesafe || 0) !== yeniMesafe) {
+      onGuncelle('ara_mesafe', yeniMesafe)
+    }
   }
   useEffect(() => () => { if (kaydetTimerRef.current) clearTimeout(kaydetTimerRef.current) }, [])
 
@@ -903,6 +1104,32 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
         <span className="text-[10px] font-mono text-emerald-600 w-14">{s.direk_tip || '-'}</span>
         <span className="text-[10px] tabular-nums font-medium w-12 text-right">{s.ara_mesafe ? `${s.ara_mesafe}m` : '-'}</span>
         <span className="text-[9px] text-muted-foreground flex-1 truncate ml-2">{malzemeSatirlari.length} malzeme, {iletkenSatirlari.length} iletken</span>
+        {(() => {
+          const toplam = malzemeSatirlari.length + iletkenSatirlari.length
+          return (
+            <button
+              onClick={e => { e.stopPropagation(); if (toplam > 0) spriteToggle() }}
+              disabled={toplam === 0}
+              title={toplam === 0
+                ? 'Önce malzeme/iletken ekleyin'
+                : spriteAktif ? 'Çizimdeki sprite text\'ini gizle' : 'Direk envanteri çizime sprite text olarak yansıt'}
+              className={cn(
+                'rounded p-0.5 transition-colors',
+                toplam === 0 ? 'text-muted-foreground/30 cursor-not-allowed'
+                  : spriteAktif ? 'text-emerald-600 hover:bg-emerald-50'
+                  : 'text-muted-foreground/40 hover:bg-muted hover:text-muted-foreground'
+              )}
+            >
+              {spriteAktif ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            </button>
+          )
+        })()}
+        <button onClick={e => { e.stopPropagation(); hemenKaydet() }}
+          title={kaydedildi ? 'Kaydedildi' : 'Bu satırı hemen kaydet (debounce\'ı atla)'}
+          className={cn('rounded p-0.5 transition-colors',
+            kaydedildi ? 'text-emerald-600 bg-emerald-50' : 'text-muted-foreground/50 hover:bg-blue-50 hover:text-blue-700')}>
+          {kaydedildi ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
+        </button>
         <button onClick={e => { e.stopPropagation(); onSil() }} className="rounded p-0.5 text-muted-foreground hover:bg-red-50 hover:text-red-600" title="Sil">
           <Trash2 className="h-3 w-3" />
         </button>
@@ -946,10 +1173,11 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
                 </div>
               )}
             </label>
-            <label className="flex items-center gap-1">
+            <label className="flex items-center gap-1" title="İletken mesafesinden otomatik hesaplanır — aşağıdaki iletken satırından düzenleyin">
               <span className="text-muted-foreground">Mesafe:</span>
-              <input type="number" value={s.ara_mesafe || ''} onChange={e => onGuncelle('ara_mesafe', Number(e.target.value) || 0)}
-                className="w-14 rounded border border-input bg-white px-1 py-0.5 text-[10px] text-right" /><span className="text-muted-foreground">m</span>
+              <input type="number" value={s.ara_mesafe || 0} readOnly tabIndex={-1}
+                className="w-14 rounded border border-input bg-slate-100 px-1 py-0.5 text-[10px] text-right cursor-not-allowed text-muted-foreground" />
+              <span className="text-muted-foreground">m</span>
             </label>
           </div>
 
@@ -1074,6 +1302,7 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
                     }}
                     onKisaIsimDegistir={(yeniKisa) => { const yeni = [...iletkenSatirlari]; yeni[i] = { ...il, kisaIsim: yeniKisa }; notlariKaydet(malzemeSatirlari, yeni) }}
                     onMesafeDegistir={(yeniMesafe) => { const yeni = [...iletkenSatirlari]; yeni[i] = { ...il, mesafe: yeniMesafe }; notlariKaydet(malzemeSatirlari, yeni) }}
+                    onDurumDegistir={(yeniDurum) => { const yeni = [...iletkenSatirlari]; yeni[i] = { ...il, durum: yeniDurum }; notlariKaydet(malzemeSatirlari, yeni) }}
                     onGorunurDegistir={(g) => { const yeni = [...iletkenSatirlari]; yeni[i] = { ...il, gorunur: g }; notlariKaydet(malzemeSatirlari, yeni) }}
                     onSil={() => notlariKaydet(malzemeSatirlari, iletkenSatirlari.filter((_, j) => j !== i))}
                   />
@@ -1104,6 +1333,7 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
   const qc = useQueryClient()
   const [seciliIdler, setSeciliIdler] = useState(new Set())
   const [acikIdler, setAcikIdler] = useState(new Set())
+  const [tumKaydedildi, setTumKaydedildi] = useState(false)
 
   const handleUndo = useCallback(async () => {
     if (!undo || !undoVar) return
@@ -1165,12 +1395,31 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
     const turFromTip = TIP_TUR_MAP[cleanTip] || (rawTip.startsWith('G-') ? 'AG Direk' : '')
     const komsu = bilgi.komsular?.[0]
     const otoMalz = hesaplaOtoMalzemeler(rawTip, bilgi.yakinlar, bilgi.komsular, bilgi.sembol)
-    const otoNotlar = otoMalz.map(m => `${m.miktar}||${m.adi}|${m.gorunur === false ? '0' : '1'}`).join('\n')
+    const otoNotlar = otoMalz.map(m => `${m.miktar}|${m.kisaIsim || ''}|${m.adi}|${m.gorunur === false ? '0' : '1'}`).join('\n')
     const iletkenText = komsu?.iletken || ''
-    const temizIletken = iletkenText.replace(/[()[\]]/g, '').trim()
-    const agIletken = /AER|ROSE|PANSY|ASTER/i.test(temizIletken) ? temizIletken.replace(/_/g, ' ') : null
-    const ogIletken = /SW|SWALLOW|RAVEN|PIGEON|HAWK/i.test(temizIletken) ? temizIletken.replace(/_/g, ' ') : null
-    const iletkenNot = iletkenText ? `Iletken: ${temizIletken.replace(/_/g, ' ')}` : ''
+    // Müşterek hat text'i (ör. "3xSW + 4P+R") AG ve OG'ye ayrılır; her ikisi de açık hat
+    // tertibi (4P+R, 4xR, 1xP, 3A+R/P) veya OG (3xSW/1/0/3x266/3x477) olabilir.
+    const { agText, ogText } = tertibiTextleriAyir(iletkenText)
+    // Parantezler durum belirler: "[X]" → DMM, "(X)" → Mevcut, parantezsiz → Yeni
+    const durumCikar = (s) => {
+      if (!s) return 'Yeni'
+      if (/^\[/.test(s)) return 'DMM'
+      if (/^\(/.test(s)) return 'Mevcut'
+      return 'Yeni'
+    }
+    const norm = (s) => s ? s.replace(/_/g, ' ').replace(/[()[\]]/g, '').trim() : null
+    const agIletken = norm(agText)
+    const ogIletken = norm(ogText)
+    const agDurum = durumCikar(agText)
+    const ogDurum = durumCikar(ogText)
+    const iletkenBulundu = !!(agIletken || ogIletken)
+    // Notlar formatı: "Iletken: <kısa>|<mesafe>|<kısa>|1|<durum>"
+    // Tip alanına parantez konmaz; durum 5. parçaya yazılır.
+    const iletkenNotlari = []
+    if (ogIletken) iletkenNotlari.push(`Iletken: ${ogIletken}|${komsu?.mesafe || 0}|${ogIletken}|1|${ogDurum}`)
+    if (agIletken) iletkenNotlari.push(`Iletken: ${agIletken}|${komsu?.mesafe || 0}|${agIletken}|1|${agDurum}`)
+    const iletkenNot = iletkenNotlari.join('\n')
+    const baslangicMesafe = iletkenBulundu ? (komsu?.mesafe || 0) : 0
     // Direğin kendi durumu sembole göre belirleniyorsa onu kullan, yoksa komşu hat durumu
     const direkDurum = bilgi.durum || komsu?.hatDurum || 'Yeni'
     const res = await ekle.mutateAsync({
@@ -1179,7 +1428,7 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
       nokta_durum: direkDurum,
       direk_tur: turFromTip,
       direk_tip: cleanTip || rawTip,
-      ara_mesafe: komsu?.mesafe || 0,
+      ara_mesafe: baslangicMesafe,
       ag_iletken: agIletken,
       og_iletken: ogIletken,
       ag_iletken_durum: komsu?.hatDurum || 'Yeni',
@@ -1340,6 +1589,20 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
             className="flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-700 hover:bg-amber-100 disabled:opacity-40">
             {redo?.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Redo2 className="h-3 w-3" />} İleri Al
           </button>
+          <button
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('metraj-flush-all', { detail: { projeId } }))
+              setTumKaydedildi(true)
+              setTimeout(() => setTumKaydedildi(false), 1500)
+            }}
+            title="Tüm bekleyen değişiklikleri anında kaydet (debounce'u atla)"
+            className={cn('flex items-center gap-1 rounded px-2 py-1.5 text-xs font-medium transition-colors',
+              tumKaydedildi
+                ? 'bg-emerald-600 text-white'
+                : 'border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100')}>
+            {tumKaydedildi ? <Check className="h-3 w-3" /> : <Save className="h-3 w-3" />}
+            {tumKaydedildi ? 'Kaydedildi' : 'Tümünü Kaydet'}
+          </button>
           <button onClick={handleOtomatikTespit} disabled={otoTaraYukleniyor}
             title={`${konfig.dxfAdimKodu === 'hak_edis_krokisi' ? 'Hak Ediş Krokisi' : 'Yeni Durum Proje'} DXF'indeki tüm direkleri otomatik tara ve malzeme listesini oluştur`}
             className="flex items-center gap-1 rounded border border-violet-300 bg-violet-50 px-2 py-1.5 text-xs text-violet-700 hover:bg-violet-100 disabled:opacity-50">
@@ -1380,7 +1643,7 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
           <div className="rounded border border-input bg-card px-3 py-2"><div className="flex items-center gap-1 text-[10px] text-muted-foreground"><Ruler className="h-3 w-3" />Direk</div><p className="text-lg font-bold">{ozet.toplam_satir || 0}</p></div>
           <div className="rounded border border-input bg-card px-3 py-2"><div className="flex items-center gap-1 text-[10px] text-muted-foreground"><MapPin className="h-3 w-3" />Mesafe</div><p className="text-lg font-bold">{(ozet.toplam_mesafe || 0).toLocaleString('tr-TR')} m</p></div>
           <div className="rounded border border-input bg-card px-3 py-2"><p className="text-[10px] text-muted-foreground">Yeni</p><p className="text-lg font-bold text-emerald-600">{ozet.yeni_nokta || 0}</p></div>
-          <div className="rounded border border-input bg-card px-3 py-2"><p className="text-[10px] text-muted-foreground">Demontaj</p><p className="text-lg font-bold text-red-600">{ozet.demontaj_nokta || 0}</p></div>
+          <div className="rounded border border-input bg-card px-3 py-2"><p className="text-[10px] text-muted-foreground">DMM</p><p className="text-lg font-bold text-orange-600">{ozet.dmm_nokta ?? ozet.demontaj_nokta ?? 0}</p></div>
         </div>
       )}
 
@@ -1391,7 +1654,7 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
           { key: null, label: 'Tümü', sayi: satirlar?.length || 0, renk: 'text-foreground' },
           { key: 'Yeni', label: 'Yeni', sayi: (satirlar || []).filter(s => s.nokta_durum === 'Yeni').length, renk: 'text-emerald-600' },
           { key: 'Mevcut', label: 'Mevcut', sayi: (satirlar || []).filter(s => s.nokta_durum === 'Mevcut').length, renk: 'text-blue-600' },
-          { key: 'Demontaj', label: 'Demontaj', sayi: (satirlar || []).filter(s => s.nokta_durum === 'Demontaj').length, renk: 'text-red-600' },
+          { key: 'DMM', label: 'DMM', sayi: (satirlar || []).filter(s => s.nokta_durum === 'DMM').length, renk: 'text-orange-600' },
         ].map(f => (
           <button key={f.label} onClick={() => setDurumFiltresi(f.key)}
             className={cn('flex items-center gap-1 rounded border px-2 py-1 transition-colors',
@@ -1483,6 +1746,18 @@ function IlerlemeInput({ projeId, poz, value, onSaved, malzeme_adi, birim }) {
 }
 
 // ── Malzeme özeti tablosu — parent-child katalog gruplama ile
+function DurumRozeti({ durum }) {
+  if (!durum) return <span className="text-muted-foreground/40">-</span>
+  const renk = durum === 'DMM' ? 'bg-orange-100 text-orange-700 border-orange-300'
+    : durum === 'Demontaj' ? 'bg-red-50 text-red-700 border-red-200'
+    : 'bg-emerald-50 text-emerald-700 border-emerald-200' // Yeni
+  return (
+    <span className={cn('inline-block rounded border px-1.5 py-0.5 text-[9px] font-semibold', renk)}>
+      {durum}
+    </span>
+  )
+}
+
 function MalzemeOzetiTablosu({ ozet, projeId, onIlerlemeKaydedildi }) {
   const fiyatBicim = (n) => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const miktarBicim = (n) => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
@@ -1502,6 +1777,7 @@ function MalzemeOzetiTablosu({ ozet, projeId, onIlerlemeKaydedildi }) {
           <thead className="bg-muted/20">
             <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
               <th className="px-2 py-1.5 text-left">Adı</th>
+              <th className="px-2 py-1.5 text-center w-16">Durum</th>
               <th className="px-2 py-1.5 text-right w-20">Miktar</th>
               <th className="px-2 py-1.5 text-right w-20">İlerleme</th>
               <th className="px-2 py-1.5 text-left w-14">Birim</th>
@@ -1518,6 +1794,7 @@ function MalzemeOzetiTablosu({ ozet, projeId, onIlerlemeKaydedildi }) {
                     {g.adi}
                     <span className="ml-1 text-[9px] text-muted-foreground font-mono font-normal">[{g.poz}]</span>
                   </td>
+                  <td className="px-2 py-1.5 text-center"><DurumRozeti durum={g.durum} /></td>
                   <td className="px-2 py-1.5 text-xs tabular-nums text-right">{miktarBicim(g.toplam_miktar)}</td>
                   <td className="px-2 py-1.5 text-xs tabular-nums text-right text-blue-700">
                     {g.ilerleme_miktar > 0 ? miktarBicim(g.ilerleme_miktar) : '-'}
@@ -1536,6 +1813,7 @@ function MalzemeOzetiTablosu({ ozet, projeId, onIlerlemeKaydedildi }) {
                       <span className="text-foreground">{c.adi}</span>
                       <span className="ml-1 text-[9px] font-mono">[{c.poz}]</span>
                     </td>
+                    <td className="px-2 py-1 text-center"><DurumRozeti durum={c.durum} /></td>
                     <td className="px-2 py-1 text-xs tabular-nums text-right text-muted-foreground">{miktarBicim(c.miktar)}</td>
                     <td className="px-1 py-1">
                       <IlerlemeInput
@@ -1559,7 +1837,7 @@ function MalzemeOzetiTablosu({ ozet, projeId, onIlerlemeKaydedildi }) {
             {ozet.bagimsiz?.length > 0 && (
               <>
                 <tr className="border-t-2 border-slate-300 bg-slate-50/60">
-                  <td colSpan={6} className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                  <td colSpan={7} className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
                     Bağımsız Kalemler ({ozet.bagimsiz.length})
                   </td>
                 </tr>
@@ -1570,6 +1848,7 @@ function MalzemeOzetiTablosu({ ozet, projeId, onIlerlemeKaydedildi }) {
                       {b.poz && <span className="ml-1 text-[9px] text-muted-foreground font-mono">[{b.poz}]</span>}
                       {b.katalog_eslesmedi && <span className="ml-1 text-[9px] text-amber-600">(katalog ✗)</span>}
                     </td>
+                    <td className="px-2 py-1 text-center"><DurumRozeti durum={b.durum} /></td>
                     <td className="px-2 py-1 text-xs tabular-nums text-right">{miktarBicim(b.miktar)}</td>
                     <td className="px-1 py-1">
                       {b.poz ? (

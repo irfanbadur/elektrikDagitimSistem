@@ -6,6 +6,7 @@
 //   - Çocukların adetleri × agirlik = parent'ın toplam kg miktarı
 //   - Toplam tutar = parent.miktar(kg) × parent.fiyat(₺/kg)
 const { getDb } = require('../db/database');
+const { tertibiParseTekil, acikHatExpand, ogExpand, kgKmParse } = require('./iletkenTertibi');
 
 // Direk tipini katalog formatına normalize et: G- önekini at, (P) parantezi sil,
 // apostrofları çift tırnağa çevir
@@ -30,7 +31,17 @@ function malzemeNotuParse(line) {
 function iletkenNotuParse(line) {
   const raw = line.replace(/^Iletken:\s*/i, '');
   const parts = raw.split('|');
-  return { tip: parts[0] || raw, mesafe: parts[1] ? Number(parts[1]) : 0 };
+  const tipHam = parts[0] || raw;
+  // Parantezler durum gösterir: "[X]" → DMM, "(X)" → Mevcut
+  let durumFromParens = null;
+  if (/^\[.*\]$/.test(tipHam)) durumFromParens = 'DMM';
+  else if (/^\(.*\)$/.test(tipHam)) durumFromParens = 'Mevcut';
+  const tip = tipHam.replace(/^[\[\(]|[\]\)]$/g, '').trim();
+  return {
+    tip,
+    mesafe: parts[1] ? Number(parts[1]) : 0,
+    durum: parts[4] || durumFromParens || null,
+  };
 }
 
 // Katalogda malzeme_cinsi üzerinden child kaydı bul (en iyi eşleşme).
@@ -54,6 +65,50 @@ function childBul(db, ad) {
     `SELECT ${SUTUNLAR} FROM depo_malzeme_katalogu WHERE malzeme_cinsi = ? COLLATE NOCASE`, [ad]
   ));
   if (r) return r;
+
+  // 1b) AER kablo özel arama — "3x35/16+50_AER", "3X35/16+50 AER" gibi formatlar
+  //   Katalog malzeme_cinsi: "3 X 35 / 16 + 50 mm^2" (boşluklu, mm^2 eki, parent poz=85.209.15xx AER kabloları)
+  //   Katalog malzeme_tanimi_sap: bazılarında dolu, çoğunda boş
+  const aerMatch = String(ad).match(/(\d+)\s*[xX]\s*(\d+)\s*\/\s*(\d+)\s*\+\s*(\d+)[^A-Za-z]*AER/i);
+  if (aerMatch) {
+    const [, adetStr, fazStr, notrStr, sokakStr] = aerMatch;
+    const adet = parseInt(adetStr, 10), faz = parseInt(fazStr, 10), notr = parseInt(notrStr, 10), sokak = parseInt(sokakStr, 10);
+
+    // 1) Cins pattern: "3 X 35 / 16 + 50" formatı (boşluklu) — parent poz 85.209.15xx altında ara
+    const cinsLike = `${adet} X ${faz} / ${notr} + ${sokak}%`;
+    r = enIyi(adaylariSec(
+      `SELECT ${SUTUNLAR} FROM depo_malzeme_katalogu
+       WHERE poz_birlesik LIKE '85.209.15%' AND malzeme_cinsi LIKE ? COLLATE NOCASE
+       ORDER BY (malzeme_birim_fiyat > 0 OR montaj_birim_fiyat > 0) DESC LIMIT 5`,
+      [cinsLike]
+    ));
+    if (r) return r;
+
+    // 2) SAP pattern: "3x35/1x16/50" — bazı kayıtlarda var
+    const sapPat = `%${adet}x${faz}/1x${notr}/${sokak}%AER%`;
+    r = enIyi(adaylariSec(
+      `SELECT ${SUTUNLAR} FROM depo_malzeme_katalogu
+       WHERE malzeme_tanimi_sap LIKE ? COLLATE NOCASE
+       ORDER BY (malzeme_birim_fiyat > 0 OR montaj_birim_fiyat > 0) DESC LIMIT 5`,
+      [sapPat]
+    ));
+    if (r) return r;
+
+    // 3) Esnek: parent 85.209.15xx altında, 4 sayı ardışık geçenler
+    const esnekPat = `%${faz}%${notr}%${sokak}%`;
+    r = enIyi(adaylariSec(
+      `SELECT ${SUTUNLAR} FROM depo_malzeme_katalogu
+       WHERE poz_birlesik LIKE '85.209.15%' AND malzeme_cinsi LIKE ? COLLATE NOCASE
+       ORDER BY (malzeme_birim_fiyat > 0 OR montaj_birim_fiyat > 0) DESC, LENGTH(malzeme_cinsi) ASC LIMIT 5`,
+      [esnekPat]
+    ));
+    if (r) {
+      // Doğrula: cins'te 3 sayı da geçiyor mu
+      const cins = String(r.malzeme_cinsi || '');
+      const wb = (n) => new RegExp(`\\b${n}\\b`).test(cins);
+      if (wb(faz) && wb(notr) && wb(sokak)) return r;
+    }
+  }
 
   // 2) Direk-tipi normalize ile dene (apostrof → çift tırnak, G- önek vb.)
   const norm = direkTipNormalize(ad);
@@ -165,68 +220,140 @@ function ilerlemeMapHaz(db, projeId) {
   return m;
 }
 
+// Direk durumuna göre fiyat seçimi (Yeni: malzeme+montaj, DMM: demontajdan_montaj, Demontaj: demontaj)
+function fiyatSec(katalog, durum) {
+  if (!katalog) return 0;
+  if (durum === 'DMM') return Number(katalog.demontajdan_montaj_fiyat) || 0;
+  if (durum === 'Demontaj') return Number(katalog.demontaj_birim_fiyat) || 0;
+  // Yeni (varsayılan)
+  return (Number(katalog.malzeme_birim_fiyat) || 0) + (Number(katalog.montaj_birim_fiyat) || 0);
+}
+
+// İletken tipi OG mu? (SWALLOW/PIGEON/RAVEN/HAWK/PARTRIDGE)
+function isOgIletken(tip) {
+  return /SW|SWALLOW|PIGEON|RAVEN|HAWK|PARTRIDGE/i.test(String(tip || ''));
+}
+
 // Ana fonksiyon
 function malzemeOzetiUret(tabloAdi, projeId) {
   const db = getDb();
   const satirlar = db.prepare(
-    `SELECT direk_tip, ag_iletken, og_iletken, ara_mesafe, notlar FROM ${tabloAdi} WHERE proje_id = ?`
+    `SELECT direk_tip, ag_iletken, og_iletken, ag_iletken_durum, og_iletken_durum,
+            ara_mesafe, notlar, nokta_durum
+     FROM ${tabloAdi} WHERE proje_id = ?`
   ).all(projeId);
   const ilerlemeMap = ilerlemeMapHaz(db, projeId);
   const malzemeGrupMap = grupHaritasiHaz(db);
 
-  // 1) Ham agrega — KORUMA / İŞLETME / MAKARA gibi grup adları alt kalemlerine patlatılır
-  const direkler = new Map();    // tip → adet
-  const malzemeler = new Map();  // adi → miktar
-  const iletkenler = new Map();  // tip → mesafe
+  // 1) Ham agrega — direk ve iletken durumları AYRI değerlendirilir.
+  //   Direkler ve direk-bağımlı malzemeler: nokta_durum kullanılır
+  //   İletkenler:                            ag_iletken_durum / og_iletken_durum (tipine göre)
+  //   Mevcut durumlu kalemler özete katılmaz; Yeni / DMM / Demontaj ayrı agrega.
+  const direkler = new Map();
+  const malzemeler = new Map();
+  const iletkenler = new Map();
   for (const s of satirlar) {
-    if (s.direk_tip) {
-      direkler.set(s.direk_tip, (direkler.get(s.direk_tip) || 0) + 1);
-    }
-    if (s.notlar) {
-      for (const line of s.notlar.split('\n').filter(Boolean)) {
-        if (/^Iletken:/i.test(line)) {
-          const { tip, mesafe } = iletkenNotuParse(line);
-          if (tip) iletkenler.set(tip, (iletkenler.get(tip) || 0) + mesafe);
-        } else {
+    const direkDur = s.nokta_durum || 'Yeni';
+    // Direk + direk-bağımlı malzemeler
+    if (direkDur !== 'Mevcut') {
+      if (s.direk_tip) {
+        const k = `${s.direk_tip}||${direkDur}`;
+        direkler.set(k, (direkler.get(k) || 0) + 1);
+      }
+      if (s.notlar) {
+        for (const line of s.notlar.split('\n').filter(Boolean)) {
+          if (/^Iletken:/i.test(line)) continue; // iletken'i ayrı ele al
           const { adi, miktar } = malzemeNotuParse(line);
           if (!adi) continue;
-          // Grup adı mı? (örn. "KORUMA" → 95mm² ÇLK + 2m köşebent)
           const grup = malzemeGrupMap.get(trUst(adi));
           if (grup && grup.kalemler.length > 0) {
             for (const k of grup.kalemler) {
               const ad = k.malzeme_adi;
               const m = (Number(k.miktar) || 1) * miktar;
-              malzemeler.set(ad, (malzemeler.get(ad) || 0) + m);
+              const key = `${ad}||${direkDur}`;
+              malzemeler.set(key, (malzemeler.get(key) || 0) + m);
             }
           } else {
-            malzemeler.set(adi, (malzemeler.get(adi) || 0) + miktar);
+            const key = `${adi}||${direkDur}`;
+            malzemeler.set(key, (malzemeler.get(key) || 0) + miktar);
           }
+        }
+      }
+    }
+    // İletkenler — satır-bazlı durum (notlar parts[4]) varsa onu kullan,
+    // yoksa direğin ag/og iletken durum sütunundan düş.
+    //
+    // Açık hat tertibi (4P+R, 4xR, 1xP, 3A+R/P) ve OG (3xSW/1/0/266/477) genişletilir:
+    //   "4P+R" 23m → PANSY 92m + ROSE 23m
+    //   "3xSW" 100m → SWALLOW 300m
+    //   "3A+R/P" 23m → ASTER 69m + ROSE 23m (sokak default R)
+    if (s.notlar) {
+      for (const line of s.notlar.split('\n').filter(Boolean)) {
+        if (!/^Iletken:/i.test(line)) continue;
+        const { tip, mesafe, durum: satirDurum } = iletkenNotuParse(line);
+        if (!tip || !mesafe) continue;
+        const fallbackDur = isOgIletken(tip)
+          ? (s.og_iletken_durum || 'Yeni')
+          : (s.ag_iletken_durum || 'Yeni');
+        const iletkenDur = satirDurum || fallbackDur;
+        if (iletkenDur === 'Mevcut') continue; // Mevcut iletkenler özete katılmaz
+
+        const t = tertibiParseTekil(tip);
+        if (t && t.tip === 'ag-acik') {
+          // Pansy/Rose/Aster ayrı kalemler
+          for (const k of acikHatExpand(t, mesafe)) {
+            const key = `${k.cins}||${iletkenDur}`;
+            iletkenler.set(key, (iletkenler.get(key) || 0) + k.mesafe);
+          }
+        } else if (t && t.tip === 'og') {
+          // 3× SWALLOW vb.
+          for (const k of ogExpand(t, mesafe)) {
+            const key = `${k.cins}||${iletkenDur}`;
+            iletkenler.set(key, (iletkenler.get(key) || 0) + k.mesafe);
+          }
+        } else {
+          // Bilinmeyen veya AER kablo — eski mantık (tip||durum bazlı)
+          const key = `${tip}||${iletkenDur}`;
+          iletkenler.set(key, (iletkenler.get(key) || 0) + mesafe);
         }
       }
     }
   }
 
   // 2) Her ham kalemi katalogda eşle
-  const haziraza = []; // { kategori, adi, miktar, child, parent }
-  const ekle = (kategori, adi, miktar) => {
-    const child = childBul(db, adi);
+  const haziraza = []; // { kategori, adi, miktar, durum, child, parent }
+  const ekle = (kategori, adi, miktar, durum) => {
+    let child = childBul(db, adi);
+    // İletken kayıtlarında olcu='kg' ve agirlik null — malzeme_cinsi'ndeki "(N Kg/Km)"
+    // değerini kg/m'ye çevir ki "metre × agirlik = kg" formülü doğru çalışsın.
+    if (child && kategori === 'iletken' && !(Number(child.agirlik) > 0)) {
+      const kgKm = kgKmParse(child.malzeme_cinsi);
+      if (kgKm) child = { ...child, agirlik: kgKm / 1000 }; // kg/m
+    }
     let parent = null;
     if (child) parent = parentBul(db, child.poz_birlesik);
-    haziraza.push({ kategori, adi, miktar, child, parent });
+    haziraza.push({ kategori, adi, miktar, durum, child, parent });
   };
-  for (const [tip, adet] of direkler) ekle('direk', tip, adet);
-  for (const [adi, mt] of malzemeler) ekle('malzeme', adi, mt);
-  for (const [tip, mes] of iletkenler) ekle('iletken', tip, mes);
+  for (const [k, adet] of direkler) {
+    const [tip, dur] = k.split('||');
+    ekle('direk', tip, adet, dur);
+  }
+  for (const [k, mt] of malzemeler) {
+    const [adi, dur] = k.split('||');
+    ekle('malzeme', adi, mt, dur);
+  }
+  for (const [k, mes] of iletkenler) {
+    const [tip, dur] = k.split('||');
+    ekle('iletken', tip, mes, dur);
+  }
 
-  // 3) Parent'a göre grupla. Parent'ı olmayan kalemler bağımsız listeye gider.
-  // Aynı child.poz_birlesik'e düşen kalemler (örn. "6,5U 80" ve "6,5U-80")
-  // tek satıra birleştirilir.
-  const grupMap = new Map(); // parent_poz → { parent, cocuklar: [], cocukIdx: Map<poz, idx> }
+  // 3) Parent + durum'a göre grupla — aynı child + farklı durum ayrı satır
+  const grupMap = new Map(); // "parent_poz||durum" → { parent, durum, cocuklar, cocukIdx }
   const bagimsiz = [];
   for (const h of haziraza) {
     if (h.parent && h.child) {
-      const key = h.parent.poz_birlesik;
-      const g = grupMap.get(key) || { parent: h.parent, cocuklar: [], cocukIdx: new Map() };
+      const key = `${h.parent.poz_birlesik}||${h.durum}`;
+      const g = grupMap.get(key) || { parent: h.parent, durum: h.durum, cocuklar: [], cocukIdx: new Map() };
       const childPoz = h.child.poz_birlesik;
       const mevcutIdx = g.cocukIdx.get(childPoz);
       if (mevcutIdx != null) {
@@ -241,26 +368,32 @@ function malzemeOzetiUret(tabloAdi, projeId) {
     }
   }
 
-  // 4) Sonuç biçimle
+  // 4) Sonuç biçimle — durum bilgisi her satıra eklenir, fiyat durum'a göre seçilir
   const sonuc = { gruplar: [], bagimsiz: [], genel_toplam: 0, genel_ilerleme_tutar: 0 };
 
   for (const [, g] of grupMap) {
-    const parentFiyat = (Number(g.parent.malzeme_birim_fiyat) || 0) + (Number(g.parent.montaj_birim_fiyat) || 0);
+    const parentFiyat = fiyatSec(g.parent, g.durum);
     let toplamMiktar = 0;
     let toplamIlerlemeMiktar = 0;
     const cocukSatirlari = g.cocuklar.map(c => {
       const agirlik = Number(c.child.agirlik) || 0;
       const altToplam = c.miktar * agirlik;
       toplamMiktar += altToplam;
-      // ilerleme: child'ın poz'una göre proje_kesif tablosundan
       const ilerleme = ilerlemeMap.get(c.child.poz_birlesik) || 0;
       const altIlerlemeMiktar = ilerleme * agirlik;
       toplamIlerlemeMiktar += altIlerlemeMiktar;
+      // İletkenlerde child.olcu='kg' ama "miktar" alanı metre olarak tutuluyor
+      // (alt_toplam_miktar = kg). UI'da satır birimini "m" göster.
+      const cinsBirim = (c.child.olcu || '').toLowerCase();
+      const birim = (c.kategori === 'iletken' && cinsBirim === 'kg')
+        ? 'm'
+        : (c.child.olcu || (c.kategori === 'iletken' ? 'm' : 'Ad'));
       return {
         adi: c.adi,
         kategori: c.kategori,
+        durum: c.durum,
         miktar: c.miktar,
-        birim: c.child.olcu || (c.kategori === 'iletken' ? 'm' : 'Ad'),
+        birim,
         agirlik,
         alt_toplam_miktar: altToplam,
         ilerleme,
@@ -274,6 +407,7 @@ function malzemeOzetiUret(tabloAdi, projeId) {
     sonuc.gruplar.push({
       poz: g.parent.poz_birlesik,
       adi: g.parent.malzeme_cinsi,
+      durum: g.durum,
       birim: g.parent.olcu || 'kg',
       birim_fiyat: parentFiyat,
       toplam_miktar: toplamMiktar,
@@ -285,23 +419,37 @@ function malzemeOzetiUret(tabloAdi, projeId) {
     sonuc.genel_toplam += toplamTutar;
     sonuc.genel_ilerleme_tutar += ilerlemeTutar;
   }
-  sonuc.gruplar.sort((a, b) => (a.poz || '').localeCompare(b.poz || ''));
+  // Önce poz, sonra durum sıralaması (Yeni → DMM → Demontaj)
+  const durumSira = { 'Yeni': 1, 'DMM': 2, 'Demontaj': 3 };
+  sonuc.gruplar.sort((a, b) => {
+    const cp = (a.poz || '').localeCompare(b.poz || '');
+    if (cp !== 0) return cp;
+    return (durumSira[a.durum] || 99) - (durumSira[b.durum] || 99);
+  });
 
   for (const b of bagimsiz) {
     let birim = b.kategori === 'iletken' ? 'm' : 'Ad';
     let fiyat = 0;
     let poz = null;
     if (b.child) {
-      birim = b.child.olcu || birim;
-      fiyat = (Number(b.child.malzeme_birim_fiyat) || 0) + (Number(b.child.montaj_birim_fiyat) || 0);
+      const cinsBirim = (b.child.olcu || '').toLowerCase();
+      // İletkende katalog kg ama satır metre — UI gösterimi 'm'
+      birim = (b.kategori === 'iletken' && cinsBirim === 'kg')
+        ? 'm'
+        : (b.child.olcu || birim);
+      fiyat = fiyatSec(b.child, b.durum);
       poz = b.child.poz_birlesik;
     }
-    const toplam = b.miktar * fiyat;
+    // Iletkende metreyi kg'a çevir (agirlik kg/m); diğer kategorilerde miktar olduğu gibi
+    const agirlikIlt = b.kategori === 'iletken' ? Number(b.child?.agirlik) || 0 : 0;
+    const fiyatlanaMiktar = agirlikIlt > 0 ? b.miktar * agirlikIlt : b.miktar;
+    const toplam = fiyatlanaMiktar * fiyat;
     const ilerleme = poz ? (ilerlemeMap.get(poz) || 0) : 0;
-    const ilerlemeTutar = ilerleme * fiyat;
+    const ilerlemeTutar = (agirlikIlt > 0 ? ilerleme * agirlikIlt : ilerleme) * fiyat;
     sonuc.bagimsiz.push({
       adi: b.adi,
       kategori: b.kategori,
+      durum: b.durum,
       miktar: b.miktar,
       birim,
       birim_fiyat: fiyat,
@@ -314,7 +462,11 @@ function malzemeOzetiUret(tabloAdi, projeId) {
     sonuc.genel_toplam += toplam;
     sonuc.genel_ilerleme_tutar += ilerlemeTutar;
   }
-  sonuc.bagimsiz.sort((a, b) => a.adi.localeCompare(b.adi));
+  sonuc.bagimsiz.sort((a, b) => {
+    const ca = a.adi.localeCompare(b.adi);
+    if (ca !== 0) return ca;
+    return (durumSira[a.durum] || 99) - (durumSira[b.durum] || 99);
+  });
 
   return sonuc;
 }

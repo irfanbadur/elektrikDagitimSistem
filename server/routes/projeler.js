@@ -90,10 +90,43 @@ router.get('/', (req, res) => {
     if (bolge_id) { sql += ' AND p.bolge_id = ?'; params.push(bolge_id); }
     if (tip) { sql += ' AND p.proje_tipi = ?'; params.push(tip); }
     if (ekip_id) { sql += ' AND p.ekip_id = ?'; params.push(ekip_id); }
-    // Excel "KET-YB PROJE İLERLEME" sayfasındaki SIRA kolonu öncelikli;
-    // sira_no'su olmayan projeler en sona düşer (oluşturma tarihine göre).
     sql += ' ORDER BY p.excel_sira IS NULL, p.excel_sira ASC, p.olusturma_tarihi DESC';
     const projeler = db.prepare(sql).all(...params);
+
+    // Direk-bazlı metrajdan üretilen tutarı her projeye ekle ve POZ-bazlı tutarla topla.
+    // proje_kesif_metraj: Yeni Durum'dan, hak_edis_metraj: Hak Ediş Krokisi'nden direk-bazlı keşif.
+    try {
+      const { malzemeOzetiUret } = require('../services/metrajOzetService');
+      for (const p of projeler) {
+        let metrajKesifTutar = 0;
+        let metrajKesifIlerleme = 0;
+        try {
+          const ozetK = malzemeOzetiUret('proje_kesif_metraj', p.id);
+          metrajKesifTutar += Number(ozetK.genel_toplam) || 0;
+          metrajKesifIlerleme += Number(ozetK.genel_ilerleme_tutar) || 0;
+        } catch {}
+        try {
+          const ozetH = malzemeOzetiUret('hak_edis_metraj', p.id);
+          metrajKesifTutar += Number(ozetH.genel_toplam) || 0;
+          metrajKesifIlerleme += Number(ozetH.genel_ilerleme_tutar) || 0;
+        } catch {}
+        p.metraj_kesif_tutar = metrajKesifTutar;
+        p.metraj_ilerleme_tutar = metrajKesifIlerleme;
+        // POZ-bazlı tutar metraj-bazlı ile birleştir (frontend'in tek "Fiyat" sütunu için)
+        p.kesif_toplam_tutar = (Number(p.kesif_toplam_tutar) || 0) + metrajKesifTutar;
+        p.kesif_ilerleme_tutar = (Number(p.kesif_ilerleme_tutar) || 0) + metrajKesifIlerleme;
+        // Artırımlı (Excel) tutar boşsa metraj × 1.1 ile doldur — Projeler sayfası %10 modu için
+        if (!p.kesif_toplam_tutar_artirimli && metrajKesifTutar > 0) {
+          p.kesif_toplam_tutar_artirimli = Math.round(metrajKesifTutar * 110) / 100; // %10 + 2 ondalık
+        }
+        if (!p.kesif_ilerleme_tutar_artirimli && metrajKesifIlerleme > 0) {
+          p.kesif_ilerleme_tutar_artirimli = Math.round(metrajKesifIlerleme * 110) / 100;
+        }
+      }
+    } catch (err) {
+      console.error('Metraj tutar hesabı hatası:', err.message);
+    }
+
     basarili(res, projeler);
   } catch (err) {
     hata(res, err.message, 500);

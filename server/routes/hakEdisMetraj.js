@@ -41,6 +41,7 @@ router.get('/:projeId/ozet', (req, res) => {
         SUM(ara_mesafe) as toplam_mesafe,
         COUNT(CASE WHEN nokta_durum = 'Yeni' THEN 1 END) as yeni_nokta,
         COUNT(CASE WHEN nokta_durum = 'Mevcut' THEN 1 END) as mevcut_nokta,
+        COUNT(CASE WHEN nokta_durum = 'DMM' THEN 1 END) as dmm_nokta,
         COUNT(CASE WHEN nokta_durum = 'Demontaj' THEN 1 END) as demontaj_nokta
       FROM hak_edis_metraj WHERE proje_id = ?
     `).get(parseInt(req.params.projeId));

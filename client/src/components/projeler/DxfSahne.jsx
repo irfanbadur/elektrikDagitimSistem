@@ -135,7 +135,23 @@ function segCrossesRect(p1, p2, r) {
  * - Her entity ayrı obje (userData metadata ile)
  * - Raycaster seçim + box select + renk paleti
  */
-export default function DxfSahne({ src, dosyaId, onDirekTikla, onDireklerYuklendi, direkler: direklerProp }) {
+// Sprite bbox (anchor=top-left, position=(px,py)) için, direğe (dx,dy) en yakın kenarın ORTASINI döner.
+// Bbox: x ∈ [px, px+scaleX], y ∈ [py-scaleY, py]
+function enYakinKenarOrtasi(px, py, scaleX, scaleY, dx, dy) {
+  const cx = px + scaleX / 2
+  const cy = py - scaleY / 2
+  const ndx = (dx - cx) / (scaleX / 2 || 1)
+  const ndy = (dy - cy) / (scaleY / 2 || 1)
+  if (Math.abs(ndx) >= Math.abs(ndy)) {
+    // Sağ veya sol kenarın ortası
+    return ndx >= 0 ? [px + scaleX, cy] : [px, cy]
+  } else {
+    // Üst veya alt kenarın ortası
+    return ndy >= 0 ? [cx, py] : [cx, py - scaleY]
+  }
+}
+
+export default function DxfSahne({ src, dosyaId, onDirekTikla, onDireklerYuklendi, direkler: direklerProp, direkNotlari, onSpriteKonumDegis }) {
   const [direklerState, setDireklerState] = useState(direklerProp || [])
   const direkler = direklerProp || direklerState
   // dosyaId verilmişse backend'den direk listesini çek
@@ -154,6 +170,12 @@ export default function DxfSahne({ src, dosyaId, onDirekTikla, onDireklerYuklend
   const cameraRef = useRef(null)
   const threeRef = useRef(null)
   const entitiesGroupRef = useRef(null)
+  const spriteGroupRef = useRef(null)        // Direk envanteri sprite text'leri için ayrı grup
+  const spritelerRef = useRef({})             // { [nokta1]: { sprite, line } }
+  const direkNotlariRef = useRef(direkNotlari || {})
+  const onSpriteKonumDegisRef = useRef(onSpriteKonumDegis)
+  useEffect(() => { direkNotlariRef.current = direkNotlari || {} }, [direkNotlari])
+  useEffect(() => { onSpriteKonumDegisRef.current = onSpriteKonumDegis }, [onSpriteKonumDegis])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [hata, setHata] = useState('')
   const [paintRenk, setPaintRenk] = useState(null)
@@ -222,6 +244,12 @@ export default function DxfSahne({ src, dosyaId, onDirekTikla, onDireklerYuklend
         entitiesGroup.name = 'dxf_entities'
         scene.add(entitiesGroup)
         entitiesGroupRef.current = entitiesGroup
+
+        // Sprite grubu — direk envanteri text overlay'i (offsetX/Y aktarılır)
+        const spriteGroup = new three.Group()
+        spriteGroup.name = 'direk_sprites'
+        scene.add(spriteGroup)
+        spriteGroupRef.current = spriteGroup
 
         // Layer renkleri — dxf-parser l.color RGB hex olarak geliyor (ACI değil)
         const layerColors = {}
@@ -548,13 +576,92 @@ export default function DxfSahne({ src, dosyaId, onDirekTikla, onDireklerYuklend
         const el = renderer.domElement
         const pxPerWorld = () => height / (camera.top - camera.bottom)
 
+        // Sprite sürükleme — direkten 150 birime kadar kısıtlı
+        const SPRITE_MAX_MESAFE = 150
+        let suruklenenSprite = null   // { sprite, line, key, direkX, direkY }
+        const dragStart = { x: 0, y: 0 }
+        const spriteStart = { x: 0, y: 0 }
+        const raycaster = new three.Raycaster()
+
+        const ekranToNDC = (clientX, clientY) => {
+          const rect = el.getBoundingClientRect()
+          return {
+            x: ((clientX - rect.left) / rect.width) * 2 - 1,
+            y: -((clientY - rect.top) / rect.height) * 2 + 1,
+          }
+        }
+
         el.addEventListener('mousedown', (e) => {
           if (e.button !== 0 || paintRenk) return
+          // Önce: sprite üzerine tıklandı mı? Raycast et
+          const grup = spriteGroupRef.current
+          if (grup && grup.children.length > 0) {
+            const ndc = ekranToNDC(e.clientX, e.clientY)
+            raycaster.setFromCamera(new three.Vector2(ndc.x, ndc.y), camera)
+            const sprites = grup.children.filter(c => c.userData?.type === 'direk_sprite')
+            const hits = raycaster.intersectObjects(sprites, false)
+            if (hits.length > 0) {
+              // Sprite'a tıklandı — sürüklemeye başla
+              const sprite = hits[0].object
+              const key = sprite.userData.direkKey
+              const cache = spritelerRef.current[key]
+              const not = (direkNotlariRef.current || {})[key]
+              if (cache && not) {
+                e.stopPropagation()
+                e.preventDefault()
+                const offsetX = entitiesGroupRef.current.userData?.offsetX || 0
+                const offsetY = entitiesGroupRef.current.userData?.offsetY || 0
+                // direkX/Y sabit konum (line ucu için), not.x/y sprite metnin konumu
+                const direkDunyaX = not.direkX != null ? not.direkX : not.x
+                const direkDunyaY = not.direkY != null ? not.direkY : not.y
+                suruklenenSprite = {
+                  sprite, line: cache.line, key,
+                  direkX: direkDunyaX - offsetX, direkY: direkDunyaY - offsetY,
+                }
+                dragStart.x = e.clientX; dragStart.y = e.clientY
+                spriteStart.x = sprite.position.x; spriteStart.y = sprite.position.y
+                el.style.cursor = 'grabbing'
+                return
+              }
+            }
+          }
           panBasladi = true
           panStart.x = e.clientX; panStart.y = e.clientY
           camStart.x = camera.position.x; camStart.y = camera.position.y
         })
         window.addEventListener('mousemove', (e) => {
+          if (suruklenenSprite) {
+            const ppw = pxPerWorld()
+            const dx = (e.clientX - dragStart.x) / ppw
+            const dy = (e.clientY - dragStart.y) / ppw
+            let yeniX = spriteStart.x + dx
+            let yeniY = spriteStart.y - dy
+            // 150 birim uzaklık kısıtlaması
+            const ddx = yeniX - suruklenenSprite.direkX
+            const ddy = yeniY - suruklenenSprite.direkY
+            const dist = Math.sqrt(ddx * ddx + ddy * ddy)
+            if (dist > SPRITE_MAX_MESAFE) {
+              const oran = SPRITE_MAX_MESAFE / dist
+              yeniX = suruklenenSprite.direkX + ddx * oran
+              yeniY = suruklenenSprite.direkY + ddy * oran
+            }
+            suruklenenSprite.sprite.position.set(yeniX, yeniY, suruklenenSprite.sprite.position.z)
+            // Bağlantı çizgisini güncelle — sprite ucu = en yakın kenarın ORTASI
+            const line = suruklenenSprite.line
+            if (line) {
+              const sX = suruklenenSprite.sprite.userData.scaleX || 0
+              const sY = suruklenenSprite.sprite.userData.scaleY || 0
+              const [eX, eY] = enYakinKenarOrtasi(yeniX, yeniY, sX, sY,
+                suruklenenSprite.direkX, suruklenenSprite.direkY)
+              const pos = line.geometry.getAttribute('position')
+              pos.setXYZ(0, suruklenenSprite.direkX, suruklenenSprite.direkY, 0.4)
+              pos.setXYZ(1, eX, eY, 0.4)
+              pos.needsUpdate = true
+              line.geometry.computeBoundingSphere?.()
+            }
+            renderer.render(scene, camera)
+            return
+          }
           if (!panBasladi) return
           const ppw = pxPerWorld()
           const dx = (e.clientX - panStart.x) / ppw
@@ -563,7 +670,20 @@ export default function DxfSahne({ src, dosyaId, onDirekTikla, onDireklerYuklend
           camera.position.y = camStart.y + dy
           renderer.render(scene, camera)
         })
-        window.addEventListener('mouseup', () => { panBasladi = false })
+        window.addEventListener('mouseup', () => {
+          if (suruklenenSprite) {
+            // Yeni konumu callback ile dışarıya bildir
+            const offsetX = entitiesGroupRef.current.userData?.offsetX || 0
+            const offsetY = entitiesGroupRef.current.userData?.offsetY || 0
+            const key = suruklenenSprite.key
+            const dunyaX = suruklenenSprite.sprite.position.x + offsetX
+            const dunyaY = suruklenenSprite.sprite.position.y + offsetY
+            onSpriteKonumDegisRef.current?.(key, dunyaX, dunyaY)
+            el.style.cursor = ''
+            suruklenenSprite = null
+          }
+          panBasladi = false
+        })
         el.addEventListener('wheel', (e) => {
           e.preventDefault()
           const zoomFactor = e.deltaY > 0 ? 1.1 : 1 / 1.1
@@ -783,6 +903,95 @@ export default function DxfSahne({ src, dosyaId, onDirekTikla, onDireklerYuklend
     c.zoom = 1; c.updateProjectionMatrix()
     rendererRef.current?.render(sceneRef.current, c)
   }
+
+  // ── Direk envanteri sprite text'leri — direkNotlari prop'u değişince senkronize et ──
+  useEffect(() => {
+    if (yukleniyor) return
+    const three = threeRef.current
+    const grup = spriteGroupRef.current
+    const entitiesGroup = entitiesGroupRef.current
+    if (!three || !grup || !entitiesGroup) return
+    const offsetX = entitiesGroup.userData?.offsetX || 0
+    const offsetY = entitiesGroup.userData?.offsetY || 0
+
+    const yeniKeyler = new Set(Object.keys(direkNotlari || {}))
+    // Eski sprite'ları temizle
+    for (const [key, obj] of Object.entries(spritelerRef.current)) {
+      if (!yeniKeyler.has(key)) {
+        if (obj.sprite) {
+          grup.remove(obj.sprite)
+          obj.sprite.material?.map?.dispose?.()
+          obj.sprite.material?.dispose?.()
+        }
+        if (obj.line) { grup.remove(obj.line); obj.line.geometry?.dispose?.(); obj.line.material?.dispose?.() }
+        delete spritelerRef.current[key]
+      }
+    }
+
+    // Yenileri ekle / güncelle
+    for (const [key, not] of Object.entries(direkNotlari || {})) {
+      if (!not.malzemeler?.length || not.x == null || not.y == null) continue
+      // Eski sprite varsa kaldır (yeniden oluştur)
+      const eski = spritelerRef.current[key]
+      if (eski) {
+        if (eski.sprite) { grup.remove(eski.sprite); eski.sprite.material?.map?.dispose?.(); eski.sprite.material?.dispose?.() }
+        if (eski.line) { grup.remove(eski.line); eski.line.geometry?.dispose?.(); eski.line.material?.dispose?.() }
+      }
+
+      // Sprite text canvas'ı
+      const satirlar = not.malzemeler.map(m => `${m.miktar}x ${m.adi}`)
+      const textH = not.yukseklik || not.punto || 3.5
+      const textColor = not.renk || '#4ade80'
+      const PX_PER_UNIT = 40
+      const lineH = Math.round(textH * PX_PER_UNIT)
+      const FONT = `${lineH}px 'Noto Sans', Arial, sans-serif`
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      ctx.font = FONT
+      let maxW = 0
+      for (const sat of satirlar) { const w = ctx.measureText(sat).width; if (w > maxW) maxW = w }
+      canvas.width = Math.ceil(maxW + 4)
+      canvas.height = Math.ceil(satirlar.length * lineH * 1.2 + 4)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.fillStyle = textColor
+      ctx.font = FONT
+      satirlar.forEach((sat, i) => ctx.fillText(sat, 2, (i + 1) * lineH * 1.2))
+
+      const texture = new three.CanvasTexture(canvas)
+      texture.minFilter = three.LinearFilter
+      const mat = new three.SpriteMaterial({ map: texture, transparent: true, depthTest: false })
+      const sprite = new three.Sprite(mat)
+      const scaleX = canvas.width / PX_PER_UNIT
+      const scaleY = canvas.height / PX_PER_UNIT
+      sprite.scale.set(scaleX, scaleY, 1)
+      sprite.center = new three.Vector2(0, 1)  // sol-üst anchor
+      // Sprite konumu doğrudan world koordinatından (offset düşülerek). +textH eklemeyiz —
+      // ilk yerleştirme offset'i direkNotlari oluşturulurken (direkX+5) zaten uygulandı.
+      const px = not.x - offsetX
+      const py = not.y - offsetY
+      sprite.position.set(px, py, 0.5)
+      sprite.userData = { direkKey: key, type: 'direk_sprite', scaleX, scaleY }
+      grup.add(sprite)
+
+      // Direk → sprite bağlantı çizgisi (direkX/Y sabit, sprite ucu = en yakın kenarın ORTASI)
+      const direkX = (not.direkX != null ? not.direkX : not.x) - offsetX
+      const direkY = (not.direkY != null ? not.direkY : not.y) - offsetY
+      // Sprite bbox (anchor=top-left): x∈[px, px+scaleX], y∈[py-scaleY, py]
+      const [edgeX, edgeY] = enYakinKenarOrtasi(px, py, scaleX, scaleY, direkX, direkY)
+      const colorInt = parseInt((textColor.replace('#', '')), 16)
+      const lineGeo = new three.BufferGeometry().setFromPoints([
+        new three.Vector3(direkX, direkY, 0.4),
+        new three.Vector3(edgeX, edgeY, 0.4),
+      ])
+      const lineMat = new three.LineBasicMaterial({ color: colorInt, transparent: true, opacity: 0.6 })
+      const line = new three.Line(lineGeo, lineMat)
+      grup.add(line)
+
+      spritelerRef.current[key] = { sprite, line }
+    }
+
+    rendererRef.current?.render(sceneRef.current, cameraRef.current)
+  }, [direkNotlari, yukleniyor])
 
   return (
     <div className="relative w-full h-full flex flex-col" style={{ minHeight: 400 }}>

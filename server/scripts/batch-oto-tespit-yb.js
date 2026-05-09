@@ -4,6 +4,7 @@
  */
 const Database = require('better-sqlite3');
 const path = require('path');
+const { tertibiTextleriAyir } = require('../services/iletkenTertibi');
 
 const ROOT = path.resolve(__dirname, '../../');
 const DB_PATH = path.join(ROOT, 'data/tenants/cakmakgrup/elektratrack.db');
@@ -32,6 +33,8 @@ const SEMBOL_DURUM = {
 function hesaplaOtoMalzemeler(tip, yakinlar) {
   const oto = [];
   const hasPotans = /\(P\)/i.test(tip || '');
+  // HSTA — direk tipi (S) ile bitiyor → HSTA grubu (5 kalem patlatılır)
+  if (/\(S\)\s*$/i.test(tip || '')) oto.push({ adi: 'HSTA', kisaIsim: 'HSTA', miktar: 1 });
   if (hasPotans) oto.push({ adi: 'T-AG-5(L3=150cm)', miktar: 1 });
   if (yakinlar?.armatur) oto.push({ adi: 'ARM. LED KOR. SINIF 1 S15/8/1', miktar: 1 });
   if (yakinlar?.koruma) {
@@ -91,8 +94,8 @@ async function main() {
     INSERT INTO proje_kesif_metraj (
       proje_id, sira, nokta1, nokta2, nokta_durum,
       direk_tur, direk_tip, ara_mesafe,
-      ag_iletken_durum, ag_iletken, og_iletken, kaynak, notlar
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'kroki', ?)
+      ag_iletken_durum, og_iletken_durum, ag_iletken, og_iletken, kaynak, notlar
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'kroki', ?)
   `);
   const silProjeStmt = db.prepare(`DELETE FROM proje_kesif_metraj WHERE proje_id = ?`);
 
@@ -120,18 +123,32 @@ async function main() {
           const turFromTip = TIP_TUR_MAP[cleanTip] || (rawTip.startsWith('G-') ? 'AG Direk' : '');
           const komsu = d.komsular?.[0];
           const otoMalz = hesaplaOtoMalzemeler(rawTip, yakinlar);
-          const otoNotlar = otoMalz.map(m => `${m.miktar}||${m.adi}|0`).join('\n');
+          const otoNotlar = otoMalz.map(m => `${m.miktar}|${m.kisaIsim || ''}|${m.adi}|0`).join('\n');
           const iletkenText = komsu?.iletken || '';
-          const temizIletken = iletkenText.replace(/[()[\]]/g, '').trim();
-          const agIletken = /AER|ROSE|PANSY|ASTER/i.test(temizIletken) ? temizIletken.replace(/_/g, ' ') : null;
-          const ogIletken = /SW|SWALLOW|RAVEN|PIGEON|HAWK/i.test(temizIletken) ? temizIletken.replace(/_/g, ' ') : null;
-          const iletkenNot = iletkenText ? `Iletken: ${temizIletken.replace(/_/g, ' ')}` : '';
+          const { agText, ogText } = tertibiTextleriAyir(iletkenText);
+          const durumCikar = (s) => {
+            if (!s) return 'Yeni';
+            if (/^\[/.test(s)) return 'DMM';
+            if (/^\(/.test(s)) return 'Mevcut';
+            return 'Yeni';
+          };
+          const norm = (s) => s ? s.replace(/_/g, ' ').replace(/[()[\]]/g, '').trim() : null;
+          const agIletken = norm(agText);
+          const ogIletken = norm(ogText);
+          const agDurum = durumCikar(agText);
+          const ogDurum = durumCikar(ogText);
+          const iletkenNotlari = [];
+          if (ogIletken) iletkenNotlari.push(`Iletken: ${ogIletken}|${komsu?.mesafe || 0}|${ogIletken}|1|${ogDurum}`);
+          if (agIletken) iletkenNotlari.push(`Iletken: ${agIletken}|${komsu?.mesafe || 0}|${agIletken}|1|${agDurum}`);
+          const iletkenNot = iletkenNotlari.join('\n');
           const direkDurum = SEMBOL_DURUM[d.sembol] || komsu?.hatDurum || 'Yeni';
           const notlar = [otoNotlar, iletkenNot].filter(Boolean).join('\n');
           insertStmt.run(
             p.id, sira, d.numara, komsu?.numara || null, direkDurum,
             turFromTip || null, cleanTip || rawTip || null,
-            komsu?.mesafe || 0, komsu?.hatDurum || null, agIletken, ogIletken,
+            komsu?.mesafe || 0,
+            agIletken ? agDurum : null, ogIletken ? ogDurum : null,
+            agIletken, ogIletken,
             notlar || null
           );
         }
