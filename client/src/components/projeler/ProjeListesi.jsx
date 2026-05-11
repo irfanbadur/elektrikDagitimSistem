@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Eye, Pencil, Trash2, X, CheckSquare, FileSpreadsheet, AlertTriangle, Clock, Check, Lock, Unlock, Loader2 } from 'lucide-react'
+import { Plus, Eye, Pencil, Trash2, X, CheckSquare, FileSpreadsheet, AlertTriangle, Clock, Check, Lock, Unlock, Loader2, ChevronDown } from 'lucide-react'
 import { useProjeler, useProjeSil, useTopluProjeSil, useProjeGuncelle, useProjeKismiGuncelle } from '@/hooks/useProjeler'
 import { useIsTipleri } from '@/hooks/useIsTipleri'
 import { useBolgeler } from '@/hooks/useBolgeler'
@@ -13,6 +13,7 @@ import DataTable from '@/components/shared/DataTable'
 import { OncelikBadge } from '@/components/shared/StatusBadge'
 import MalzemeTalepModal from './MalzemeTalepModal'
 import YerTeslimXlsxModal from './YerTeslimXlsxModal'
+import ExcelExportModal from './ExcelExportModal'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton'
 import { PROJE_DURUMLARI } from '@/utils/constants'
@@ -42,31 +43,52 @@ function projeDurumu(proje) {
 
 // Proje (çizim/kurum süreci) aşamaları — sıraya göre rengi de değişir
 const PROJE_ASAMA_SECENEKLERI = [
+  { kod: 'yukleme_sekmesi_yok', etiket: 'Yükleme Sekmesi Yok',   renk: 'bg-gray-100 text-gray-600 border-gray-300' },
   { kod: 'eksik_bilgi',       etiket: 'Eksik Bilgi-Sorulacak', renk: 'bg-yellow-50 text-yellow-800 border-yellow-400' },
   { kod: 'cizilecek',         etiket: 'Çizilecek',             renk: 'bg-slate-100 text-slate-700 border-slate-300' },
-  { kod: 'cizildi',           etiket: 'Çizildi',               renk: 'bg-blue-50 text-blue-700 border-blue-300' },
-  { kod: 'yuklendi',          etiket: 'Yüklendi-Sistemde',     renk: 'bg-indigo-50 text-indigo-700 border-indigo-300' },
+  { kod: 'cizildi',                 etiket: 'Çizildi',                 renk: 'bg-blue-50 text-blue-700 border-blue-300' },
+  { kod: 'cizildi_yedas_yukleyecek', etiket: 'Çizildi-Yedaş Yükleyecek', renk: 'bg-cyan-50 text-cyan-700 border-cyan-300' },
+  { kod: 'yuklendi',                etiket: 'Yüklendi-Sistemde',       renk: 'bg-indigo-50 text-indigo-700 border-indigo-300' },
   { kod: 'ret_oldu',          etiket: 'Ret Oldu',              renk: 'bg-red-50 text-red-700 border-red-300' },
   { kod: 'revize_edilecek',   etiket: 'Revize Edilecek',       renk: 'bg-orange-50 text-orange-700 border-orange-300' },
   { kod: 'revize_yuklendi',   etiket: 'Revize Yüklendi',       renk: 'bg-amber-50 text-amber-800 border-amber-300' },
   { kod: 'onaylandi',         etiket: 'Onaylandı',             renk: 'bg-emerald-50 text-emerald-700 border-emerald-300' },
 ]
 
-// Saha (yapım süreci) aşamaları
+// Saha (yapım/iş durumu) aşamaları — doc/ilerleme-11.05.xlsx O sütunundaki "İŞ DURUMU"
+// değerleriyle uyumlu. Excel'den toplu senkronizasyon için saha_iletken_durum
+// sütunu bu kodlar üzerinden tutulur.
 const SAHA_ASAMA_SECENEKLERI = [
-  { kod: 'malzeme_verildi',   etiket: 'Malzeme Verildi',   renk: 'bg-slate-100 text-slate-700 border-slate-300' },
-  { kod: 'baslandi',          etiket: 'Başlandı',          renk: 'bg-blue-50 text-blue-700 border-blue-300' },
-  { kod: 'kuyular_acildi',    etiket: 'Kuyular Açıldı',    renk: 'bg-cyan-50 text-cyan-700 border-cyan-300' },
-  { kod: 'direk_dikimi',      etiket: 'Direk Dikimi',      renk: 'bg-violet-50 text-violet-700 border-violet-300' },
-  { kod: 'beton_dokumu',      etiket: 'Beton Dökümü',      renk: 'bg-stone-100 text-stone-800 border-stone-400' },
-  { kod: 'iletken_cekimi',    etiket: 'İletken Çekimi',    renk: 'bg-amber-50 text-amber-800 border-amber-300' },
-  { kod: 'enerji_verildi',    etiket: 'Enerji Verildi',    renk: 'bg-lime-50 text-lime-700 border-lime-300' },
-  { kod: 'tamamlandi',        etiket: 'Tamamlandı',        renk: 'bg-emerald-50 text-emerald-700 border-emerald-400 font-semibold' },
+  { kod: 'yer_teslimi_yapilmadi', etiket: 'Yer Teslimi Yapılmadı', renk: 'bg-orange-50 text-orange-700 border-orange-300' },
+  { kod: 'yer_teslimi_yapildi',   etiket: 'Yer Teslimi Yapıldı',   renk: 'bg-blue-50 text-blue-700 border-blue-300' },
+  { kod: 'devam_ediyor',          etiket: 'Devam Ediyor',          renk: 'bg-amber-50 text-amber-800 border-amber-400' },
+  { kod: 'tamamlandi',            etiket: 'Tamamlandı',            renk: 'bg-emerald-50 text-emerald-700 border-emerald-400 font-semibold' },
 ]
 
 const _asamaLookup = (liste) => Object.fromEntries(liste.map(s => [s.kod, s]))
 const PROJE_ASAMA_MAP = _asamaLookup(PROJE_ASAMA_SECENEKLERI)
 const SAHA_ASAMA_MAP = _asamaLookup(SAHA_ASAMA_SECENEKLERI)
+
+// Tarih bazlı filtre seçenekleri — başlangıç ve bitiş tarihlerine göre kategoriler
+const TARIH_FILTRE_SECENEKLERI = [
+  { kod: 'baslangic_gecti',  etiket: 'Başlangıç geçenler' },
+  { kod: 'bitis_gecti',      etiket: 'Bitiş geçenler' },
+  { kod: 'yapim',            etiket: 'Yapım aşamasında (başlangıç-bitiş arası)' },
+  { kod: 'baslama_gelmedi',  etiket: 'Başlama gelmeyenler' },
+  { kod: 'tarih_yok',        etiket: 'Tarih girilmemiş' },
+]
+// Bir projeyi belirli bir tarih kategorisine göre değerlendir
+function tarihKategoriUyar(p, kod) {
+  const bugun = new Date(); bugun.setHours(0, 0, 0, 0)
+  const bas = p.baslama_tarihi ? new Date(p.baslama_tarihi) : null
+  const bit = p.bitis_tarihi ? new Date(p.bitis_tarihi) : null
+  if (kod === 'tarih_yok') return !bas && !bit
+  if (kod === 'baslangic_gecti') return !!bas && bas <= bugun
+  if (kod === 'bitis_gecti') return !!bit && bit < bugun
+  if (kod === 'yapim') return !!bas && !!bit && bas <= bugun && bugun <= bit
+  if (kod === 'baslama_gelmedi') return !!bas && bas > bugun
+  return false
+}
 
 function AsamaBadge({ kod, map }) {
   if (!kod) return <span className="text-muted-foreground">-</span>
@@ -151,7 +173,9 @@ export default function ProjeListesi() {
   const { izinVar } = useAuth()
   const silmeYetkisi = izinVar('projeler', 'silme')
 
-  const [filtreler, setFiltreler] = useState({ durum: '', bolge_id: '', tip: '', yer_teslim: '', ihale_id: '' })
+  const [filtreler, setFiltreler] = useState({ durum: '', bolge_id: '', tip: '', yer_teslim: '', ihale_id: '', saha_asamalar: [], tarih_durumlari: [] })
+  const [sahaSecimAcik, setSahaSecimAcik] = useState(false)
+  const [tarihSecimAcik, setTarihSecimAcik] = useState(false)
   // Artırım yüzdesi (Excel KET-YB özet sayfasındaki %10 markup'ı taklit eder)
   // Sözleşme keşfi etkilenmez; sadece fiyat ve ilerleme değerleri çarpılır.
   const [artirimYuzdesi, setArtirimYuzdesi] = useState(() => {
@@ -172,9 +196,9 @@ export default function ProjeListesi() {
   }
   // Durum filtresi server'a göndermiyoruz (DB'de p.durum çoğunlukla 'baslama')
   // → client-side projeDurumu() veya aktif adım kodu üzerinden filtreleme
-  const { durum: durumFiltresi, ...serverFiltreler } = filtreler
+  const { durum: durumFiltresi, saha_asamalar: sahaAsamalar, tarih_durumlari: tarihDurumlari, ...serverFiltreler } = filtreler
   const { data: rawProjeler, isLoading } = useProjeler(serverFiltreler)
-  // Yer teslim + İhale + Durum client-side filtre
+  // Yer teslim + İhale + Durum + Saha aşaması client-side filtre
   const projeler = useMemo(() => {
     if (!rawProjeler) return rawProjeler
     let liste = rawProjeler
@@ -187,22 +211,33 @@ export default function ProjeListesi() {
     }
     // Durum filtresi:
     //   "_PROJE_<kod>" → p.proje_asama === kod  (cizildi, cizilecek, revize_edilecek...)
-    //   "_SAHA_<kod>"  → p.saha_asama === kod   (baslandi, direk_dikimi, tamamlandi...)
     //   "_DURUM_<x>"   → projeDurumu() === x    (devam/gecikti/tamamlandi/beklemede)
     if (durumFiltresi) {
       if (durumFiltresi.startsWith('_PROJE_')) {
         const hedef = durumFiltresi.slice(7)
         liste = liste.filter(p => p.proje_asama === hedef)
-      } else if (durumFiltresi.startsWith('_SAHA_')) {
-        const hedef = durumFiltresi.slice(6)
-        liste = liste.filter(p => p.saha_asama === hedef)
       } else if (durumFiltresi.startsWith('_DURUM_')) {
         const hedef = durumFiltresi.slice(7)
         liste = liste.filter(p => projeDurumu(p) === hedef)
       }
     }
+    // Saha aşaması — çoklu seçim (en az biri eşleşmeli).
+    // '__BOS__' özel kodu: saha_asama null/boş olan projeler için.
+    if (sahaAsamalar && sahaAsamalar.length > 0) {
+      const set = new Set(sahaAsamalar)
+      const bosVarMi = set.has('__BOS__')
+      liste = liste.filter(p => {
+        const v = p.saha_asama
+        if (!v) return bosVarMi
+        return set.has(v)
+      })
+    }
+    // Tarih bazlı çoklu filtre — en az biri eşleşmeli (OR)
+    if (tarihDurumlari && tarihDurumlari.length > 0) {
+      liste = liste.filter(p => tarihDurumlari.some(k => tarihKategoriUyar(p, k)))
+    }
     return liste
-  }, [rawProjeler, filtreler.yer_teslim, filtreler.ihale_id, durumFiltresi])
+  }, [rawProjeler, filtreler.yer_teslim, filtreler.ihale_id, durumFiltresi, sahaAsamalar, tarihDurumlari])
   const { data: bolgeler } = useBolgeler()
   const { data: isTipleri } = useIsTipleri()
   const { data: ekipler } = useEkipler()
@@ -363,6 +398,7 @@ export default function ProjeListesi() {
   const [topluSilmeDialogAcik, setTopluSilmeDialogAcik] = useState(false)
   const [malzemeTalepModalAcik, setMalzemeTalepModalAcik] = useState(false)
   const [yerTeslimXlsxModalAcik, setYerTeslimXlsxModalAcik] = useState(false)
+  const [excelExportModalAcik, setExcelExportModalAcik] = useState(false)
 
   const secimDegistir = useCallback((id) => {
     setSeciliIdler((prev) => {
@@ -1053,11 +1089,6 @@ export default function ProjeListesi() {
               <option key={s.kod} value={`_PROJE_${s.kod}`}>{s.etiket}</option>
             ))}
           </optgroup>
-          <optgroup label="Saha Aşaması">
-            {SAHA_ASAMA_SECENEKLERI.map(s => (
-              <option key={s.kod} value={`_SAHA_${s.kod}`}>{s.etiket}</option>
-            ))}
-          </optgroup>
           <optgroup label="Genel">
             <option value="_DURUM_devam">⏱️ Devam Eden</option>
             <option value="_DURUM_gecikti">⚠️ Gecikti</option>
@@ -1065,6 +1096,122 @@ export default function ProjeListesi() {
             <option value="_DURUM_beklemede">⏸️ Beklemede</option>
           </optgroup>
         </select>
+        {/* Saha Aşaması çoklu seçim — checkbox'lı dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setSahaSecimAcik(v => !v)}
+            className="flex items-center gap-1 rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 min-w-[160px] justify-between"
+          >
+            <span className={cn('truncate', sahaAsamalar.length === 0 && 'text-muted-foreground')}>
+              {sahaAsamalar.length === 0
+                ? 'Saha (Hepsi)'
+                : sahaAsamalar.length === 1
+                  ? (sahaAsamalar[0] === '__BOS__' ? '— (Bilgi Yok)' : (SAHA_ASAMA_MAP[sahaAsamalar[0]]?.etiket || sahaAsamalar[0]))
+                  : `Saha (${sahaAsamalar.length} seçili)`}
+            </span>
+            <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', sahaSecimAcik && 'rotate-180')} />
+          </button>
+          {sahaSecimAcik && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setSahaSecimAcik(false)} />
+              <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-md border border-border bg-white shadow-lg py-1">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/30">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Saha Aşaması</span>
+                  {sahaAsamalar.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleFiltreChange('saha_asamalar', [])}
+                      className="text-[10px] text-primary hover:underline"
+                    >
+                      Temizle
+                    </button>
+                  )}
+                </div>
+                {[{ kod: '__BOS__', etiket: '— (Bilgi Girilmemiş)' }, ...SAHA_ASAMA_SECENEKLERI].map(s => {
+                  const secili = sahaAsamalar.includes(s.kod)
+                  return (
+                    <label
+                      key={s.kod}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/40 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={secili}
+                        onChange={() => {
+                          const yeni = secili
+                            ? sahaAsamalar.filter(k => k !== s.kod)
+                            : [...sahaAsamalar, s.kod]
+                          handleFiltreChange('saha_asamalar', yeni)
+                        }}
+                        className="h-3.5 w-3.5"
+                      />
+                      <span className={cn('flex-1', s.kod === '__BOS__' && 'text-muted-foreground italic')}>{s.etiket}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+        {/* Tarih bazlı filtre — çoklu seçim */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setTarihSecimAcik(v => !v)}
+            className="flex items-center gap-1 rounded-md border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 min-w-[160px] justify-between"
+          >
+            <span className={cn('truncate', tarihDurumlari.length === 0 && 'text-muted-foreground')}>
+              {tarihDurumlari.length === 0
+                ? 'Tarih (Hepsi)'
+                : tarihDurumlari.length === 1
+                  ? (TARIH_FILTRE_SECENEKLERI.find(t => t.kod === tarihDurumlari[0])?.etiket || tarihDurumlari[0])
+                  : `Tarih (${tarihDurumlari.length} seçili)`}
+            </span>
+            <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', tarihSecimAcik && 'rotate-180')} />
+          </button>
+          {tarihSecimAcik && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setTarihSecimAcik(false)} />
+              <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-md border border-border bg-white shadow-lg py-1">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/30">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tarih Durumu</span>
+                  {tarihDurumlari.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleFiltreChange('tarih_durumlari', [])}
+                      className="text-[10px] text-primary hover:underline"
+                    >
+                      Temizle
+                    </button>
+                  )}
+                </div>
+                {TARIH_FILTRE_SECENEKLERI.map(s => {
+                  const secili = tarihDurumlari.includes(s.kod)
+                  return (
+                    <label
+                      key={s.kod}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/40 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={secili}
+                        onChange={() => {
+                          const yeni = secili
+                            ? tarihDurumlari.filter(k => k !== s.kod)
+                            : [...tarihDurumlari, s.kod]
+                          handleFiltreChange('tarih_durumlari', yeni)
+                        }}
+                        className="h-3.5 w-3.5"
+                      />
+                      <span className={cn('flex-1', s.kod === 'tarih_yok' && 'text-muted-foreground italic')}>{s.etiket}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
         <select
           value={filtreler.bolge_id}
           onChange={(e) => handleFiltreChange('bolge_id', e.target.value)}
@@ -1112,6 +1259,13 @@ export default function ProjeListesi() {
               className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted"
             >
               Secimi Temizle
+            </button>
+            <button
+              onClick={() => setExcelExportModalAcik(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Excel'e Aktar ({seciliIdler.size})
             </button>
             <button
               onClick={() => setYerTeslimXlsxModalAcik(true)}
@@ -1165,6 +1319,14 @@ export default function ProjeListesi() {
         <YerTeslimXlsxModal
           projeler={(projeler || []).filter((p) => seciliIdler.has(p.id))}
           onKapat={() => setYerTeslimXlsxModalAcik(false)}
+        />
+      )}
+
+      {/* Excel'e Aktar Modal */}
+      {excelExportModalAcik && (
+        <ExcelExportModal
+          ids={[...seciliIdler]}
+          onKapat={() => setExcelExportModalAcik(false)}
         />
       )}
 

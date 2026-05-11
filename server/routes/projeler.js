@@ -481,6 +481,94 @@ router.post('/toplu-sil', (req, res) => {
   }
 });
 
+// POST /excel-export — Seçili projeleri seçili sütunlarla XLSX olarak indir
+//   Body: { ids: number[], kolonlar: [{ accessor, baslik }] }
+//   Dönüş: Excel binary (blob)
+router.post('/excel-export', async (req, res) => {
+  try {
+    const db = getDb();
+    const { ids, kolonlar, baslik } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return hata(res, 'Proje ID listesi gerekli');
+    if (!Array.isArray(kolonlar) || kolonlar.length === 0) return hata(res, 'Sütun listesi gerekli');
+    const dosyaBaslik = (typeof baslik === 'string' ? baslik.trim() : '');
+
+    // PROJE_SELECT ile aynı projection — tüm zenginleştirilmiş alanlar
+    const placeholders = ids.map(() => '?').join(',');
+    const projeler = db.prepare(`${PROJE_SELECT} WHERE p.id IN (${placeholders}) ORDER BY p.excel_sira IS NULL, p.excel_sira ASC, p.olusturma_tarihi DESC`).all(...ids.map(Number));
+
+    // Metraj tutarını da ekle (liste endpoint'iyle aynı)
+    try {
+      const { malzemeOzetiUret } = require('../services/metrajOzetService');
+      for (const p of projeler) {
+        let t = 0, i = 0;
+        try { const o = malzemeOzetiUret('proje_kesif_metraj', p.id); t += Number(o.genel_toplam) || 0; i += Number(o.genel_ilerleme_tutar) || 0; } catch {}
+        try { const o = malzemeOzetiUret('hak_edis_metraj', p.id); t += Number(o.genel_toplam) || 0; i += Number(o.genel_ilerleme_tutar) || 0; } catch {}
+        p.metraj_kesif_tutar = t;
+        p.metraj_ilerleme_tutar = i;
+      }
+    } catch {}
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Projeler');
+    // Kolon tanımları (ws.columns header default header satırı kullanır; biz manuel
+    // başlık+kolon satırlarını yazacağız, bu yüzden sadece key ve width veriyoruz)
+    ws.columns = kolonlar.map(k => ({
+      key: k.accessor,
+      width: Math.max(12, (k.baslik || k.accessor).length + 2),
+    }));
+
+    let baslikRowOff = 0;
+    if (dosyaBaslik) {
+      // 1. satıra başlık (merge edilmiş)
+      const r = ws.addRow([dosyaBaslik]);
+      r.height = 26;
+      r.font = { bold: true, size: 14 };
+      r.alignment = { horizontal: 'center', vertical: 'middle' };
+      // Tüm kolonlar boyunca merge
+      ws.mergeCells(1, 1, 1, kolonlar.length);
+      baslikRowOff = 1;
+    }
+
+    // Sütun başlıkları satırı
+    const headerRow = ws.addRow(kolonlar.map(k => k.baslik || k.accessor));
+    headerRow.font = { bold: true };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE7EFFA' } };
+    headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // Veri satırları
+    const dateFields = new Set(['baslama_tarihi','bitis_tarihi','teslim_tarihi','olusturma_tarihi','guncelleme_tarihi']);
+    for (const p of projeler) {
+      const row = {};
+      for (const k of kolonlar) {
+        let v = p[k.accessor];
+        if (v != null && dateFields.has(k.accessor)) v = String(v).slice(0, 10);
+        if (v == null) v = '';
+        row[k.accessor] = v;
+      }
+      ws.addRow(row);
+    }
+    // Sayı kolonlarına biçim ver (kesif, metraj, ilerleme, tutar içerenler)
+    for (const k of kolonlar) {
+      const a = k.accessor || '';
+      if (/tutar|miktar|ilerleme|kesif/i.test(a)) {
+        const col = ws.getColumn(a);
+        col.numFmt = '#,##0.00';
+        col.alignment = { horizontal: 'right' };
+      }
+    }
+    // Freeze: başlık + sütun başlıkları üstte sabit kalsın
+    ws.views = [{ state: 'frozen', ySplit: 1 + baslikRowOff }];
+
+    const buf = await wb.xlsx.writeBuffer();
+    const tarih = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="projeler-${tarih}.xlsx"`);
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
 // GET /:id/durum-gecmisi
 router.get('/:id/durum-gecmisi', (req, res) => {
   try {
