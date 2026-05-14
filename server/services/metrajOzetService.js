@@ -471,4 +471,104 @@ function malzemeOzetiUret(tabloAdi, projeId) {
   return sonuc;
 }
 
-module.exports = { malzemeOzetiUret };
+// ════════════════════════════════════════════════════════════
+// Direk-bazlı tutar hesabı: her satır için "direk + envanterler + iletken"
+// toplam tutarını döndürür. Malzeme grupları (KORUMA/HSTA vb.) patlatılır,
+// açık hat tertipleri (4P+R) Pansy/Rose'a expand edilir, iletkenlerde
+// kg/m dönüşümü uygulanır.
+// ════════════════════════════════════════════════════════════
+function direkBaslicaTutarlariUret(tabloAdi, projeId) {
+  const db = getDb();
+  const satirlar = db.prepare(
+    `SELECT id, sira, nokta1, direk_tip, ag_iletken, og_iletken,
+            ag_iletken_durum, og_iletken_durum,
+            ara_mesafe, notlar, nokta_durum
+     FROM ${tabloAdi} WHERE proje_id = ? ORDER BY sira`
+  ).all(projeId);
+  const malzemeGrupMap = grupHaritasiHaz(db);
+
+  // Tek bir kalem (kategori bazlı) için tutar hesaplar.
+  // İletkenlerde kg/km dönüşümü, parent agirlik mantığı korunur.
+  const kalemTutar = (adi, miktar, durum, kategori) => {
+    if (!adi || !miktar) return 0;
+    let child = childBul(db, adi);
+    if (!child) return 0;
+    if (kategori === 'iletken' && (child.olcu || '').toLowerCase() === 'kg' && !(Number(child.agirlik) > 0)) {
+      const kgKm = kgKmParse(child.malzeme_cinsi);
+      if (kgKm) child = { ...child, agirlik: kgKm / 1000 };
+    }
+    const parent = parentBul(db, child.poz_birlesik);
+    const fiyatKaynagi = parent || child;
+    const fiyat = fiyatSec(fiyatKaynagi, durum);
+    const agirlik = Number(child.agirlik) || 0;
+    const fiyatlanaMiktar = agirlik > 0 ? miktar * agirlik : miktar;
+    return fiyatlanaMiktar * fiyat;
+  };
+
+  const sonuc = [];
+  for (const s of satirlar) {
+    let tutar = 0;
+    const direkDur = s.nokta_durum || 'Yeni';
+
+    if (direkDur !== 'Mevcut') {
+      // Direk
+      if (s.direk_tip) tutar += kalemTutar(s.direk_tip, 1, direkDur, 'direk');
+      // Notlardaki malzemeler (gruplar patlatılır)
+      if (s.notlar) {
+        for (const line of s.notlar.split('\n').filter(Boolean)) {
+          if (/^Iletken:/i.test(line)) continue;
+          const { adi, miktar } = malzemeNotuParse(line);
+          if (!adi) continue;
+          const grup = malzemeGrupMap.get(trUst(adi));
+          if (grup && grup.kalemler.length > 0) {
+            for (const k of grup.kalemler) {
+              const m = (Number(k.miktar) || 1) * miktar;
+              tutar += kalemTutar(k.malzeme_adi, m, direkDur, 'malzeme');
+            }
+          } else {
+            tutar += kalemTutar(adi, miktar, direkDur, 'malzeme');
+          }
+        }
+      }
+    }
+
+    // İletkenler — kendi durumlarıyla
+    if (s.notlar) {
+      for (const line of s.notlar.split('\n').filter(Boolean)) {
+        if (!/^Iletken:/i.test(line)) continue;
+        const { tip, mesafe, durum: satirDurum } = iletkenNotuParse(line);
+        if (!tip || !mesafe) continue;
+        const fallbackDur = isOgIletken(tip)
+          ? (s.og_iletken_durum || 'Yeni')
+          : (s.ag_iletken_durum || 'Yeni');
+        const iletkenDur = satirDurum || fallbackDur;
+        if (iletkenDur === 'Mevcut') continue;
+
+        const t = tertibiParseTekil(tip);
+        if (t && t.tip === 'ag-acik') {
+          for (const k of acikHatExpand(t, mesafe)) {
+            tutar += kalemTutar(k.cins, k.mesafe, iletkenDur, 'iletken');
+          }
+        } else if (t && t.tip === 'og') {
+          for (const k of ogExpand(t, mesafe)) {
+            tutar += kalemTutar(k.cins, k.mesafe, iletkenDur, 'iletken');
+          }
+        } else {
+          tutar += kalemTutar(tip, mesafe, iletkenDur, 'iletken');
+        }
+      }
+    }
+
+    sonuc.push({
+      id: s.id,
+      sira: s.sira,
+      nokta1: s.nokta1,
+      direk_tip: s.direk_tip,
+      nokta_durum: direkDur,
+      tutar: Math.round(tutar * 100) / 100,
+    });
+  }
+  return sonuc;
+}
+
+module.exports = { malzemeOzetiUret, direkBaslicaTutarlariUret };

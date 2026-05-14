@@ -1,10 +1,12 @@
 // doc/ilerleme-11.05.xlsx O sütunundaki "İŞ DURUMU" değerlerini DB'deki
 // projeler.saha_asama kolonuna yansıtır.
 //
-// Eşleştirme anahtarı: Excel C sütunu (PYP no) → DB proje_no
-//   Excel format:  "26.BATI.YB.1.037"
-//   DB format:     "26.YB.1.037"
-//   → "BATI." (ya da bölge adı) strip ile eşleşir.
+// Eşleştirme anahtarı (öncelik sırası):
+//   1) L sütunu (PROJE ADI) ↔ projeler.musteri_adi  — birincil anahtar
+//   2) C sütunu (PYP no) ↔ projeler.proje_no       — fallback (L bulamazsa)
+//      Excel format:  "26.BATI.YB.1.037"
+//      DB format:     "26.YB.1.037"
+//      → orta bölge segmentini strip ile eşleşir.
 //
 // Excel değerleri → saha kodu:
 //   'YER TESLİMİ YAPILMADI' → yer_teslimi_yapilmadi
@@ -37,23 +39,72 @@ function normalizeProjeNo(s) {
   if (!s) return '';
   return String(s).trim().replace(/^(\d+)\.[A-ZÇĞİÖŞÜ]+\.(YB|KET|BAKIM)\./i, '$1.$2.');
 }
+// Proje adı normalize — case + boşluk + Türkçe karakter sadeleştirme (ı/I/İ → i, vs.)
+// "AKİF DUMAN", "Akif Duman", "AKİF  DUMAN " hepsi aynı anahtara düşer.
+function normalizeAd(s) {
+  if (!s) return '';
+  return String(s).trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('tr')
+    .replace(/[ıİiI]/g, 'i')
+    .replace(/[şŞ]/g, 's')
+    .replace(/[ğĞ]/g, 'g')
+    .replace(/[üÜ]/g, 'u')
+    .replace(/[öÖ]/g, 'o')
+    .replace(/[çÇ]/g, 'c')
+    .replace(/[^\w\s]/g, ''); // noktalama at
+}
+
+// I sütununda 7-8 haneli başvuru numarası — DB'deki musteri_adi içinde ara
+function basvuruDan(s) {
+  if (!s) return null;
+  const m = String(s).match(/(\d{6,9})/);
+  return m ? m[1] : null;
+}
 
 function main() {
   const wb = XLSX.readFile(XLSX_PATH);
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-  // R6 başlık, R7'den itibaren veri. C (idx 2) = PYP, O (idx 14) = İŞ DURUMU
-  const istatistik = { dolu: 0, eslesemedi: 0, bilinmeyenDurum: new Map(), guncellenecek: [], degismeyecek: 0 };
+  // R6 başlık, R7'den itibaren veri.
+  // C (idx 2) = PYP, L (idx 11) = PROJE ADI, O (idx 14) = İŞ DURUMU
+  const istatistik = {
+    dolu: 0, eslesemedi: 0, bilinmeyenDurum: new Map(),
+    guncellenecek: [], degismeyecek: 0,
+    adIleEslesen: 0, pypIleEslesen: 0, basvuruIleEslesen: 0,
+  };
   const db = new Database(DB_PATH);
-  const projeGetir = db.prepare('SELECT id, proje_no, saha_asama FROM projeler WHERE proje_no = ?');
-  const guncelle  = db.prepare('UPDATE projeler SET saha_asama = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?');
+  const projeGetirNo = db.prepare('SELECT id, proje_no, musteri_adi, saha_asama FROM projeler WHERE proje_no = ?');
+  // Proje adı eşleşmesi — case-insensitive, Türkçe karakter normalize
+  const tumProjeler = db.prepare('SELECT id, proje_no, musteri_adi, saha_asama FROM projeler').all();
+  // Aynı normalize anahtara düşen birden fazla proje olabilir (duplicate kayıtlar);
+  // hepsini güncellemek için array tutuyoruz.
+  const adIndex = new Map();
+  const basvuruIndex = new Map();
+  for (const p of tumProjeler) {
+    const k = normalizeAd(p.musteri_adi);
+    if (k) {
+      if (!adIndex.has(k)) adIndex.set(k, [p]);
+      else adIndex.get(k).push(p);
+    }
+    const bn = basvuruDan(p.musteri_adi);
+    if (bn) {
+      if (!basvuruIndex.has(bn)) basvuruIndex.set(bn, [p]);
+      else basvuruIndex.get(bn).push(p);
+    }
+  }
+  const guncelle = db.prepare('UPDATE projeler SET saha_asama = ?, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = ?');
 
   for (let i = 6; i < rows.length; i++) {
     const r = rows[i];
     const pypHam = String(r[2] || '').trim();
+    const basvuruHam = String(r[8] || '').trim();
+    const adHam = String(r[11] || '').trim();
     const durumHam = String(r[14] || '').trim();
-    if (!pypHam || !durumHam || pypHam === '-') continue;
+    // Durum yoksa veya hiçbir anahtar yoksa atla
+    if (!durumHam) continue;
+    if (!pypHam && !adHam && !basvuruHam) continue;
     istatistik.dolu++;
 
     const yeniSaha = EXCEL_TO_SAHA[durumHam];
@@ -62,33 +113,61 @@ function main() {
       continue;
     }
 
-    const normPyp = normalizeProjeNo(pypHam);
-    const proje = projeGetir.get(normPyp);
-    if (!proje) {
+    // 1) Proje adı (L) — Türkçe karakter normalize
+    let projeler = null;
+    let yolu = '';
+    if (adHam) {
+      const bulunan = adIndex.get(normalizeAd(adHam));
+      if (bulunan?.length) { projeler = bulunan; yolu = 'L'; istatistik.adIleEslesen++; }
+    }
+    // 2) PYP no (C) fallback
+    if (!projeler && pypHam && pypHam !== '-') {
+      const tek = projeGetirNo.get(normalizeProjeNo(pypHam));
+      if (tek) { projeler = [tek]; yolu = 'C'; istatistik.pypIleEslesen++; }
+    }
+    // 3) Başvuru no (I) fallback
+    if (!projeler) {
+      const bn = basvuruDan(basvuruHam) || basvuruDan(adHam);
+      if (bn) {
+        const bulunan = basvuruIndex.get(bn);
+        if (bulunan?.length) { projeler = bulunan; yolu = 'I'; istatistik.basvuruIleEslesen++; }
+      }
+    }
+
+    if (!projeler) {
       istatistik.eslesemedi++;
-      if (istatistik.eslesemedi <= 5) console.warn(`  ! Eşleşmedi: ${pypHam} (→ ${normPyp})`);
+      if (istatistik.eslesemedi <= 15) {
+        console.warn(`  ! Eşleşmedi: PYP="${pypHam}" BASVURU="${basvuruHam}" AD="${adHam.slice(0,50)}"`);
+      }
       continue;
     }
-    if (proje.saha_asama === yeniSaha) {
-      istatistik.degismeyecek++;
-      continue;
+    // Aynı isimde birden fazla proje varsa hepsini güncelle
+    for (const proje of projeler) {
+      if (proje.saha_asama === yeniSaha) { istatistik.degismeyecek++; continue; }
+      istatistik.guncellenecek.push({
+        id: proje.id, proje_no: proje.proje_no, musteri_adi: proje.musteri_adi,
+        eski: proje.saha_asama, yeni: yeniSaha, yolu,
+      });
     }
-    istatistik.guncellenecek.push({ id: proje.id, proje_no: proje.proje_no, eski: proje.saha_asama, yeni: yeniSaha });
   }
 
   console.log('\n=== Özet ===');
-  console.log(`Excel'de durumu olan satır: ${istatistik.dolu}`);
-  console.log(`DB ile eşleşmeyen:          ${istatistik.eslesemedi}`);
-  console.log(`Aynı durum (atlanacak):     ${istatistik.degismeyecek}`);
-  console.log(`Güncellenecek:              ${istatistik.guncellenecek.length}`);
+  console.log(`Excel'de durumu olan satır:        ${istatistik.dolu}`);
+  console.log(`Proje adı (L) ile eşleşen:        ${istatistik.adIleEslesen}`);
+  console.log(`PYP no (C) fallback ile eşleşen:  ${istatistik.pypIleEslesen}`);
+  console.log(`Başvuru no (I) fallback eşleşen:  ${istatistik.basvuruIleEslesen}`);
+  console.log(`DB ile eşleşmeyen:                ${istatistik.eslesemedi}`);
+  console.log(`Aynı durum (atlanacak):           ${istatistik.degismeyecek}`);
+  console.log(`Güncellenecek:                    ${istatistik.guncellenecek.length}`);
   if (istatistik.bilinmeyenDurum.size > 0) {
     console.log('Tanınmayan Excel durumları:');
     for (const [d, n] of istatistik.bilinmeyenDurum) console.log(`  [${d}] (${n} satır)`);
   }
 
-  console.log('\nÖrnek güncellemeler (ilk 10):');
-  istatistik.guncellenecek.slice(0, 10).forEach(g => {
-    console.log(`  ${g.proje_no.padEnd(20)} ${String(g.eski || '∅').padEnd(20)} → ${g.yeni}`);
+  console.log('\nÖrnek güncellemeler (ilk 12):');
+  istatistik.guncellenecek.slice(0, 12).forEach(g => {
+    const adKisa = (g.musteri_adi || '').slice(0, 32);
+    console.log(`  [${g.yolu}] ${g.proje_no.padEnd(20)} ${adKisa.padEnd(34)} ${String(g.eski || '∅').padEnd(22)} → ${g.yeni}`);
   });
 
   if (!APPLY) {

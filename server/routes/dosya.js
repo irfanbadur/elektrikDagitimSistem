@@ -711,7 +711,8 @@ router.get('/:id/dxf-elemanlar', (req, res) => {
     //   A, R, P → Mevcut (içi boş)
     //   8, E, M → Yeni (tam dolu)
     //   T, B, S → DMM (yarı dolu)
-    const DIREK_SEMBOLLERI = new Set(['A','R','P','8','E','M','T','B','S']);
+    // '2' eski format yeni direk sembolü (font glyph dönüşümlerinde 8 yerine 2 olarak okunur)
+    const DIREK_SEMBOLLERI = new Set(['A','R','P','8','E','M','2','T','B','S']);
     // Dedupe pozisyon bazlı (aynı numaranın farklı trafolarda birden fazla olması durumuna izin ver)
     const anaDigitMap = new Map();
     for (const d of sonuc) {

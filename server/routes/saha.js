@@ -295,7 +295,8 @@ router.get('/proje-cizimleri', (req, res) => {
     const projeler = db.prepare(`
       SELECT p.id, p.proje_no, p.proje_tipi, p.musteri_adi, p.mahalle, p.durum,
         p.il, p.ilce, p.baslama_tarihi, p.bitis_tarihi, p.notlar,
-        p.tamamlanma_yuzdesi, p.ekip_id,
+        p.tamamlanma_yuzdesi, p.ekip_id, p.bolge_id,
+        p.proje_asama, p.saha_asama,
         e.ekip_adi,
         b.bolge_adi,
         d.id as dosya_id, d.orijinal_adi as dosya_adi,

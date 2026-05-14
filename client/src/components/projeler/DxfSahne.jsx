@@ -448,8 +448,26 @@ export default function DxfSahne({ src, dosyaId, onDirekTikla, onDireklerYuklend
             entitiesGroup.add(line)
             eklenen++
           } else if (type === 'TEXT' || type === 'MTEXT') {
-            const txt = entity.text || ''
-            if (!txt) continue
+            const rawTxt = entity.text || ''
+            if (!rawTxt) continue
+            // MTEXT format kodları:
+            //   \P       → satır sonu
+            //   \~       → non-breaking space
+            //   \f...;   → font değişimi
+            //   \C...;   → renk
+            //   \H...;   → yükseklik
+            //   \L \l \O \o \K \k → underline/overline/strike (toggles)
+            //   { } gruplar
+            //   \\       → literal backslash
+            const txtTemiz = rawTxt
+              .replace(/\\P/g, '\n')              // satır sonu
+              .replace(/\\~/g, ' ')               // nbsp
+              .replace(/\\[fFhHcCqQwWaAtTpQ][^;]*;/g, '') // format kodları (font/renk/genişlik/vs.)
+              .replace(/[{}]/g, '')               // grup parantezleri
+              .replace(/\\[LlOoKk]/g, '')         // toggle'lar
+              .replace(/\\\\/g, '\\')             // literal \ kaçışı
+            const lines = txtTemiz.split('\n')
+            const txt = lines.join('\n') // birleşik metin (userData için)
             const halign = entity.halign != null ? entity.halign : 0 // 0=left 1=center 2=right 3=aligned 4=middle 5=fit
             const valign = entity.valign != null ? entity.valign : 0 // 0=baseline 1=bottom 2=middle 3=top
             // DXF alignment kuralı: halign/valign 0'dan farklıysa endPoint/secondAlignmentPoint kullanılır
@@ -468,20 +486,27 @@ export default function DxfSahne({ src, dosyaId, onDirekTikla, onDireklerYuklend
             const fontPx = 64
             const fontStr = `${fontPx}px "${fontAdi}", sans-serif`
             ctx.font = fontStr
-            const m = ctx.measureText(txt)
-            // Gerçek görünür glyph yüksekliği (ascent + descent)
-            const glyphH = Math.max(1,
-              (m.actualBoundingBoxAscent || fontPx * 0.75) +
-              (m.actualBoundingBoxDescent || fontPx * 0.05))
-            const glyphW = Math.max(1, m.width)
+            // Her satırı ölç — en uzun satıra göre canvas genişlik, satır sayısı kadar yükseklik
+            const satirOlcum = lines.map(l => ctx.measureText(l))
+            const satirH = Math.max(1,
+              (satirOlcum[0]?.actualBoundingBoxAscent || fontPx * 0.75) +
+              (satirOlcum[0]?.actualBoundingBoxDescent || fontPx * 0.05))
+            const lineGap = Math.round(satirH * 0.25)
+            const glyphH = satirH * lines.length + lineGap * Math.max(0, lines.length - 1)
+            const glyphW = Math.max(1, ...satirOlcum.map(m => m.width))
             const padX = 4, padY = 6
             canvas.width = Math.ceil(glyphW) + padX * 2
             canvas.height = Math.ceil(glyphH) + padY * 2
             ctx.font = fontStr
             ctx.fillStyle = `#${col.toString(16).padStart(6, '0')}`
             ctx.textBaseline = 'middle'
-            ctx.textAlign = 'center'
-            ctx.fillText(txt, canvas.width / 2, canvas.height / 2)
+            ctx.textAlign = 'left'
+            // Çok satırlı render — sola dayalı, her satırı dikey olarak yerleştir
+            const ilkY = padY + satirH / 2
+            for (let li = 0; li < lines.length; li++) {
+              const cy = ilkY + li * (satirH + lineGap)
+              ctx.fillText(lines[li], padX, cy)
+            }
 
             const tex = new three.CanvasTexture(canvas)
             tex.needsUpdate = true

@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Eye, Pencil, Trash2, X, CheckSquare, FileSpreadsheet, AlertTriangle, Clock, Check, Lock, Unlock, Loader2, ChevronDown } from 'lucide-react'
+import { Plus, Eye, Pencil, Trash2, X, CheckSquare, FileSpreadsheet, AlertTriangle, Clock, Check, Lock, Unlock, Loader2, ChevronDown, Printer } from 'lucide-react'
 import { useProjeler, useProjeSil, useTopluProjeSil, useProjeGuncelle, useProjeKismiGuncelle } from '@/hooks/useProjeler'
 import { useIsTipleri } from '@/hooks/useIsTipleri'
 import { useBolgeler } from '@/hooks/useBolgeler'
@@ -14,6 +14,7 @@ import { OncelikBadge } from '@/components/shared/StatusBadge'
 import MalzemeTalepModal from './MalzemeTalepModal'
 import YerTeslimXlsxModal from './YerTeslimXlsxModal'
 import ExcelExportModal from './ExcelExportModal'
+import PrintModal from './PrintModal'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton'
 import { PROJE_DURUMLARI } from '@/utils/constants'
@@ -399,6 +400,7 @@ export default function ProjeListesi() {
   const [malzemeTalepModalAcik, setMalzemeTalepModalAcik] = useState(false)
   const [yerTeslimXlsxModalAcik, setYerTeslimXlsxModalAcik] = useState(false)
   const [excelExportModalAcik, setExcelExportModalAcik] = useState(false)
+  const [printModalAcik, setPrintModalAcik] = useState(false)
 
   const secimDegistir = useCallback((id) => {
     setSeciliIdler((prev) => {
@@ -1261,6 +1263,13 @@ export default function ProjeListesi() {
               Secimi Temizle
             </button>
             <button
+              onClick={() => setPrintModalAcik(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              <Printer className="h-4 w-4" />
+              Yazdır ({seciliIdler.size})
+            </button>
+            <button
               onClick={() => setExcelExportModalAcik(true)}
               className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
             >
@@ -1327,6 +1336,14 @@ export default function ProjeListesi() {
         <ExcelExportModal
           ids={[...seciliIdler]}
           onKapat={() => setExcelExportModalAcik(false)}
+        />
+      )}
+
+      {/* Yazdır Modal */}
+      {printModalAcik && (
+        <PrintModal
+          projeler={(projeler || []).filter(p => seciliIdler.has(p.id))}
+          onKapat={() => setPrintModalAcik(false)}
         />
       )}
 

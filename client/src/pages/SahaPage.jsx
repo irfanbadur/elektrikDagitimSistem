@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap, useMapEvents, Polyline, CircleMarker, ImageOverlay, LayersControl, LayerGroup } from 'react-leaflet'
 import L from 'leaflet'
@@ -67,6 +67,26 @@ const PROJE_DURUM_RENK = {
   montaj_tamam: '#10b981',
   tamamlandi: '#10b981',
   askida: '#ef4444',
+}
+
+// ─── PROJE / SAHA AŞAMA ETİKETLERİ (ProjeListesi ile uyumlu) ──
+const PROJE_ASAMA_LABEL = {
+  yukleme_sekmesi_yok: 'Yükleme Sekmesi Yok',
+  eksik_bilgi: 'Eksik Bilgi-Sorulacak',
+  cizilecek: 'Çizilecek',
+  cizildi: 'Çizildi',
+  cizildi_yedas_yukleyecek: 'Çizildi-Yedaş Yükleyecek',
+  yuklendi: 'Yüklendi-Sistemde',
+  ret_oldu: 'Ret Oldu',
+  revize_edilecek: 'Revize Edilecek',
+  revize_yuklendi: 'Revize Yüklendi',
+  onaylandi: 'Onaylandı',
+}
+const SAHA_ASAMA_LABEL = {
+  yer_teslimi_yapilmadi: 'Yer Teslimi Yapılmadı',
+  yer_teslimi_yapildi: 'Yer Teslimi Yapıldı',
+  devam_ediyor: 'Devam Ediyor',
+  tamamlandi: 'Tamamlandı',
 }
 
 const GOREV_LABEL = {
@@ -741,12 +761,17 @@ function TumProjelerDxfOverlay({ projeCizimleri }) {
   const map = useMap()
   const overlayRef = useRef(null)
   const imagesRef = useRef([]) // [{img, bounds}]
-  const [hazir, setHazir] = useState(false)
+  const [hazir, setHazir] = useState(0) // her başarılı yüklemede artar — canvas useEffect'i tetikler
   const [yukleniyor, setYukleniyor] = useState(false)
 
   useEffect(() => {
     const cizimleriYukle = projeCizimleri.filter(c => c.dosyaId && c.bounds)
-    if (!cizimleriYukle.length) return
+    if (!cizimleriYukle.length) {
+      // Görünür proje yok — canvas'ı temizle
+      imagesRef.current = []
+      setHazir(v => v + 1)
+      return
+    }
     let cancelled = false
 
     const yukle = async () => {
@@ -806,21 +831,22 @@ function TumProjelerDxfOverlay({ projeCizimleri }) {
         renderer.dispose()
         document.body.removeChild(container)
 
-        if (!cancelled && images.length) {
+        if (!cancelled) {
           imagesRef.current = images
-          setHazir(true)
+          setHazir(v => v + 1) // her yeni image set'inde canvas useEffect'i tetikle
         }
       } catch (err) { console.error('[Saha DXF overlay]', err) }
       finally { if (!cancelled) setYukleniyor(false) }
     }
 
     yukle()
-    return () => { cancelled = true; imagesRef.current = [] }
+    return () => { cancelled = true }
   }, [projeCizimleri.map(c => c.dosyaId).join(',')])
 
-  // Tek 2D canvas — harita container'a doğrudan ekle
+  // Tek 2D canvas — harita container'a doğrudan ekle. `hazir` versiyon değiştikçe
+  // canvas remount edilir; image yoksa null döner (canvas eklenmez).
   useEffect(() => {
-    if (!hazir || !imagesRef.current.length) return
+    if (!imagesRef.current.length) return
     const container = map.getContainer()
     if (!container) return
 
@@ -859,7 +885,7 @@ function TumProjelerDxfOverlay({ projeCizimleri }) {
     }
   }, [hazir, map])
 
-  if (yukleniyor && !hazir) {
+  if (yukleniyor && !imagesRef.current.length) {
     return <CircleMarker center={[41.5, 36.1]} radius={8} pathOptions={{ color: '#6366f1', fillOpacity: 0.3 }}>
       <Tooltip permanent>DXF çizimleri yükleniyor...</Tooltip>
     </CircleMarker>
@@ -1037,6 +1063,69 @@ export default function SahaPage() {
   const [projeCizimleri, setProjeCizimleri] = useState([]) // { projeId, projeNo, dosyaId, cizgiler, noktalar }
   const [gorunurProjeler, setGorunurProjeler] = useState(new Set()) // dosyaId set
 
+  // Filtreler — ekip, bölge, proje aşaması (çizim/onay), saha aşaması (iş durumu), serbest arama
+  const [filtreler, setFiltreler] = useState({ ekip_id: '', bolge_id: '', proje_asama: '', saha_asama: '', arama: '' })
+  const filtreSifirla = () => setFiltreler({ ekip_id: '', bolge_id: '', proje_asama: '', saha_asama: '', arama: '' })
+
+  // Filtre seçenekleri — projeCizimleri içindeki GERÇEK değerlerden dinamik üret.
+  // Her seçeneğin yanına sayı eklenir; kullanıcı boş filtre seçmez.
+  const sayilariCikar = (alan, etiketAlan) => {
+    const m = new Map() // key → { etiket, sayi }
+    for (const c of projeCizimleri) {
+      const k = c[alan]
+      if (!k) continue
+      const mevcut = m.get(k)
+      if (mevcut) mevcut.sayi++
+      else m.set(k, { etiket: c[etiketAlan] || String(k), sayi: 1 })
+    }
+    return [...m.entries()].sort((a, b) => String(a[1].etiket).localeCompare(String(b[1].etiket), 'tr'))
+  }
+  const ekipSecenekleri = useMemo(() => sayilariCikar('ekip_id', 'ekip_adi'), [projeCizimleri])
+  const bolgeSecenekleri = useMemo(() => sayilariCikar('bolge_id', 'bolge_adi'), [projeCizimleri])
+  const projeAsamaSecenekleri = useMemo(() => {
+    const m = new Map()
+    for (const c of projeCizimleri) {
+      const k = c.proje_asama
+      if (!k) continue
+      m.set(k, (m.get(k) || 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) => (PROJE_ASAMA_LABEL[a[0]] || a[0]).localeCompare(PROJE_ASAMA_LABEL[b[0]] || b[0], 'tr'))
+  }, [projeCizimleri])
+  const sahaAsamaSecenekleri = useMemo(() => {
+    const m = new Map()
+    for (const c of projeCizimleri) {
+      const k = c.saha_asama
+      if (!k) continue
+      m.set(k, (m.get(k) || 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) => (SAHA_ASAMA_LABEL[a[0]] || a[0]).localeCompare(SAHA_ASAMA_LABEL[b[0]] || b[0], 'tr'))
+  }, [projeCizimleri])
+
+  // Filtrelenmiş çizimler (haritada gösterilecek projeler)
+  const filtreliCizimler = useMemo(() => {
+    const aramaQ = (filtreler.arama || '').trim().toLocaleLowerCase('tr')
+    return projeCizimleri.filter(c => {
+      if (filtreler.ekip_id && String(c.ekip_id || '') !== String(filtreler.ekip_id)) return false
+      if (filtreler.bolge_id && String(c.bolge_id || '') !== String(filtreler.bolge_id)) return false
+      if (filtreler.proje_asama && (c.proje_asama || '') !== filtreler.proje_asama) return false
+      if (filtreler.saha_asama && (c.saha_asama || '') !== filtreler.saha_asama) return false
+      if (aramaQ) {
+        const hedef = [c.projeNo, c.musteri_adi, c.mahalle, c.ilce, c.il, c.bolge_adi, c.ekip_adi]
+          .filter(Boolean).join(' ').toLocaleLowerCase('tr')
+        if (!hedef.includes(aramaQ)) return false
+      }
+      return true
+    })
+  }, [projeCizimleri, filtreler])
+
+  // Filtrelenmiş ekipler — sadece ekip_id filtresi etkili (diğerleri proje bazlı)
+  const filtreliEkipler = useMemo(() => {
+    if (!filtreler.ekip_id) return ekipler
+    return ekipler.filter(e => String(e.id) === String(filtreler.ekip_id))
+  }, [ekipler, filtreler.ekip_id])
+
+  const filtreAktif = !!(filtreler.ekip_id || filtreler.bolge_id || filtreler.proje_asama || filtreler.saha_asama || filtreler.arama)
+
   const varsayilanMerkez = [41.2867, 36.3300]
   const varsayilanZoom = 10
 
@@ -1074,7 +1163,10 @@ export default function SahaPage() {
                   return {
                     projeId: p.id, projeNo: p.proje_no, projeTipi: p.proje_tipi,
                     musteri_adi: p.musteri_adi, mahalle: p.mahalle, durum: p.durum,
-                    il: p.il, ilce: p.ilce, bolge_adi: p.bolge_adi, ekip_adi: p.ekip_adi,
+                    il: p.il, ilce: p.ilce,
+                    bolge_id: p.bolge_id, bolge_adi: p.bolge_adi,
+                    ekip_id: p.ekip_id, ekip_adi: p.ekip_adi,
+                    proje_asama: p.proje_asama, saha_asama: p.saha_asama,
                     aktif_faz: p.aktif_faz, aktif_adim: p.aktif_adim,
                     baslama_tarihi: p.baslama_tarihi, bitis_tarihi: p.bitis_tarihi,
                     notlar: p.notlar, dosyaId: p.dosya_id, ...j.data
@@ -1177,6 +1269,74 @@ export default function SahaPage() {
           </button>
         </div>
 
+        {/* Filtre bar — arama / ekip / bölge / proje aşaması / saha aşaması */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-slate-50 px-5 py-2.5 text-xs">
+          <span className="font-semibold text-muted-foreground mr-1">Filtre:</span>
+          <div className="relative">
+            <input
+              type="search"
+              value={filtreler.arama}
+              onChange={(e) => setFiltreler(f => ({ ...f, arama: e.target.value }))}
+              placeholder="Proje ara (no, ad, mahalle, ilçe)..."
+              className="w-64 rounded-md border border-input bg-white pl-7 pr-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">🔍</span>
+          </div>
+          <select
+            value={filtreler.ekip_id}
+            onChange={(e) => setFiltreler(f => ({ ...f, ekip_id: e.target.value }))}
+            className="rounded-md border border-input bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">Tüm Ekipler ({projeCizimleri.length})</option>
+            {ekipSecenekleri.map(([id, { etiket, sayi }]) => (
+              <option key={id} value={id}>{etiket} ({sayi})</option>
+            ))}
+          </select>
+          <select
+            value={filtreler.bolge_id}
+            onChange={(e) => setFiltreler(f => ({ ...f, bolge_id: e.target.value }))}
+            className="rounded-md border border-input bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">Tüm Bölgeler</option>
+            {bolgeSecenekleri.map(([id, { etiket, sayi }]) => (
+              <option key={id} value={id}>{etiket} ({sayi})</option>
+            ))}
+          </select>
+          <select
+            value={filtreler.proje_asama}
+            onChange={(e) => setFiltreler(f => ({ ...f, proje_asama: e.target.value }))}
+            className="rounded-md border border-input bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">Proje Aşaması (Hepsi)</option>
+            {projeAsamaSecenekleri.map(([k, sayi]) => (
+              <option key={k} value={k}>{PROJE_ASAMA_LABEL[k] || k} ({sayi})</option>
+            ))}
+          </select>
+          <select
+            value={filtreler.saha_asama}
+            onChange={(e) => setFiltreler(f => ({ ...f, saha_asama: e.target.value }))}
+            className="rounded-md border border-input bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">İş Durumu (Hepsi)</option>
+            {sahaAsamaSecenekleri.map(([k, sayi]) => (
+              <option key={k} value={k}>{SAHA_ASAMA_LABEL[k] || k} ({sayi})</option>
+            ))}
+          </select>
+          {filtreAktif && (
+            <>
+              <button
+                onClick={filtreSifirla}
+                className="rounded-md border border-input bg-white px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+              >
+                Temizle
+              </button>
+              <span className="ml-auto text-muted-foreground">
+                {filtreliCizimler.length}/{projeCizimleri.length} proje
+              </span>
+            </>
+          )}
+        </div>
+
         {/* Hata durumu */}
         {hata && (
           <div className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-800">
@@ -1238,8 +1398,8 @@ export default function SahaPage() {
                 </LayersControl.BaseLayer>
               </LayersControl>
 
-              {/* Ekip markerlari */}
-              {katmanlar.ekipler && ekipler.map((ekip, index) => (
+              {/* Ekip markerlari — filtre uygulanmış */}
+              {katmanlar.ekipler && filtreliEkipler.map((ekip, index) => (
                 <EkipMarker
                   key={`ekip-${ekip.id}`}
                   ekip={ekip}
@@ -1266,11 +1426,11 @@ export default function SahaPage() {
                 })
               })()}
 
-              {/* Proje DXF çizimleri — sadece seçili projeler */}
+              {/* Proje DXF çizimleri — sadece filtre + görünür seçili projeler */}
               {katmanlar.projeCizimleri && gorunurProjeler.size > 0 && (
-                <TumProjelerDxfOverlay projeCizimleri={projeCizimleri.filter(c => gorunurProjeler.has(c.dosyaId))} />
+                <TumProjelerDxfOverlay projeCizimleri={filtreliCizimler.filter(c => gorunurProjeler.has(c.dosyaId))} />
               )}
-              {katmanlar.projeCizimleri && projeCizimleri.map((cizim) => (
+              {katmanlar.projeCizimleri && filtreliCizimler.map((cizim) => (
                 <ProjeMarkerKarti key={`mk-${cizim.dosyaId}`} cizim={cizim}
                   gorunur={gorunurProjeler.has(cizim.dosyaId)}
                   onToggle={() => setGorunurProjeler(prev => {
@@ -1281,7 +1441,12 @@ export default function SahaPage() {
                 />
               ))}
 
-              <FitBounds ekipler={ekipler} paketler={paketler} projeCizimleri={katmanlar.projeCizimleri ? projeCizimleri : []} />
+              <FitBounds
+                key={`fit-${filtreler.ekip_id}-${filtreler.bolge_id}-${filtreler.proje_asama}-${filtreler.saha_asama}-${filtreler.arama}`}
+                ekipler={filtreliEkipler}
+                paketler={paketler}
+                projeCizimleri={katmanlar.projeCizimleri ? filtreliCizimler : []}
+              />
               <MapClickHandler seciliEkipId={seciliEkipId} onKonumAta={konumAta} />
             </MapContainer>
           )}
@@ -1290,12 +1455,12 @@ export default function SahaPage() {
           {!yukleniyor && (ekipler.length > 0 || paketler.length > 0) && (
             <div className="absolute bottom-5 right-5 z-[1000] min-w-[220px] max-h-[300px] overflow-y-auto rounded-lg bg-white p-3 shadow-lg">
               {/* Ekipler */}
-              {ekipler.length > 0 && (
+              {filtreliEkipler.length > 0 && (
                 <>
                   <div className="mb-1.5 text-xs font-semibold text-foreground">
-                    Ekipler ({konumluEkipSayisi})
+                    Ekipler ({filtreliEkipler.filter(e => e.son_latitude && e.son_longitude).length}{filtreAktif && filtreliEkipler.length !== ekipler.length ? `/${ekipler.length}` : ''})
                   </div>
-                  {ekipler.map((ekip, index) => (
+                  {filtreliEkipler.map((ekip, index) => (
                     <div
                       key={ekip.id}
                       className="flex items-center gap-2 py-1.5 text-xs"

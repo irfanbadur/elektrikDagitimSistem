@@ -33,6 +33,15 @@ router.get('/:projeId/malzeme-ozeti', (req, res) => {
   } catch (err) { hata(res, err.message, 500); }
 });
 
+// GET /:projeId/direk-tutarlar — Her direk satırı için (direk + envanter + iletken) toplam tutar
+router.get('/:projeId/direk-tutarlar', (req, res) => {
+  try {
+    const { direkBaslicaTutarlariUret } = require('../services/metrajOzetService');
+    const tutarlar = direkBaslicaTutarlariUret(TABLO, parseInt(req.params.projeId));
+    basarili(res, tutarlar);
+  } catch (err) { hata(res, err.message, 500); }
+});
+
 // GET /:projeId/ozet — Özet
 router.get('/:projeId/ozet', (req, res) => {
   try {

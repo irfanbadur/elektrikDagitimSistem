@@ -26,7 +26,7 @@ const TIP_TUR_MAP = {
 };
 const SEMBOL_DURUM = {
   A: 'Mevcut', R: 'Mevcut', P: 'Mevcut',
-  8: 'Yeni', E: 'Yeni', M: 'Yeni',
+  8: 'Yeni', E: 'Yeni', M: 'Yeni', '2': 'Yeni',
   T: 'DMM', B: 'DMM', S: 'DMM',
 };
 

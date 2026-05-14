@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { Plus, Trash2, BarChart3, Ruler, MapPin, FileSpreadsheet, Upload, Loader2, ExternalLink, ChevronDown, ChevronRight, Search, Wand2, Package, Undo2, Redo2, Eye, EyeOff, Save, Check } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  useHakEdisMetraj, useHakEdisMetrajOzet, useHakEdisMetrajMalzemeOzeti, useHakEdisMetrajEkle, useHakEdisMetrajGuncelle, useHakEdisMetrajSil,
+  useHakEdisMetraj, useHakEdisMetrajOzet, useHakEdisMetrajMalzemeOzeti, useHakEdisMetrajDirekTutarlar, useHakEdisMetrajEkle, useHakEdisMetrajGuncelle, useHakEdisMetrajSil,
   useHakEdisMetrajGecmis, useHakEdisMetrajUndo, useHakEdisMetrajRedo,
-  useProjeKesifMetraj, useProjeKesifMetrajOzet, useProjeKesifMetrajMalzemeOzeti, useProjeKesifMetrajEkle, useProjeKesifMetrajGuncelle, useProjeKesifMetrajSil,
+  useProjeKesifMetraj, useProjeKesifMetrajOzet, useProjeKesifMetrajMalzemeOzeti, useProjeKesifMetrajDirekTutarlar, useProjeKesifMetrajEkle, useProjeKesifMetrajGuncelle, useProjeKesifMetrajSil,
   useProjeKesifMetrajGecmis, useProjeKesifMetrajUndo, useProjeKesifMetrajRedo,
 } from '@/hooks/useHakEdisMetraj'
 
@@ -19,6 +19,7 @@ export const HAK_EDIS_KONFIGI = {
     useListe: useHakEdisMetraj,
     useOzet: useHakEdisMetrajOzet,
     useMalzemeOzeti: useHakEdisMetrajMalzemeOzeti,
+    useDirekTutarlar: useHakEdisMetrajDirekTutarlar,
     useEkle: useHakEdisMetrajEkle,
     useGuncelle: useHakEdisMetrajGuncelle,
     useSil: useHakEdisMetrajSil,
@@ -38,6 +39,7 @@ export const KESIF_KONFIGI = {
     useListe: useProjeKesifMetraj,
     useOzet: useProjeKesifMetrajOzet,
     useMalzemeOzeti: useProjeKesifMetrajMalzemeOzeti,
+    useDirekTutarlar: useProjeKesifMetrajDirekTutarlar,
     useEkle: useProjeKesifMetrajEkle,
     useGuncelle: useProjeKesifMetrajGuncelle,
     useSil: useProjeKesifMetrajSil,
@@ -672,9 +674,10 @@ function analizDirek(rawTip, sembol, komsular) {
   const isAgac = /\b\d+\s*-\s*O\b/i.test(tip) || /^\d+\s*-\s*O$/i.test(tip) // 9-O, 12-O ahşap direk
 
   // Sembol durumu (Yeni/Mevcut/DMM) — DXF parser kuralları
+  // '2' eski format yeni direk sembolüdür (font değişikliği sonucu 8 yerine 2 olabilir)
   const SEMBOL_DURUM = {
     'A': 'Mevcut', 'R': 'Mevcut', 'P': 'Mevcut',
-    '8': 'Yeni', 'E': 'Yeni', 'M': 'Yeni',
+    '8': 'Yeni', 'E': 'Yeni', 'M': 'Yeni', '2': 'Yeni',
     'T': 'DMM', 'B': 'DMM', 'S': 'DMM',
   }
   const direkDurum = SEMBOL_DURUM[sembol] || 'Yeni'
@@ -787,7 +790,7 @@ function hesaplaOtoMalzemeler(tip, yakinlar, komsular, sembol) {
 }
 
 // ── Direk accordion satırı ──
-function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSecim, projeId, onSpriteGuncelle }) {
+function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSecim, projeId, onSpriteGuncelle, tutar }) {
   // Notlar'dan malzeme ve iletken parse et — local state ile takip
   const parseNotlar = (notlarStr) => {
     const satirlar = (notlarStr || '').split('\n').filter(Boolean)
@@ -1104,6 +1107,19 @@ function DirekDetay({ satir: s, acik, onToggle, onGuncelle, onSil, secili, onSec
         <span className="text-[10px] font-mono text-emerald-600 w-14">{s.direk_tip || '-'}</span>
         <span className="text-[10px] tabular-nums font-medium w-12 text-right">{s.ara_mesafe ? `${s.ara_mesafe}m` : '-'}</span>
         <span className="text-[9px] text-muted-foreground flex-1 truncate ml-2">{malzemeSatirlari.length} malzeme, {iletkenSatirlari.length} iletken</span>
+        {tutar != null && (
+          <span
+            className={cn(
+              'text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded',
+              tutar > 0 ? 'bg-emerald-50 text-emerald-700' : 'text-muted-foreground/40'
+            )}
+            title="Direk + envanter + iletken toplam tutarı"
+          >
+            {tutar > 0
+              ? `${tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
+              : '—'}
+          </span>
+        )}
         {(() => {
           const toplam = malzemeSatirlari.length + iletkenSatirlari.length
           return (
@@ -1324,6 +1340,15 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
   const guncelle = konfig.hooks.useGuncelle(projeId)
   const sil = konfig.hooks.useSil(projeId)
   const { data: malzemeOzeti } = konfig.hooks.useMalzemeOzeti(projeId)
+  // Her direk için (direk + envanter + iletken) toplam tutar — nokta1 → tutar map'i
+  const { data: direkTutarlariRaw } = konfig.hooks.useDirekTutarlar
+    ? konfig.hooks.useDirekTutarlar(projeId)
+    : { data: null }
+  const direkTutarlariMap = useMemo(() => {
+    const m = new Map()
+    for (const t of direkTutarlariRaw || []) m.set(t.id, t.tutar)
+    return m
+  }, [direkTutarlariRaw])
   // Undo / Redo
   const { data: gecmisData } = konfig.hooks.useGecmis ? konfig.hooks.useGecmis(projeId) : { data: null }
   const undo = konfig.hooks.useUndo ? konfig.hooks.useUndo(projeId) : null
@@ -1466,10 +1491,17 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
     try {
       const dxfListRes = await api.get(`/dosya/proje/${projeId}/dxf-listesi`)
       const dxfler = dxfListRes?.data || dxfListRes || []
-      const kaynakDxf = dxfler.find(d => d.adim_kodu === konfig.dxfAdimKodu)
+      // Aynı adımda birden fazla DXF olabilir (ör. VektorDiyagrami.dxf + YENİ DURUM.dxf).
+      // Vektör diyagramı genelde yardımcı çizim olur — "vektor/diyagram" içermeyenleri tercih et.
+      const adayDxfler = dxfler.filter(d => d.adim_kodu === konfig.dxfAdimKodu)
+      const tercihEdilenler = adayDxfler.filter(d => !/vektor|diyagram/i.test(`${d.orijinal_adi || ''} ${d.dosya_adi || ''}`))
+      const kaynakDxf = tercihEdilenler[0] || adayDxfler[0]
       if (!kaynakDxf) {
         alert(konfig.dxfBulunamadiMesaji)
         return
+      }
+      if (adayDxfler.length > 1) {
+        console.info('[OtoTespit] Bu adımda', adayDxfler.length, 'DXF var — seçildi:', kaynakDxf.orijinal_adi || kaynakDxf.dosya_adi)
       }
       const elemanRes = await api.get(`/dosya/${kaynakDxf.id}/dxf-elemanlar`)
       const elemanData = elemanRes?.data || elemanRes
@@ -1489,9 +1521,10 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
       //   A, R, P → Mevcut direk (içi boş sembol)
       //   8, E, M → Yeni direk (tam dolu sembol)
       //   T, B, S → DMM — Demontajdan Montaj (yarı dolu sembol)
+      // '2' eski format yeni direk sembolü (bazı font dönüşümlerinde 8 yerine 2 olarak okunur)
       const SEMBOL_DURUM = {
         'A': 'Mevcut', 'R': 'Mevcut', 'P': 'Mevcut',
-        '8': 'Yeni', 'E': 'Yeni', 'M': 'Yeni',
+        '8': 'Yeni', 'E': 'Yeni', 'M': 'Yeni', '2': 'Yeni',
         'T': 'DMM', 'B': 'DMM', 'S': 'DMM',
       }
       const anaDirekler = elemanlar.filter(d =>
@@ -1535,16 +1568,18 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
           numara: d.numara, tip: d.tip, sembol: d.sembol, sembolAdi: d.sembolAdi,
           komsular: d.komsular, yakinlar, durum,
         }
-        // Otomatik tespit: zorla yeni satır + batch_id ile grupla (tek undo ile geri al)
+        // Otomatik tespit: mevcut numarayı atla (duplikasyon olmasın), sadece eksikleri ekle.
+        // İkinci kez çalıştırıldığında "Eksikleri Tamamla" davranışı.
         const sonuc = await direkBilgisiniIsle(bilgi, guncelSatirlar, {
-          zorlaYeni: true, acma: false, batchInfo,
+          zorlaYeni: false, acma: false, batchInfo,
         })
         if (sonuc?.yeni && sonuc.id) {
           guncelSatirlar.push({ id: sonuc.id, nokta1: d.numara })
           eklenen++
         }
       }
-      alert(`${anaDirekler.length} direk tarandı, ${eklenen} yeni satır eklendi.\nGeri almak için Ctrl+Z.`)
+      const atlanan = anaDirekler.length - eklenen
+      alert(`${anaDirekler.length} direk tarandı, ${eklenen} yeni satır eklendi${atlanan > 0 ? `, ${atlanan} mevcut atlandı` : ''}.\nGeri almak için Ctrl+Z.`)
     } catch (err) {
       alert('Otomatik tespit hatası: ' + (err.message || ''))
     } finally {
@@ -1697,6 +1732,7 @@ export default function ProjeHakEdis({ projeId, onSpriteGuncelle, seciliDirekBil
             onSil={() => sil.mutate(s.id)} secili={seciliIdler.has(s.id)} projeId={projeId}
             onSecim={c => setSeciliIdler(p => { const n = new Set(p); c ? n.add(s.id) : n.delete(s.id); return n })}
             onSpriteGuncelle={onSpriteGuncelle}
+            tutar={direkTutarlariMap.get(s.id)}
           />
         ))}
       </div>

@@ -26,6 +26,14 @@ export function metrajHookFactory({ apiBase = '/hak-edis-metraj', queryPrefix = 
     enabled: !!projeId,
   })
 
+  // Her direk satırı için (direk + envanter + iletken) toplam tutar
+  const direkTutarlar = (projeId) => useQuery({
+    queryKey: [`${queryPrefix}-direk-tutarlar`, projeId],
+    queryFn: () => api.get(`${apiBase}/${projeId}/direk-tutarlar`),
+    select: (res) => res.data,
+    enabled: !!projeId,
+  })
+
   const ekle = (projeId) => {
     const qc = useQueryClient()
     return useMutation({
@@ -34,6 +42,7 @@ export function metrajHookFactory({ apiBase = '/hak-edis-metraj', queryPrefix = 
         qc.invalidateQueries({ queryKey: [queryPrefix, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-ozet`, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-malzeme-ozeti`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-direk-tutarlar`, projeId] })
       },
     })
   }
@@ -46,6 +55,7 @@ export function metrajHookFactory({ apiBase = '/hak-edis-metraj', queryPrefix = 
         qc.invalidateQueries({ queryKey: [queryPrefix, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-ozet`, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-malzeme-ozeti`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-direk-tutarlar`, projeId] })
       },
     })
   }
@@ -58,6 +68,7 @@ export function metrajHookFactory({ apiBase = '/hak-edis-metraj', queryPrefix = 
         qc.invalidateQueries({ queryKey: [queryPrefix, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-ozet`, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-malzeme-ozeti`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-direk-tutarlar`, projeId] })
       },
     })
   }
@@ -70,6 +81,7 @@ export function metrajHookFactory({ apiBase = '/hak-edis-metraj', queryPrefix = 
         qc.invalidateQueries({ queryKey: [queryPrefix, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-ozet`, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-malzeme-ozeti`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-direk-tutarlar`, projeId] })
       },
     })
   }
@@ -90,6 +102,7 @@ export function metrajHookFactory({ apiBase = '/hak-edis-metraj', queryPrefix = 
         qc.invalidateQueries({ queryKey: [queryPrefix, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-ozet`, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-malzeme-ozeti`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-direk-tutarlar`, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-gecmis`, projeId] })
       },
     })
@@ -103,6 +116,7 @@ export function metrajHookFactory({ apiBase = '/hak-edis-metraj', queryPrefix = 
         qc.invalidateQueries({ queryKey: [queryPrefix, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-ozet`, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-malzeme-ozeti`, projeId] })
+        qc.invalidateQueries({ queryKey: [`${queryPrefix}-direk-tutarlar`, projeId] })
         qc.invalidateQueries({ queryKey: [`${queryPrefix}-gecmis`, projeId] })
       },
     })
@@ -110,6 +124,7 @@ export function metrajHookFactory({ apiBase = '/hak-edis-metraj', queryPrefix = 
 
   return {
     useListe: liste, useOzet: ozet, useMalzemeOzeti: malzemeOzeti,
+    useDirekTutarlar: direkTutarlar,
     useEkle: ekle, useTopluEkle: topluEkle, useGuncelle: guncelle, useSil: sil,
     useGecmis: gecmis, useUndo: undo, useRedo: redo,
   }
@@ -120,6 +135,7 @@ const hakEdisHooks = metrajHookFactory({ apiBase: '/hak-edis-metraj', queryPrefi
 export const useHakEdisMetraj            = hakEdisHooks.useListe
 export const useHakEdisMetrajOzet        = hakEdisHooks.useOzet
 export const useHakEdisMetrajMalzemeOzeti = hakEdisHooks.useMalzemeOzeti
+export const useHakEdisMetrajDirekTutarlar = hakEdisHooks.useDirekTutarlar
 export const useHakEdisMetrajEkle        = hakEdisHooks.useEkle
 export const useHakEdisMetrajTopluEkle   = hakEdisHooks.useTopluEkle
 export const useHakEdisMetrajGuncelle    = hakEdisHooks.useGuncelle
@@ -133,6 +149,7 @@ const kesifHooks = metrajHookFactory({ apiBase: '/proje-kesif-metraj', queryPref
 export const useProjeKesifMetraj             = kesifHooks.useListe
 export const useProjeKesifMetrajOzet         = kesifHooks.useOzet
 export const useProjeKesifMetrajMalzemeOzeti = kesifHooks.useMalzemeOzeti
+export const useProjeKesifMetrajDirekTutarlar = kesifHooks.useDirekTutarlar
 export const useProjeKesifMetrajEkle         = kesifHooks.useEkle
 export const useProjeKesifMetrajTopluEkle    = kesifHooks.useTopluEkle
 export const useProjeKesifMetrajGuncelle     = kesifHooks.useGuncelle
