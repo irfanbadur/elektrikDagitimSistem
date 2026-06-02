@@ -982,6 +982,11 @@ const DURUM_RENK = {
 function ProjeKarti({ cizim }) {
   const [acik, setAcik] = useState(false)
   const durum = DURUM_RENK[cizim.durum] || DURUM_RENK.baslama
+  // Proje keşif toplamı — kesif_toplam (server'da hesaplı) varsa onu kullan, yoksa kesif_tutari
+  const tutar = Number(cizim.kesif_toplam) || Number(cizim.kesif_tutari) || 0
+  const tutarStr = tutar > 0
+    ? tutar.toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' ₺'
+    : null
 
   return (
     <div style={{ margin: -8 }}>
@@ -992,7 +997,12 @@ function ProjeKarti({ cizim }) {
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ fontWeight: 700, fontSize: 13 }}>{cizim.projeNo}</span>
-          <span style={{ fontSize: 11, opacity: 0.85 }}>{cizim.musteri_adi || cizim.mahalle || ''}</span>
+          <span style={{ fontSize: 11, opacity: 0.9, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+            <span>{cizim.musteri_adi || cizim.mahalle || ''}</span>
+            {tutarStr && (
+              <span style={{ fontWeight: 700, color: '#fef08a' }}>{tutarStr}</span>
+            )}
+          </span>
         </div>
         <span style={{ fontSize: 16, transition: 'transform 0.2s', transform: acik ? 'rotate(180deg)' : 'rotate(0)' }}>▾</span>
       </div>
@@ -1169,6 +1179,7 @@ export default function SahaPage() {
                     proje_asama: p.proje_asama, saha_asama: p.saha_asama,
                     aktif_faz: p.aktif_faz, aktif_adim: p.aktif_adim,
                     baslama_tarihi: p.baslama_tarihi, bitis_tarihi: p.bitis_tarihi,
+                    kesif_tutari: p.kesif_tutari, kesif_toplam: p.kesif_toplam,
                     notlar: p.notlar, dosyaId: p.dosya_id, ...j.data
                   }
                 }
@@ -1232,41 +1243,6 @@ export default function SahaPage() {
             </p>
           </div>
 
-          {/* Katman kontrolleri */}
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs">
-            <input
-              type="checkbox"
-              checked={katmanlar.ekipler}
-              onChange={() => katmanToggle('ekipler')}
-              className="accent-primary"
-            />
-            Ekipler
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs">
-            <input
-              type="checkbox"
-              checked={katmanlar.veriPaketleri}
-              onChange={() => katmanToggle('veriPaketleri')}
-              className="accent-primary"
-            />
-            Veri Paketleri
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs">
-            <input
-              type="checkbox"
-              checked={katmanlar.projeCizimleri}
-              onChange={() => katmanToggle('projeCizimleri')}
-              className="accent-primary"
-            />
-            Proje Çizimleri {projeCizimleri.length > 0 && <span className="text-muted-foreground">({projeCizimleri.length})</span>}
-          </label>
-
-          <button
-            onClick={verileriYukle}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
-          >
-            Yenile
-          </button>
         </div>
 
         {/* Filtre bar — arama / ekip / bölge / proje aşaması / saha aşaması */}

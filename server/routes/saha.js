@@ -297,6 +297,7 @@ router.get('/proje-cizimleri', (req, res) => {
         p.il, p.ilce, p.baslama_tarihi, p.bitis_tarihi, p.notlar,
         p.tamamlanma_yuzdesi, p.ekip_id, p.bolge_id,
         p.proje_asama, p.saha_asama,
+        p.kesif_tutari,
         e.ekip_adi,
         b.bolge_adi,
         d.id as dosya_id, d.orijinal_adi as dosya_adi,
@@ -312,6 +313,19 @@ router.get('/proje-cizimleri', (req, res) => {
       GROUP BY p.id
       ORDER BY p.olusturma_tarihi DESC
     `).all();
+
+    // Metraj keşif toplamı — direk-bazlı keşiften hesapla, kesif_tutari ile topla
+    try {
+      const { malzemeOzetiUret } = require('../services/metrajOzetService');
+      for (const p of projeler) {
+        let metrajTutar = 0;
+        try { metrajTutar += Number(malzemeOzetiUret('proje_kesif_metraj', p.id).genel_toplam) || 0; } catch {}
+        try { metrajTutar += Number(malzemeOzetiUret('hak_edis_metraj', p.id).genel_toplam) || 0; } catch {}
+        // Toplam: Excel-bazlı artırımlı keşif tutarı varsa onu kullan, yoksa metraj
+        p.kesif_toplam = (Number(p.kesif_tutari) > 0 ? Number(p.kesif_tutari) : 0) + metrajTutar;
+      }
+    } catch {}
+
     basarili(res, projeler);
   } catch (error) {
     hata(res, error.message, 500);
