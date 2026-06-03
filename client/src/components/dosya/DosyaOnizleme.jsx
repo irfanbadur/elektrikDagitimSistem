@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const KATEGORI_IKON = {
   fotograf: '📸', cizim: '📐', belge: '📄', tablo: '📊',
@@ -26,11 +26,56 @@ export default function DosyaOnizleme({ dosya, onKapat }) {
     return () => window.removeEventListener('keydown', handler)
   }, [onKapat])
 
+  // DOCX (Office Word) tespit + lazy-render — Hooks koşullu olamayacağı için en üstte
+  const docxRef = useRef(null)
+  const [docxYukleniyor, setDocxYukleniyor] = useState(false)
+  const [docxHata, setDocxHata] = useState(null)
+
+  const dosyaAdi = String(dosya?.orijinal_adi || dosya?.dosya_adi || '').toLowerCase()
+  const isDocx = dosya?.mime_tipi === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    || dosyaAdi.endsWith('.docx')
+  // DOC eski Word formatı (binary) — docx-preview desteklemez, "indir" gösterilir
+  const isDocEski = dosya?.mime_tipi === 'application/msword' || dosyaAdi.endsWith('.doc')
+  const dosyaUrl = dosya ? `/api/dosya/${dosya.id}/dosya` : ''
+
+  useEffect(() => {
+    if (!isDocx || !dosya) return
+    let iptal = false
+    setDocxYukleniyor(true); setDocxHata(null)
+    ;(async () => {
+      try {
+        const r = await fetch(dosyaUrl)
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        const blob = await r.blob()
+        if (iptal) return
+        const { renderAsync } = await import('docx-preview')
+        if (!docxRef.current || iptal) return
+        docxRef.current.innerHTML = ''
+        await renderAsync(blob, docxRef.current, null, {
+          className: 'docx-preview-render',
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          ignoreLastRenderedPageBreak: true,
+          experimental: true,
+          trimXmlDeclaration: true,
+          useBase64URL: true,
+        })
+      } catch (e) {
+        if (!iptal) setDocxHata(e.message || 'Word belgesi açılamadı')
+      } finally {
+        if (!iptal) setDocxYukleniyor(false)
+      }
+    })()
+    return () => { iptal = true }
+  }, [isDocx, dosya?.id, dosyaUrl])
+
   if (!dosya) return null
 
   const isFoto = dosya.kategori === 'fotograf'
   const isPdf = dosya.mime_tipi === 'application/pdf'
-  const dosyaUrl = `/api/dosya/${dosya.id}/dosya`
   const indirUrl = `/api/dosya/${dosya.id}/indir`
   const ozel = dosya.ozel_alanlar ? (typeof dosya.ozel_alanlar === 'string' ? JSON.parse(dosya.ozel_alanlar) : dosya.ozel_alanlar) : {}
   const etiketler = dosya.etiketler ? (typeof dosya.etiketler === 'string' ? JSON.parse(dosya.etiketler) : dosya.etiketler) : []
@@ -47,7 +92,8 @@ export default function DosyaOnizleme({ dosya, onKapat }) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'white', borderRadius: '16px', maxWidth: '720px', width: '100%',
+          background: 'white', borderRadius: '16px',
+          maxWidth: (isDocx || isPdf) ? '960px' : '720px', width: '100%',
           maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
         }}
       >
@@ -112,7 +158,42 @@ export default function DosyaOnizleme({ dosya, onKapat }) {
             </div>
           )}
 
-          {!isFoto && !isPdf && (
+          {isDocx && (
+            <div style={{ marginBottom: '16px' }}>
+              {docxYukleniyor && (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>📄</div>
+                  <div style={{ fontSize: '13px' }}>Word belgesi açılıyor…</div>
+                </div>
+              )}
+              {docxHata && (
+                <div style={{ padding: '20px', textAlign: 'center', background: '#fef2f2', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+                  Önizleme oluşturulamadı: {docxHata}
+                  <div style={{ marginTop: '8px' }}>
+                    <a href={indirUrl} style={{ color: '#2563eb' }}>İndirip Word ile açın</a>
+                  </div>
+                </div>
+              )}
+              <div
+                ref={docxRef}
+                style={{
+                  background: '#f3f4f6', borderRadius: '8px',
+                  maxHeight: '60vh', overflow: 'auto',
+                  display: docxYukleniyor || docxHata ? 'none' : 'block',
+                }}
+              />
+            </div>
+          )}
+
+          {isDocEski && !isDocx && (
+            <div style={{ padding: '24px', textAlign: 'center', background: '#fffbeb', borderRadius: '8px', marginBottom: '16px', color: '#92400e' }}>
+              <div style={{ fontSize: '36px', marginBottom: '8px' }}>📄</div>
+              <div style={{ fontSize: '13px', marginBottom: '6px' }}>Eski Word formatı (.doc) — tarayıcıda önizleme yok</div>
+              <a href={indirUrl} style={{ color: '#2563eb', fontSize: '13px' }}>Indirmek için tıklayın</a>
+            </div>
+          )}
+
+          {!isFoto && !isPdf && !isDocx && !isDocEski && (
             <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', background: '#f9fafb', borderRadius: '8px', marginBottom: '16px' }}>
               <div style={{ fontSize: '48px', marginBottom: '8px' }}>{KATEGORI_IKON[dosya.kategori] || '📎'}</div>
               <div style={{ fontSize: '14px' }}>Bu dosya tipi icin onizleme mevcut degil</div>
