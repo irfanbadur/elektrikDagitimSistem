@@ -99,7 +99,7 @@ function SutunSecici({ table }) {
   )
 }
 
-export default function DataTable({ columns, data = [], searchable = true, searchPlaceholder = 'Ara...', pagination = true, pageSize = 25, onRowDoubleClick, columnToggle = true, stickyHeader = false, rowNumber = false }) {
+export default function DataTable({ columns, data = [], searchable = true, searchPlaceholder = 'Ara...', pagination = true, pageSize = 25, onRowDoubleClick, columnToggle = true, stickyHeader = false, rowNumber = false, rowClassName }) {
   const [sorting, setSorting] = useState([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [columnVisibility, setColumnVisibility] = useState({})
@@ -177,13 +177,20 @@ export default function DataTable({ columns, data = [], searchable = true, searc
             {table.getRowModel().rows.length === 0 ? (
               <tr><td colSpan={columns.length} className="px-4 py-12 text-center text-muted-foreground">Kayit bulunamadi</td></tr>
             ) : (
-              table.getRowModel().rows.map((row, i) => (
+              table.getRowModel().rows.map((row, i) => {
+                const extraCls = typeof rowClassName === 'function' ? rowClassName(row.original, i) : ''
+                const ozelArkaplan = !!extraCls
+                return (
                 <tr
                   key={row.id}
                   onDoubleClick={() => onRowDoubleClick?.(row.original)}
-                  className={`border-b border-border/60 last:border-0 transition-colors ${
-                    i % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'
-                  } hover:bg-primary/5 ${onRowDoubleClick ? 'cursor-pointer' : ''}`}
+                  className={cn(
+                    'border-b border-border/60 last:border-0 transition-colors',
+                    !ozelArkaplan && (i % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'),
+                    'hover:bg-primary/5',
+                    onRowDoubleClick && 'cursor-pointer',
+                    extraCls,
+                  )}
                 >
                   {rowNumber && <td className="px-3 py-3.5 text-center text-xs text-muted-foreground">{i + 1}</td>}
                   {row.getVisibleCells().map((cell) => {
@@ -199,7 +206,8 @@ export default function DataTable({ columns, data = [], searchable = true, searc
                     )
                   })}
                 </tr>
-              ))
+                )
+              })
             )}
           </tbody>
         </table>

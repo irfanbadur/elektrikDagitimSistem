@@ -25,7 +25,15 @@ const TAMAMLANDI_DURUMLAR = new Set([
   'tamamlandi', 'kabul', 'kabul_edildi', 'enerjilendi', 'kapali', 'iptal',
 ])
 
+// EVP (eksik_giderim) adımı tamamlandıysa proje fiilen tamamlanmıştır
+function evpTamamlandiMi(proje) {
+  const ad = projeAdimlari(proje).find(a => a.adim_kodu === 'eksik_giderim')
+  return !!ad && String(ad.durum || '').toLowerCase() === 'tamamlandi'
+}
+
 function projeDurumu(proje) {
+  // EVP adımı tamamlandıysa: kesinlikle tamamlanmış say (bitiş geçmiş bile olsa)
+  if (evpTamamlandiMi(proje)) return 'tamamlandi'
   // Tarihleri parse et
   const bas = proje.baslama_tarihi ? new Date(proje.baslama_tarihi) : null
   const bit = proje.bitis_tarihi ? new Date(proje.bitis_tarihi) : null
@@ -160,6 +168,14 @@ function TarihHucresi({ proje, alan }) {
     return <span className="text-xs text-red-600">{tarih}</span>
   }
   if (durum === 'tamamlandi') {
+    // Bitiş sütununda sadece onay ikonu (tarih tooltipte); başlama sütununda küçük ✓+tarih
+    if (alan === 'bitis') {
+      return (
+        <span title={`Tamamlandı (bitiş: ${tarih})`} className="inline-flex items-center justify-center">
+          <Check className="h-5 w-5 text-emerald-600" strokeWidth={3} />
+        </span>
+      )
+    }
     return (
       <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
         <Check className="h-3 w-3" /> {tarih}
@@ -1310,6 +1326,7 @@ export default function ProjeListesi() {
         pagination={false}
         stickyHeader
         rowNumber
+        rowClassName={(p) => projeDurumu(p) === 'tamamlandi' ? 'bg-emerald-50 hover:bg-emerald-100/70' : ''}
       />
 
       {silmeHatasi && (
