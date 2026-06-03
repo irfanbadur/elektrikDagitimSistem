@@ -171,11 +171,10 @@ function TarihHucresi({ proje, alan }) {
     return <span className="text-xs text-red-600">{tarih}</span>
   }
   if (durum === 'tamamlandi') {
-    // Hem başlama hem bitiş sütununda büyük yeşil onay ikonu (tarih tooltipte)
-    const ipucu = alan === 'baslama' ? `Tamamlandı (başlama: ${tarih})` : `Tamamlandı (bitiş: ${tarih})`
+    // Hem başlama hem bitiş sütununda: yeşil onay ikonu + tarih
     return (
-      <span title={ipucu} className="inline-flex items-center justify-center">
-        <Check className="h-5 w-5 text-emerald-600" strokeWidth={3} />
+      <span title="Tamamlandı" className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+        <Check className="h-4 w-4 text-emerald-600 shrink-0" strokeWidth={3} /> {tarih}
       </span>
     )
   }
