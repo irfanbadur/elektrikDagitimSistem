@@ -12,6 +12,7 @@ import { useAuth } from '@/context/AuthContext'
 import api from '@/api/client'
 import { cn } from '@/lib/utils'
 import { Upload, FileText, Image, File, Loader2 } from 'lucide-react'
+import SharedDosyaOnizleme from '@/components/dosya/DosyaOnizleme'
 
 // --- DURUM STILLERI ---
 const DURUM_STILLER = {
@@ -60,15 +61,20 @@ function IlerlemeBar({ ilerleme }) {
 }
 
 // --- DOSYA ON IZLEME (Windows dosya penceresi stili) ---
-function DosyaOnizleme({ dosya }) {
+function DosyaOnizleme({ dosya, onTikla }) {
   const adi = dosya.adi || dosya.orijinal_adi || dosya.dosya_adi || ''
   const ext = adi.split('.').pop().toLowerCase()
   const resim = ['jpg','jpeg','png','gif','webp'].includes(ext)
   const thumbSrc = dosya.id ? `/api/dosya/${dosya.id}/thumb` : null
 
   return (
-    <div className="flex flex-col items-center w-[56px] group" title={adi}>
-      <div className="w-10 h-10 rounded border border-gray-200 bg-white overflow-hidden flex items-center justify-center">
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onTikla?.(dosya) }}
+      className="flex flex-col items-center w-[56px] group focus:outline-none"
+      title={adi}
+    >
+      <div className="w-10 h-10 rounded border border-gray-200 bg-white overflow-hidden flex items-center justify-center group-hover:border-blue-400 group-hover:shadow-sm transition">
         {resim && thumbSrc ? (
           <img src={thumbSrc} alt={adi} className="w-full h-full object-cover" />
         ) : (
@@ -77,10 +83,10 @@ function DosyaOnizleme({ dosya }) {
           </div>
         )}
       </div>
-      <span className="mt-0.5 text-[8px] text-gray-500 leading-tight text-center truncate w-full group-hover:text-gray-800">
+      <span className="mt-0.5 text-[8px] text-gray-500 leading-tight text-center truncate w-full group-hover:text-blue-700">
         {adi.length > 10 ? adi.slice(0, 8) + '..' : adi}
       </span>
-    </div>
+    </button>
   )
 }
 
@@ -91,6 +97,7 @@ function AdimKarti({ adim, projeId, projeNo, onBaslat, onTamamla, onAtla }) {
   const dosyaYuklenebilir = adim.durum === 'devam_ediyor'
   const [yukleniyor, setYukleniyor] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [secilenDosya, setSecilenDosya] = useState(null)
   const fileInputRef = useRef(null)
   const qc = useQueryClient()
   const { kullanici } = useAuth()
@@ -222,9 +229,9 @@ function AdimKarti({ adim, projeId, projeNo, onBaslat, onTamamla, onAtla }) {
           )}
         >
           <div className="flex flex-wrap gap-1 p-1.5 content-start min-h-full">
-            {/* Mevcut dosyalar */}
+            {/* Mevcut dosyalar — tıklayınca modal önizleme açılır */}
             {dosyalar.map((d) => (
-              <DosyaOnizleme key={d.id} dosya={d} />
+              <DosyaOnizleme key={d.id} dosya={d} onTikla={setSecilenDosya} />
             ))}
 
             {/* Yukleniyor gostergesi */}
@@ -277,6 +284,10 @@ function AdimKarti({ adim, projeId, projeNo, onBaslat, onTamamla, onAtla }) {
           )}
         </div>
       </div>
+      {/* Dosya önizleme modali — docx/pdf/foto */}
+      {secilenDosya && (
+        <SharedDosyaOnizleme dosya={secilenDosya} onKapat={() => setSecilenDosya(null)} />
+      )}
     </div>
   )
 }
