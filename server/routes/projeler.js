@@ -481,6 +481,224 @@ router.post('/toplu-sil', (req, res) => {
   }
 });
 
+// POST /malzeme-listesi-toplu — Seçili projelerden toplu malzeme özeti üret.
+//   Body: { ids: number[] }
+//   Dönüş: { gruplar:[...], bagimsiz:[...], genel_toplam, genel_ilerleme_tutar, proje_sayisi }
+router.post('/malzeme-listesi-toplu', (req, res) => {
+  try {
+    const db = getDb();
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return hata(res, 'Proje ID listesi gerekli');
+
+    const { malzemeOzetiUret } = require('../services/metrajOzetService');
+
+    // POZ + DURUM bazlı parent gruplar; POZ + DURUM + AD bazlı bağımsız kalemler.
+    const grupMap = new Map();        // `${poz}||${durum}` → grup
+    const bagimsizMap = new Map();    // `${poz||''}||${durum}||${adi}` → kalem
+    let genelToplam = 0, genelIlerlemeTutar = 0;
+
+    for (const pid of ids) {
+      const id = parseInt(pid);
+      if (!id) continue;
+      for (const tablo of ['proje_kesif_metraj', 'hak_edis_metraj']) {
+        let ozet;
+        try { ozet = malzemeOzetiUret(tablo, id); } catch { continue; }
+        if (!ozet) continue;
+        genelToplam += Number(ozet.genel_toplam) || 0;
+        genelIlerlemeTutar += Number(ozet.genel_ilerleme_tutar) || 0;
+
+        for (const g of (ozet.gruplar || [])) {
+          const key = `${g.poz}||${g.durum}`;
+          let toplu = grupMap.get(key);
+          if (!toplu) {
+            toplu = {
+              poz: g.poz, adi: g.adi, durum: g.durum, birim: g.birim,
+              birim_fiyat: g.birim_fiyat,
+              toplam_miktar: 0, toplam_tutar: 0,
+              ilerleme_miktar: 0, ilerleme_tutar: 0,
+              cocukMap: new Map(),
+            };
+            grupMap.set(key, toplu);
+          }
+          toplu.toplam_miktar    += Number(g.toplam_miktar) || 0;
+          toplu.toplam_tutar     += Number(g.toplam_tutar) || 0;
+          toplu.ilerleme_miktar  += Number(g.ilerleme_miktar) || 0;
+          toplu.ilerleme_tutar   += Number(g.ilerleme_tutar) || 0;
+          for (const c of (g.cocuklar || [])) {
+            const ck = c.poz || c.adi;
+            let cc = toplu.cocukMap.get(ck);
+            if (!cc) {
+              cc = {
+                adi: c.adi, poz: c.poz, durum: c.durum,
+                birim: c.birim, agirlik: c.agirlik,
+                miktar: 0, alt_toplam_miktar: 0,
+                ilerleme: 0, alt_ilerleme_miktar: 0,
+              };
+              toplu.cocukMap.set(ck, cc);
+            }
+            cc.miktar              += Number(c.miktar) || 0;
+            cc.alt_toplam_miktar   += Number(c.alt_toplam_miktar) || 0;
+            cc.ilerleme            += Number(c.ilerleme) || 0;
+            cc.alt_ilerleme_miktar += Number(c.alt_ilerleme_miktar) || 0;
+          }
+        }
+        for (const b of (ozet.bagimsiz || [])) {
+          const key = `${b.poz || ''}||${b.durum}||${b.adi}`;
+          let toplu = bagimsizMap.get(key);
+          if (!toplu) {
+            toplu = {
+              adi: b.adi, poz: b.poz, durum: b.durum,
+              birim: b.birim, birim_fiyat: b.birim_fiyat,
+              miktar: 0, toplam_tutar: 0,
+              ilerleme: 0, ilerleme_tutar: 0,
+              katalog_eslesmedi: b.katalog_eslesmedi,
+            };
+            bagimsizMap.set(key, toplu);
+          }
+          toplu.miktar         += Number(b.miktar) || 0;
+          toplu.toplam_tutar   += Number(b.toplam_tutar) || 0;
+          toplu.ilerleme       += Number(b.ilerleme) || 0;
+          toplu.ilerleme_tutar += Number(b.ilerleme_tutar) || 0;
+        }
+      }
+    }
+
+    // Map → array, alfabetik sıralama (poz)
+    const gruplar = [...grupMap.values()]
+      .map(g => ({ ...g, cocuklar: [...g.cocukMap.values()].sort((a,b) => String(a.adi).localeCompare(String(b.adi),'tr')) }))
+      .map(({ cocukMap, ...g }) => g)
+      .sort((a,b) => String(a.poz || '').localeCompare(String(b.poz || ''),'tr'));
+    const bagimsiz = [...bagimsizMap.values()]
+      .sort((a,b) => String(a.adi).localeCompare(String(b.adi),'tr'));
+
+    basarili(res, {
+      proje_sayisi: ids.length,
+      genel_toplam: genelToplam,
+      genel_ilerleme_tutar: genelIlerlemeTutar,
+      gruplar, bagimsiz,
+    });
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
+// POST /malzeme-listesi-excel — Toplu malzeme listesini XLSX olarak indir
+router.post('/malzeme-listesi-excel', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return hata(res, 'Proje ID listesi gerekli');
+
+    // Önce özeti üret (yukarıdaki endpoint mantığı tekrarlanıyor)
+    const { malzemeOzetiUret } = require('../services/metrajOzetService');
+    const grupMap = new Map(), bagimsizMap = new Map();
+    let genelToplam = 0, genelIlerleme = 0;
+    for (const pid of ids) {
+      const id = parseInt(pid); if (!id) continue;
+      for (const tablo of ['proje_kesif_metraj', 'hak_edis_metraj']) {
+        let ozet; try { ozet = malzemeOzetiUret(tablo, id); } catch { continue; }
+        if (!ozet) continue;
+        genelToplam += Number(ozet.genel_toplam) || 0;
+        genelIlerleme += Number(ozet.genel_ilerleme_tutar) || 0;
+        for (const g of (ozet.gruplar || [])) {
+          const k = `${g.poz}||${g.durum}`;
+          let t = grupMap.get(k);
+          if (!t) { t = { ...g, cocukMap: new Map(), toplam_miktar:0, toplam_tutar:0, ilerleme_miktar:0, ilerleme_tutar:0 }; grupMap.set(k, t); }
+          t.toplam_miktar   += Number(g.toplam_miktar) || 0;
+          t.toplam_tutar    += Number(g.toplam_tutar) || 0;
+          t.ilerleme_miktar += Number(g.ilerleme_miktar) || 0;
+          t.ilerleme_tutar  += Number(g.ilerleme_tutar) || 0;
+          for (const c of (g.cocuklar || [])) {
+            const ck = c.poz || c.adi;
+            let cc = t.cocukMap.get(ck);
+            if (!cc) { cc = { ...c, miktar:0, alt_toplam_miktar:0, ilerleme:0, alt_ilerleme_miktar:0 }; t.cocukMap.set(ck, cc); }
+            cc.miktar            += Number(c.miktar) || 0;
+            cc.alt_toplam_miktar += Number(c.alt_toplam_miktar) || 0;
+            cc.ilerleme          += Number(c.ilerleme) || 0;
+            cc.alt_ilerleme_miktar += Number(c.alt_ilerleme_miktar) || 0;
+          }
+        }
+        for (const b of (ozet.bagimsiz || [])) {
+          const k = `${b.poz || ''}||${b.durum}||${b.adi}`;
+          let t = bagimsizMap.get(k);
+          if (!t) { t = { ...b, miktar:0, toplam_tutar:0, ilerleme:0, ilerleme_tutar:0 }; bagimsizMap.set(k, t); }
+          t.miktar         += Number(b.miktar) || 0;
+          t.toplam_tutar   += Number(b.toplam_tutar) || 0;
+          t.ilerleme       += Number(b.ilerleme) || 0;
+          t.ilerleme_tutar += Number(b.ilerleme_tutar) || 0;
+        }
+      }
+    }
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Malzeme Listesi');
+    ws.columns = [
+      { header: 'POZ',       key: 'poz',           width: 14 },
+      { header: 'Adı',       key: 'adi',           width: 50 },
+      { header: 'Durum',     key: 'durum',         width: 10 },
+      { header: 'Miktar',    key: 'miktar',        width: 12 },
+      { header: 'Birim',     key: 'birim',         width: 8 },
+      { header: 'B. Fiyat',  key: 'birim_fiyat',   width: 12 },
+      { header: 'Tutar',     key: 'toplam_tutar',  width: 14 },
+      { header: 'İlerleme',  key: 'ilerleme',      width: 12 },
+      { header: 'İlerleme Tutar', key: 'ilerleme_tutar', width: 14 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE7EFFA' } };
+    ws.getRow(1).alignment = { horizontal: 'center' };
+
+    // Gruplar: parent satırı + çocuklar
+    for (const g of [...grupMap.values()].sort((a,b) => String(a.poz||'').localeCompare(String(b.poz||''),'tr'))) {
+      const pr = ws.addRow({
+        poz: g.poz, adi: g.adi, durum: g.durum, miktar: g.toplam_miktar, birim: g.birim,
+        birim_fiyat: g.birim_fiyat, toplam_tutar: g.toplam_tutar,
+        ilerleme: g.ilerleme_miktar, ilerleme_tutar: g.ilerleme_tutar,
+      });
+      pr.font = { bold: true };
+      pr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFDF5' } };
+      const cocuklar = [...g.cocukMap.values()].sort((a,b) => String(a.adi).localeCompare(String(b.adi),'tr'));
+      for (const c of cocuklar) {
+        ws.addRow({
+          poz: c.poz, adi: '    ' + c.adi, durum: c.durum, miktar: c.miktar, birim: c.birim,
+          birim_fiyat: '', toplam_tutar: c.alt_toplam_miktar > 0 ? `${c.alt_toplam_miktar.toFixed(2)} kg` : '',
+          ilerleme: c.ilerleme, ilerleme_tutar: c.alt_ilerleme_miktar || '',
+        });
+      }
+    }
+    // Bağımsız kalemler
+    if (bagimsizMap.size > 0) {
+      const br = ws.addRow({ poz: '', adi: '— Bağımsız Kalemler —', durum: '', miktar: '', birim: '', birim_fiyat: '', toplam_tutar: '' });
+      br.font = { bold: true, italic: true };
+      br.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+      for (const b of [...bagimsizMap.values()].sort((a,b) => String(a.adi).localeCompare(String(b.adi),'tr'))) {
+        ws.addRow({
+          poz: b.poz || '', adi: b.adi, durum: b.durum, miktar: b.miktar, birim: b.birim,
+          birim_fiyat: b.birim_fiyat, toplam_tutar: b.toplam_tutar,
+          ilerleme: b.ilerleme, ilerleme_tutar: b.ilerleme_tutar,
+        });
+      }
+    }
+    // Genel toplam
+    const tot = ws.addRow({ poz: '', adi: 'GENEL TOPLAM', durum: '', miktar: '', birim: '', birim_fiyat: '', toplam_tutar: genelToplam, ilerleme: '', ilerleme_tutar: genelIlerleme });
+    tot.font = { bold: true, size: 12 };
+    tot.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+
+    // Sayı kolonları
+    ['miktar','birim_fiyat','toplam_tutar','ilerleme','ilerleme_tutar'].forEach(k => {
+      ws.getColumn(k).numFmt = '#,##0.00';
+      ws.getColumn(k).alignment = { horizontal: 'right' };
+    });
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const buf = await wb.xlsx.writeBuffer();
+    const tarih = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="malzeme-listesi-${tarih}.xlsx"`);
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    hata(res, err.message, 500);
+  }
+});
+
 // POST /excel-export — Seçili projeleri seçili sütunlarla XLSX olarak indir
 //   Body: { ids: number[], kolonlar: [{ accessor, baslik }] }
 //   Dönüş: Excel binary (blob)

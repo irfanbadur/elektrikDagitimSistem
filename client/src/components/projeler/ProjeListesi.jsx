@@ -15,6 +15,7 @@ import MalzemeTalepModal from './MalzemeTalepModal'
 import YerTeslimXlsxModal from './YerTeslimXlsxModal'
 import ExcelExportModal from './ExcelExportModal'
 import PrintModal from './PrintModal'
+import MalzemeListesiModal from './MalzemeListesiModal'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton'
 import { PROJE_DURUMLARI } from '@/utils/constants'
@@ -412,6 +413,7 @@ export default function ProjeListesi() {
   const [malzemeTalepModalAcik, setMalzemeTalepModalAcik] = useState(false)
   const [yerTeslimXlsxModalAcik, setYerTeslimXlsxModalAcik] = useState(false)
   const [excelExportModalAcik, setExcelExportModalAcik] = useState(false)
+  const [malzemeListesiModalAcik, setMalzemeListesiModalAcik] = useState(false)
   const [printModalAcik, setPrintModalAcik] = useState(false)
 
   const secimDegistir = useCallback((id) => {
@@ -1296,6 +1298,13 @@ export default function ProjeListesi() {
               Yer Teslim XLSX ({seciliIdler.size})
             </button>
             <button
+              onClick={() => setMalzemeListesiModalAcik(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-100"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Malzeme Listesi ({seciliIdler.size})
+            </button>
+            <button
               onClick={() => setMalzemeTalepModalAcik(true)}
               className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
             >
@@ -1365,6 +1374,14 @@ export default function ProjeListesi() {
         <MalzemeTalepModal
           projeler={(projeler || []).filter((p) => seciliIdler.has(p.id))}
           onKapat={() => setMalzemeTalepModalAcik(false)}
+        />
+      )}
+
+      {/* Toplu Malzeme Listesi Modal */}
+      {malzemeListesiModalAcik && (
+        <MalzemeListesiModal
+          ids={[...seciliIdler]}
+          onKapat={() => setMalzemeListesiModalAcik(false)}
         />
       )}
 
