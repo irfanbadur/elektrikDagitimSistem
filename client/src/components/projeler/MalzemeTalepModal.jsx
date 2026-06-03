@@ -81,9 +81,9 @@ export default function MalzemeTalepModal({ projeler, onKapat }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-xl rounded-xl border border-border bg-white shadow-2xl">
-        {/* Başlık */}
-        <div className="flex items-center justify-between border-b px-6 py-4">
+      <div className="flex w-full max-w-xl max-h-[90vh] flex-col rounded-xl border border-border bg-white shadow-2xl">
+        {/* Başlık (sabit) */}
+        <div className="flex items-center justify-between border-b px-6 py-4 shrink-0">
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
             <h2 className="text-base font-semibold">Malzeme Talebi Oluştur</h2>
@@ -93,8 +93,8 @@ export default function MalzemeTalepModal({ projeler, onKapat }) {
           </button>
         </div>
 
-        {/* İçerik */}
-        <div className="p-6 space-y-5">
+        {/* İçerik (scroll) */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
           {/* Şablon bilgisi */}
           <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             <p className="font-medium">Şablon: Keşifler KET-YB.xlsx</p>
@@ -175,8 +175,8 @@ export default function MalzemeTalepModal({ projeler, onKapat }) {
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2 border-t px-6 py-4">
+        {/* Footer (sabit) */}
+        <div className="flex justify-end gap-2 border-t px-6 py-4 shrink-0">
           <button
             onClick={onKapat}
             className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
